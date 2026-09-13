@@ -71,6 +71,21 @@ systemd unit or the root helper; those still come from `install.sh`.
 
 Requirements: Python 3.10+, PySide6 6.5+, psutil 5.9+. Tested with newer versions of all three.
 
+### As a package
+
+`packaging/aur/` holds a PKGBUILD that installs everything in its proper place:
+console scripts in `/usr/bin`, the root helper in `/usr/lib/archpm`, the polkit
+policy, a systemd user unit and the widget. Until it is on the AUR, build it
+yourself:
+
+```bash
+cd packaging/aur && makepkg -si
+systemctl --user enable --now archpm-agent
+```
+
+Do not mix the two routes: run `./install.sh --uninstall-root` before installing
+the package, or the polkit policy file will conflict.
+
 ## What it measures
 
 - **CPU** — total, per logical core, frequency, load and Tctl temperature. The
