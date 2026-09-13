@@ -1,4 +1,4 @@
 """ArchPM -- process management and monitoring for a Linux gaming PC."""
 
-__version__ = "0.1.3"
+__version__ = "0.1.4"
 APP_NAME = "ArchPM"
