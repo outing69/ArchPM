@@ -40,6 +40,7 @@ from .proc_model import (
     COL_THREADS,
     COL_USER,
     COL_VRAM,
+    PID_ROLE,
     ProcFilter,
     ProcModel,
 )
@@ -170,7 +171,6 @@ class ProcessView(QWidget):
         self.table.setUniformRowHeights(True)   # required for fast layout of ~500 rows
         self.table.setIndentation(16)
         self.table.setIconSize(QSize(16, 16))
-        self.table.setExpandsOnDoubleClick(False)
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
@@ -194,11 +194,16 @@ class ProcessView(QWidget):
             self.table.setColumnWidth(col, w)
         outer.addWidget(self.table, 1)
 
-        # New rows arrive expanded, so a game that just launched shows its
-        # whole tree; what the user collapsed stays collapsed because only the
-        # inserted rows themselves are expanded, not their parent.
-        self.proxy.rowsInserted.connect(self._expand_new)
-        self.proxy.modelReset.connect(self.table.expandAll)
+        # Collapsed by default, or a browser's twenty renderers bury everything.
+        # Exceptions, applied once per process the first time it is seen (so
+        # what you collapse stays collapsed): the top two levels (init and your
+        # session, which is where your programs live) and single-child chains
+        # such as reaper -> srt-bwrap -> pv-adverb, which would otherwise cost
+        # three clicks to reach a game. Done after each update rather than on
+        # rowsInserted: the proxy maps deeper rows lazily and emits nothing
+        # for them until the view looks.
+        self._auto_done: set[int] = set()
+        self.proxy.modelReset.connect(self._auto_done.clear)
 
         # -- behaviour -----------------------------------------------------
         self.search.textChanged.connect(self.proxy.set_text)
@@ -229,6 +234,8 @@ class ProcessView(QWidget):
 
     def update_view(self, snap) -> None:
         self.model.update(snap.procs)
+        if self.model.tree and not self.model.frozen:
+            self._auto_expand()
 
     def _set_frozen(self, frozen: bool) -> None:
         self.model.frozen = frozen
@@ -239,11 +246,22 @@ class ProcessView(QWidget):
         self.model.set_tree(on)
         self.table.setRootIsDecorated(on)
 
-    def _expand_new(self, parent: QModelIndex, first: int, last: int) -> None:
-        if not self.model.tree:
-            return
-        for row in range(first, last + 1):
-            self.table.expandRecursively(self.proxy.index(row, 0, parent))
+    def _auto_expand(self) -> None:
+        """Apply the default-expansion rule to rows not seen before (see __init__)."""
+        alive = set(self.model.pids())
+        self._auto_done &= alive
+        pending = [(QModelIndex(), 0)]
+        while pending:
+            parent, depth = pending.pop()
+            for row in range(self.proxy.rowCount(parent)):
+                index = self.proxy.index(row, 0, parent)
+                children = self.proxy.rowCount(index)
+                if children:
+                    pending.append((index, depth + 1))
+                    pid = index.data(PID_ROLE)
+                    if pid not in self._auto_done and (depth <= 1 or children == 1):
+                        self.table.expand(index)
+                        self._auto_done.add(pid)
 
     # -- selection --------------------------------------------------------
     def _selected(self) -> list[ProcSample]:

@@ -211,6 +211,9 @@ class ProcModel(QAbstractItemModel):
         out.append(pid)
         return out
 
+    def pids(self):
+        return self._nodes.keys()
+
     def has_children(self, pid: int) -> bool:
         node = self._nodes.get(pid)
         return bool(node and node.children)
