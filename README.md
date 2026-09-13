@@ -110,7 +110,12 @@ git clone https://github.com/outing69/ArchPM.git && cd ArchPM
 ./install.sh --root   # the pkexec helper and the polkit policy
 ```
 
-Then: right-click your desktop → *Add Widgets* → **ArchPM Monitor**.
+Then: right-click your desktop → *Add Widgets* → **ArchPM Monitor**. The same
+widget can go in a panel: right-click the panel → *Add Widgets* → ArchPM
+Monitor. There it shows a one-line strip and opens the full view on click.
+
+For frame rates and usage *inside* a full-screen game, use MangoHud; ArchPM is
+for before and after: what the game did to the machine, and what else runs.
 
 The GUI and agent are also a regular Python package (`pyproject.toml`, console
 scripts `archpm` and `archpm-agent`), so `pipx install git+https://github.com/outing69/ArchPM`
@@ -171,6 +176,9 @@ the package, or the polkit policy file will conflict.
   doing real GPU work qualifies too.
 - **History** — select a process and the last minutes of its CPU, GPU and memory
   appear under the list; a collapsed program shows its whole tree.
+- **Help** — a searchable glossary in plain language (what nice -5 means, what a
+  PID is, SIGTERM versus SIGKILL, why root is asked), what the colours mean, and
+  About with version, links and the changelog.
 - **Cleanup** — free up space: per-program caches, Steam shader caches,
   thumbnails, old package versions (the last two of each are kept) and old
   logs, each with its size and a plain reason why it is safe. The tab explains

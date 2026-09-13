@@ -26,6 +26,7 @@ from ..root.client import ElevatedBackend, RootClient
 from . import theme
 from .cleanup import CleanupView
 from .dashboard import Dashboard
+from .help import HelpView
 from .history import ProcHistory
 from .procview import ProcessView
 from .startup import StartupView
@@ -114,6 +115,7 @@ class MainWindow(QMainWindow):
         self.tabs.addTab(self.cleanup, "Cleanup")
         self.cleanup.leave.connect(lambda: self.tabs.setCurrentIndex(0))
         self.cleanup.status.connect(self._flash)
+        self.tabs.addTab(HelpView(), "Help")
         self.setCentralWidget(self.tabs)
 
         self.procs.status.connect(self._flash)
