@@ -93,10 +93,9 @@ def running_owner(item: CleanupItem, procs) -> str:
             if not p.cmdline:
                 continue  # kernel threads such as irq/84-nvidia own no cache
             name = p.name.lower()
-            if known is not None:
-                hit = name in known   # exact: Brave's chrome_crashpad_handler is not Chrome
-            else:
-                hit = name == folder.lower()   # unknown folder: exact name only
+            # Exact names only: Brave's chrome_crashpad_handler is not Chrome, and
+            # an unknown folder matches nothing but a process of the same name.
+            hit = name in known if known is not None else name == folder.lower()
             if hit:
                 return p.app_name or p.name
     return ""
