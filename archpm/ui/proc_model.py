@@ -118,6 +118,7 @@ class ProcModel(QAbstractItemModel):
         self._last: list[ProcSample] = []
         self.busy_until: dict[int, float] = {}   # pid -> monotonic deadline
         self._expanded: set[int] = set()         # pids whose row the view shows expanded
+        self.steam_pid = 0                       # the Steam client, if it runs
 
     # -- Qt structure -------------------------------------------------------
     def _node(self, index: QModelIndex) -> Node:
@@ -335,17 +336,34 @@ class ProcModel(QAbstractItemModel):
         return bool(node and node.children)
 
     # -- updates --------------------------------------------------------------
-    def _parent_for(self, p: ProcSample, incoming: dict[int, ProcSample]) -> Node:
-        if self.tree and p.ppid in incoming and p.ppid != p.pid:
-            node = self._nodes.get(p.ppid)
-            if node is not None:
-                return node
-        return self._root
-
     def _desired_parent_pid(self, p: ProcSample, incoming: dict[int, ProcSample]) -> int:
-        if self.tree and p.ppid in incoming and p.ppid != p.pid:
+        if not self.tree:
+            return 0
+        # A Steam game's tree hangs directly under the Steam client, whatever
+        # its real parent: Steam nests games under reaper and the runtime, and
+        # once reaper is gone the tree even ends up beside Steam.
+        if (p.steam_appid and self.steam_pid and p.pid != self.steam_pid
+                and incoming.get(p.ppid) is not None
+                and incoming[p.ppid].steam_appid != p.steam_appid):
+            return self.steam_pid
+        if p.steam_appid and self.steam_pid and p.pid != self.steam_pid and p.ppid not in incoming:
+            return self.steam_pid
+        if p.ppid in incoming and p.ppid != p.pid:
             return p.ppid
         return 0
+
+    @staticmethod
+    def find_steam(incoming: dict[int, ProcSample]) -> int:
+        for p in incoming.values():
+            if p.name == "steam" and not p.steam_appid and p.owned:
+                return p.pid
+        return 0
+
+    def game_children(self, pid: int) -> list[int]:
+        node = self._nodes.get(pid)
+        if node is None:
+            return []
+        return [c.proc.pid for c in node.children if c.proc.steam_appid]
 
     def _index_of(self, node: Node) -> QModelIndex:
         return QModelIndex() if node is self._root else self.createIndex(node.row, 0, node)
@@ -376,6 +394,7 @@ class ProcModel(QAbstractItemModel):
         if self.frozen:
             return
         incoming = {p.pid: p for p in procs}
+        self.steam_pid = self.find_steam(incoming)
 
         # 1. Remove what is gone, and what must move (its parent changed). A
         #    removed subtree may contain processes that still exist: they are

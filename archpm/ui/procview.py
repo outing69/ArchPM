@@ -293,7 +293,9 @@ class ProcessView(QWidget):
         # update rather than on rowsInserted: the proxy maps deeper rows lazily
         # and emits nothing for them until the view looks.
         self._auto_done: set[int] = set()
+        self._games_seen: set[int] = set()   # game roots already used to open Steam
         self.proxy.modelReset.connect(self._auto_done.clear)
+        self.proxy.modelReset.connect(self._games_seen.clear)
 
         # -- behaviour -----------------------------------------------------
         header.sortIndicatorChanged.connect(self._remember_sort)
@@ -415,6 +417,16 @@ class ProcessView(QWidget):
                         if depth <= 1:
                             self.table.expand(index)
                         self._auto_done.add(pid)
+                    # Steam opens when a new game shows up under it, so the
+                    # game is one row below Steam without digging.
+                    if pid == self.model.steam_pid:
+                        new_games = set(self.model.game_children(pid)) - self._games_seen
+                        if new_games:
+                            self._games_seen |= new_games
+                            self.table.expand(index)
+                            for ancestor in (index.parent(), index.parent().parent()):
+                                if ancestor.isValid():
+                                    self.table.expand(ancestor)
 
     # -- selection --------------------------------------------------------
     def _selected(self) -> list[ProcSample]:
