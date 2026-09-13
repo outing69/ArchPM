@@ -135,8 +135,8 @@ class HistoryPanel(QWidget):
         lay.addLayout(head)
         graphs = QHBoxLayout()
         graphs.setSpacing(10)
-        self.g_cpu = Graph([("cpu", theme.CPU), ("gpu", theme.GPU)], maximum=None, fill=False)
-        self.g_mem = Graph([("memory", theme.MEM)], maximum=None, fill=True)
+        self.g_cpu = Graph([("CPU", theme.CPU), ("GPU", theme.GPU)], maximum=None, fill=False)
+        self.g_mem = Graph([("Memory", theme.MEM)], maximum=None, fill=True)
         self.g_mem.set_formatter(human_bytes)
         for g in (self.g_cpu, self.g_mem):
             g.setMinimumHeight(140)
@@ -145,11 +145,11 @@ class HistoryPanel(QWidget):
 
     def show_track(self, p: ProcSample, track, tree_size: int,
                    ended_ago: float | None = None) -> None:
-        scope = f"whole tree, {tree_size} processes" if tree_size > 1 else f"pid {p.pid}"
+        scope = f"Whole tree, {tree_size} processes" if tree_size > 1 else f"PID {p.pid}"
         if ended_ago is not None:
             when = "just now" if ended_ago < 10 else f"{age_text(ended_ago)} ago"
             scope += (f"&nbsp;&nbsp;·&nbsp;&nbsp;"
-                      f"<span style='color:{theme.WARN}'>ended {when}</span>")
+                      f"<span style='color:{theme.WARN}'>Ended {when}</span>")
         sep = "&nbsp;&nbsp;·&nbsp;&nbsp;"
         self.lbl.setText(f"<span style='color:{theme.ACCENT}'>{p.display_name}</span>"
                          f"<span style='color:{theme.FAINT}'>{sep}{scope}</span>")

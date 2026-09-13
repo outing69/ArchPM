@@ -81,7 +81,7 @@ class GameCard(Card):
         left.addStretch(1)
         row.addLayout(left, 3)
 
-        self.graph = Graph([("cpu", theme.CPU), ("gpu", theme.GPU)], maximum=None, fill=False)
+        self.graph = Graph([("CPU", theme.CPU), ("GPU", theme.GPU)], maximum=None, fill=False)
         self.graph.setMinimumHeight(110)
         row.addWidget(self.graph, 2)
         self.body.addLayout(row)
@@ -150,16 +150,16 @@ class GameCard(Card):
         )
         self.lbl_name.setToolTip(game.cmdline)
         started = age_text(time.time() - game.create_time) if game.create_time else "?"
-        self.lbl_sub.setText(f"running {started}  ·  nice {game.nice}"
+        self.lbl_sub.setText(f"Running {started}  ·  Nice {game.nice}"
                              + (f"  ·  {game.name}" if game.app_name else ""))
         self.t_cpu.set(f"{cpu / self.ncpu:.0f}%", f"{cpu / 100:.1f} of {self.ncpu} cores",
                        theme.heat(cpu / self.ncpu).name())
-        self.t_gpu.set(f"{gpu:.0f}%", "of the GPU", theme.heat(gpu).name())
+        self.t_gpu.set(f"{gpu:.0f}%", "GPU busy", theme.heat(gpu).name())
         self.t_vram.set(f"{vram / 1024:.1f} G", f"{vram:.0f} MB")
-        self.t_mem.set(human_bytes(rss), "whole tree")
-        self.t_thr.set(str(threads), f"in {len(tree)} processes")
+        self.t_mem.set(human_bytes(rss), "Whole tree")
+        self.t_thr.set(str(threads), f"In {len(tree)} processes")
         cores = self._cores_allowed(game.pid)
-        self.t_cores.set(f"{cores or '?'} of {self.ncpu}", "allowed")
+        self.t_cores.set(f"{cores or '?'} of {self.ncpu}", "Allowed")
         if history is not None:
             track = history.tree([p.pid for p in tree])
             self.graph.set_history(track.cpu, track.gpu)
@@ -274,7 +274,7 @@ class Dashboard(QWidget):
 
         # -- CPU -----------------------------------------------------------
         cpu_card = Card("processor", color=theme.CPU)
-        self.g_cpu = Graph([("total", theme.CPU)], maximum=100.0)
+        self.g_cpu = Graph([("Total", theme.CPU)], maximum=100.0)
         cpu_card.body.addWidget(self.g_cpu, 1)
         self.cores = CoreGrid()
         cpu_card.body.addWidget(self.cores)
@@ -282,7 +282,7 @@ class Dashboard(QWidget):
 
         # -- GPU -----------------------------------------------------------
         gpu_card = Card("graphics card", color=theme.GPU)
-        self.g_gpu = Graph([("sm", theme.GPU), ("vram", theme.DISK)], maximum=100.0)
+        self.g_gpu = Graph([("GPU load", theme.GPU), ("VRAM", theme.DISK)], maximum=100.0)
         gpu_card.body.addWidget(self.g_gpu, 1)
         self.gpu_sub = QLabel("--")
         self.gpu_sub.setFont(mono(8))
@@ -292,7 +292,7 @@ class Dashboard(QWidget):
 
         # -- memory --------------------------------------------------------
         mem_card = Card("memory", color=theme.MEM)
-        self.g_mem = Graph([("ram", theme.MEM), ("swap", theme.SWAP)], maximum=100.0)
+        self.g_mem = Graph([("RAM", theme.MEM), ("Swap", theme.SWAP)], maximum=100.0)
         mem_card.body.addWidget(self.g_mem, 1)
         self.mem_sub = QLabel("--")
         self.mem_sub.setFont(mono(8))
@@ -302,10 +302,11 @@ class Dashboard(QWidget):
 
         # -- I/O -----------------------------------------------------------
         io_card = Card("network & disk", color=theme.NET)
-        self.g_net = Graph([("net ↓", theme.NET), ("net ↑", theme.CPU)], maximum=None, fill=False)
+        self.g_net = Graph([("Download", theme.NET), ("Upload", theme.CPU)],
+                           maximum=None, fill=False)
         self.g_net.set_formatter(lambda v: f"{human_bytes(v)}/s")
         io_card.body.addWidget(self.g_net, 1)
-        self.g_disk = Graph([("disk r", theme.DISK), ("disk w", theme.SWAP)],
+        self.g_disk = Graph([("Disk read", theme.DISK), ("Disk write", theme.SWAP)],
                             maximum=None, fill=False)
         self.g_disk.set_formatter(lambda v: f"{human_bytes(v)}/s")
         io_card.body.addWidget(self.g_disk, 1)
@@ -359,7 +360,7 @@ class Dashboard(QWidget):
             f"{node}</span>{sep}"
             f"<span style='color:{theme.TEXT}'>{release}</span>{sep}"
             f"<span style='color:{theme.MEM}'>{cores}</span>{sep}"
-            f"<span style='color:{theme.MUTED}'>up {up}</span>"
+            f"<span style='color:{theme.MUTED}'>Up {up}</span>"
         )
 
     def set_root_state(self, elevated: bool) -> None:
@@ -390,10 +391,10 @@ class Dashboard(QWidget):
         self._render_machine(time.time() - psutil.boot_time())
         self.g_cpu.push(s.cpu_percent)
         self.cores.set_values(s.per_core)
-        self.t_cpu.set(f"{s.cpu_percent:.0f}%", f"{s.freq_mhz:.0f} MHz · load {s.load[0]:.2f}",
+        self.t_cpu.set(f"{s.cpu_percent:.0f}%", f"{s.freq_mhz:.0f} MHz · Load {s.load[0]:.2f}",
                        theme.heat(s.cpu_percent).name())
         if s.cpu_temp_c:
-            self.t_cputemp.set(f"{s.cpu_temp_c:.0f}°", "Tctl",
+            self.t_cputemp.set(f"{s.cpu_temp_c:.0f}°", "Processor",
                                theme.heat(min(s.cpu_temp_c, 100)).name())
 
         if s.gpu:
@@ -401,24 +402,24 @@ class Dashboard(QWidget):
             self.g_gpu.push(g.util, g.mem_pct)
             self.t_gpu.set(f"{g.util:.0f}%", g.name.replace("NVIDIA GeForce ", ""),
                            theme.heat(g.util).name())
-            self.t_gputemp.set(f"{g.temp_c:.0f}°", f"{g.fan_pct:.0f}% fan",
+            self.t_gputemp.set(f"{g.temp_c:.0f}°", f"Fan {g.fan_pct:.0f}%",
                                theme.heat(min(g.temp_c * 1.15, 100)).name())
             self.t_vram.set(f"{g.mem_used_mb / 1024:.1f} G",
-                            f"of {g.mem_total_mb / 1024:.0f} G · {g.mem_pct:.0f}%")
+                            f"{g.mem_pct:.0f}% of {g.mem_total_mb / 1024:.0f} G")
             self.gpu_sub.setText(
                 f"{g.power_w:.0f} W  ·  {g.clock_mhz:.0f} MHz  ·  "
                 f"{g.mem_used_mb:.0f}/{g.mem_total_mb:.0f} MB"
             )
         else:
-            self.gpu_sub.setText("no GPU telemetry available")
+            self.gpu_sub.setText("No GPU telemetry available")
 
         swap_pct = 100.0 * s.swap_used / s.swap_total if s.swap_total else 0.0
         self.g_mem.push(s.mem_pct, swap_pct)
         self.t_mem.set(f"{s.mem_used / 2**30:.1f} G",
-                       f"of {s.mem_total / 2**30:.0f} G · {s.mem_pct:.0f}%",
+                       f"{s.mem_pct:.0f}% of {s.mem_total / 2**30:.0f} G",
                        theme.heat(s.mem_pct).name())
         self.mem_sub.setText(
-            f"free {s.mem_available / 2**30:.1f} G  ·  swap "
+            f"Free {s.mem_available / 2**30:.1f} G  ·  Swap "
             f"{s.swap_used / 2**30:.1f}/{s.swap_total / 2**30:.0f} G  ·  "
             f"{s.proc_count} processes, {s.thread_count} threads"
         )

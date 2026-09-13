@@ -91,6 +91,12 @@ GLOSSARY: tuple[Section, ...] = (
              "even numbers) and away from core 0 sometimes smooths frame times. Threads is "
              "how many the process has; affinity is how many cores it is allowed.",
              "Right-click → CPU affinity, game card"),
+        Term("CPU temperature",
+             "The processor's own sensor; on Ryzen it is the one the chip uses to decide "
+             "how fast it may boost (AMD calls it Tctl). Under 60 °C is idle, 70 to 85 °C "
+             "under a game is normal, above 85 °C the tile turns red and the CPU will slow "
+             "itself down to stay safe.",
+             "Overview CPU TEMP tile"),
         Term("Load",
              "The average number of processes wanting the CPU over the last minute. Below "
              "the number of cores means nobody waits; above it means they queue.",
@@ -99,6 +105,17 @@ GLOSSARY: tuple[Section, ...] = (
              "One bar per logical core. A game using two cores at 100% and fourteen at 0% "
              "is CPU-bound on those two; the strip shows that where a total of 12% hides it.",
              "Overview, widget"),
+    )),
+    Section("Network and disk", (
+        Term("Download and upload",
+             "Download is what comes in from the network, upload what goes out, for the "
+             "whole machine. A game update downloads; a video call uploads too. The graph's "
+             "scale adapts, so read the number in the corner, not just the shape.",
+             "Overview Network & Disk card, widget footer"),
+        Term("Disk read and write",
+             "How much the disks move per second, all disks together. A game loading a level "
+             "reads; a download or a recording writes. Per process it is the Disk I/O column.",
+             "Overview Network & Disk card, Disk I/O column"),
     )),
     Section("Memory", (
         Term("Memory (RSS)",
@@ -122,11 +139,17 @@ GLOSSARY: tuple[Section, ...] = (
              "Root tasks"),
     )),
     Section("GPU", (
-        Term("GPU % (SM)",
-             "How busy the graphics chip's compute units are. Near 100% while gaming is "
-             "good: the GPU is the bottleneck, as it should be. Low GPU with a low frame "
-             "rate points at the CPU instead.",
+        Term("GPU load",
+             "How busy the graphics chip is; NVIDIA calls its compute units SMs, which is "
+             "why some tools say \"SM %\". Near 100% while gaming is good: the GPU is the "
+             "bottleneck, as it should be. Low GPU with a low frame rate points at the CPU "
+             "instead.",
              "GPU % column, Overview, game card"),
+        Term("GPU temperature and fan",
+             "Modern cards run 60 to 80 °C under load by design; the fan speed shows how hard "
+             "the card works to stay there. A fan at 0% while idle is normal: many cards stop "
+             "their fans below 50 °C.",
+             "Overview GPU TEMP tile"),
         Term("VRAM",
              "The graphics card's own memory. When a game needs more than the card has, "
              "textures stream from RAM and frame times spike.",

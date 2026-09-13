@@ -263,9 +263,9 @@ class MainWindow(QMainWindow):
         self.cleanup.update_view(snap)
         render_ms = (time.perf_counter() - t0) * 1000
         gpu = snap.system.gpu
-        bits = [f"{snap.system.proc_count} processes", f"render {render_ms:.0f} ms"]
+        bits = [f"{snap.system.proc_count} processes", f"Render {render_ms:.0f} ms"]
         if gpu is None:
-            bits.append("no gpu")
+            bits.append("No GPU")
         self.lbl_stats.setText("  ·  ".join(bits))
         if self.tray is not None:
             s = snap.system
