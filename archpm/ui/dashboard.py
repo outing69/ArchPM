@@ -66,6 +66,7 @@ class GameCard(Card):
         super().__init__("game", parent, color=theme.ACCENT)
         self.ncpu = ncpu
         self.pid = 0
+        self.name = ""
         self._affinity: tuple[int, int, int] = (0, 0, 0)  # pid, cores, tick
         self._tick = 0
         row = QHBoxLayout()
@@ -76,12 +77,16 @@ class GameCard(Card):
         self.lbl_name = QLabel("No game running")
         self.lbl_name.setFont(mono(12, bold=True))
         self.lbl_name.setTextFormat(Qt.TextFormat.RichText)
+        # Expanding: with the tiles hidden nothing else in this column wants
+        # width, and the layout would shrink it to the label's minimum.
+        self.lbl_name.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         left.addWidget(self.lbl_name)
         self.lbl_sub = QLabel("A Steam game, or any program doing real GPU work, shows up here "
                               "the moment it starts.")
         self.lbl_sub.setWordWrap(True)
         self.lbl_sub.setStyleSheet(f"color: {theme.MUTED};")
         self.lbl_sub.setFont(mono(8))
+        self.lbl_sub.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         left.addWidget(self.lbl_sub)
         self.tiles = QHBoxLayout()
         self.tiles.setSpacing(8)
@@ -92,7 +97,7 @@ class GameCard(Card):
         self.t_thr = StatTile("threads", theme.CPU)
         self.t_cores = StatTile("cores", theme.CPU)
         for t in (self.t_cpu, self.t_gpu, self.t_vram, self.t_mem, self.t_thr, self.t_cores):
-            self.tiles.addWidget(t)
+            self.tiles.addWidget(t, 1)   # equal widths, like the six tiles at the top
         left.addLayout(self.tiles)
         left.addStretch(1)
         row.addLayout(left, 3)
@@ -134,6 +139,7 @@ class GameCard(Card):
         if not self.pid:
             self._set_tiles_visible(True)
         self.pid = game.pid
+        self.name = game.display_name
         tree = game_tree(game, procs)
         cpu = sum(p.cpu_percent for p in tree)
         rss = sum(p.mem_rss for p in tree)
@@ -150,14 +156,14 @@ class GameCard(Card):
         started = age_text(time.time() - game.create_time) if game.create_time else "?"
         self.lbl_sub.setText(f"running {started}  ·  nice {game.nice}"
                              + (f"  ·  {game.name}" if game.app_name else ""))
-        self.t_cpu.set(f"{cpu / self.ncpu:.0f}%", f"of the whole CPU · {cpu / 100:.1f} cores",
+        self.t_cpu.set(f"{cpu / self.ncpu:.0f}%", f"{cpu / 100:.1f} of {self.ncpu} cores",
                        theme.heat(cpu / self.ncpu).name())
-        self.t_gpu.set(f"{gpu:.0f}%", "sm", theme.heat(gpu).name())
+        self.t_gpu.set(f"{gpu:.0f}%", "of the GPU", theme.heat(gpu).name())
         self.t_vram.set(f"{vram / 1024:.1f} G", f"{vram:.0f} MB")
         self.t_mem.set(human_bytes(rss), "whole tree")
-        self.t_thr.set(str(threads), "")
+        self.t_thr.set(str(threads), f"in {len(tree)} processes")
         cores = self._cores_allowed(game.pid)
-        self.t_cores.set(f"{cores or '?'}", f"of {self.ncpu} allowed")
+        self.t_cores.set(f"{cores or '?'} of {self.ncpu}", "allowed")
         if history is not None:
             track = history.tree([p.pid for p in tree])
             self.graph.set_history(track.cpu, track.gpu)
@@ -340,6 +346,10 @@ class Dashboard(QWidget):
         grid.setRowStretch(3, 2)
         grid.setColumnStretch(0, 1)
         grid.setColumnStretch(1, 1)
+
+    def game_name(self) -> str:
+        """The running game's name, "" without one; for the tray."""
+        return self.game.name if self.game.pid else ""
 
     def _render_machine(self, uptime_s: float) -> None:
         """Header line in the same role split as the rest: yellow highlights the

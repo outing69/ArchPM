@@ -162,11 +162,26 @@ class MainWindow(QMainWindow):
         self.tray = QSystemTrayIcon(app_icon(), self)
         self.tray.setToolTip(APP_NAME)
         menu = QMenu()
+        self.act_game = QAction("No game running", self)
+        self.act_game.setEnabled(False)
+        menu.addAction(self.act_game)
+        menu.addSeparator()
         act_show = QAction("Show / hide", self)
         act_show.triggered.connect(self._toggle_window)
+        menu.addAction(act_show)
+        act_root = QAction("Root tasks…", self)
+        act_root.triggered.connect(lambda: (self.present(), self._open_root()))
+        menu.addAction(act_root)
+        menu.addSeparator()
+        # Off by default: closing the window quits, as it always did. On: the
+        # window hides here and Quit is how you leave.
+        self.act_keep = QAction("Keep running in background when closing", self)
+        self.act_keep.setCheckable(True)
+        self.act_keep.setChecked(self.settings.value("keep_running", False, type=bool))
+        self.act_keep.toggled.connect(lambda on: self.settings.setValue("keep_running", on))
+        menu.addAction(self.act_keep)
         act_quit = QAction("Quit", self)
         act_quit.triggered.connect(QApplication.quit)
-        menu.addAction(act_show)
         menu.addSeparator()
         menu.addAction(act_quit)
         self.tray.setContextMenu(menu)
@@ -219,6 +234,18 @@ class MainWindow(QMainWindow):
         if gpu is None:
             bits.append("no gpu")
         self.lbl_stats.setText("  ·  ".join(bits))
+        if self.tray is not None:
+            s = snap.system
+            cpu_temp = f" · {s.cpu_temp_c:.0f}°" if s.cpu_temp_c else ""
+            tip = [f"CPU {s.cpu_percent:.0f}%{cpu_temp}"]
+            if gpu is not None:
+                tip.append(f"GPU {gpu.util:.0f}% · {gpu.temp_c:.0f}° · VRAM "
+                           f"{gpu.mem_used_mb / 1024:.1f} / {gpu.mem_total_mb / 1024:.0f} G")
+            tip.append(f"RAM {s.mem_used / 2**30:.1f} / {s.mem_total / 2**30:.0f} G")
+            if self.dashboard.game_name():
+                tip.append(f"Game: {self.dashboard.game_name()}")
+            self.tray.setToolTip("\n".join(t for t in tip if t))
+            self.act_game.setText(self.dashboard.game_name() or "No game running")
 
     def _flash(self, message: str, msec: int = 4000) -> None:
         self.lbl_msg.setText(message)
@@ -251,6 +278,14 @@ class MainWindow(QMainWindow):
         self.thread.wait(3000)
 
     def closeEvent(self, event) -> None:
+        if self.tray is not None and self.act_keep.isChecked():
+            # The user asked for it: keep sampling, hide here, quit from the tray.
+            event.ignore()
+            self.hide()
+            self.tray.showMessage(APP_NAME, "Still running in the background. "
+                                  "Quit from the tray icon's menu.",
+                                  QSystemTrayIcon.MessageIcon.NoIcon, 3000)
+            return
         self.shutdown()
         super().closeEvent(event)
         # With a tray icon present Qt does not treat this as the last window,
