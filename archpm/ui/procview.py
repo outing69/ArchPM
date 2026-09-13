@@ -148,7 +148,8 @@ class HistoryPanel(QWidget):
         scope = f"whole tree, {tree_size} processes" if tree_size > 1 else f"pid {p.pid}"
         if ended_ago is not None:
             when = "just now" if ended_ago < 10 else f"{age_text(ended_ago)} ago"
-            scope += f"&nbsp;&nbsp;·&nbsp;&nbsp;<span style='color:{theme.WARN}'>ended {when}</span>"
+            scope += (f"&nbsp;&nbsp;·&nbsp;&nbsp;"
+                      f"<span style='color:{theme.WARN}'>ended {when}</span>")
         sep = "&nbsp;&nbsp;·&nbsp;&nbsp;"
         self.lbl.setText(f"<span style='color:{theme.ACCENT}'>{p.display_name}</span>"
                          f"<span style='color:{theme.FAINT}'>{sep}{scope}</span>")
