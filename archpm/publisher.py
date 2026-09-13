@@ -8,6 +8,7 @@ import sys
 import tempfile
 from pathlib import Path
 
+from . import net as netmod
 from .game import game_summary, pick_game
 from .model import Snapshot
 
@@ -92,6 +93,8 @@ def to_payload(snap: Snapshot, top_n: int = 5) -> dict:
     _state["game_pid"] = game.pid if game else 0
     if game is not None:
         payload["game"] = game_summary(game, snap.procs, ncpu)
+    if snap.net is not None:
+        payload["net"] = netmod.to_payload(snap.net, {p.pid: p.display_name for p in snap.procs})
     if s.gpu is not None:
         g = s.gpu
         payload["gpu"] = {

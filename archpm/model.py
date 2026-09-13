@@ -88,3 +88,4 @@ class SystemSample:
 class Snapshot:
     system: SystemSample
     procs: list[ProcSample] = field(default_factory=list)
+    net: object | None = None        # archpm.net.NetSnapshot, refreshed every few seconds

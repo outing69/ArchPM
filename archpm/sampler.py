@@ -14,6 +14,7 @@ import psutil
 from .appinfo import AppResolver
 from .gpu import GpuMonitor
 from .model import ProcSample, Snapshot, SystemSample
+from .net import NetSampler
 
 # cpu_affinity() deliberately not per tick: that is one syscall per process
 # (~430 of them) for a value only the affinity dialog needs, and it asks for it
@@ -29,6 +30,7 @@ _PROC_ATTRS = [
     "num_threads", "nice", "status", "create_time", "uids",
 ]
 TEMPS_EVERY = 5   # ticks; sensors are slow to read and slow to change
+NET_EVERY_S = 5.0  # seconds between socket scans (one ss call, ~50 ms)
 
 
 class Sampler:
@@ -46,6 +48,9 @@ class Sampler:
         self._tick = 0
         self._temps_cache: tuple[dict[str, float], float] = ({}, 0.0)
         self._cmdlines: dict[int, tuple[str, list[str]]] = {}   # pid -> (name, argv)
+        self.net = NetSampler()
+        self._net_last = None
+        self._net_ts = 0.0
         self._users: dict[int, str] = {}                        # uid -> username
         psutil.cpu_percent(percpu=True)  # baseline for the first tick
 
@@ -135,7 +140,10 @@ class Sampler:
 
         self._name_game_roots(procs)
         sys_sample = self._system(now, len(procs), threads)
-        return Snapshot(system=sys_sample, procs=procs)
+        if now - self._net_ts >= NET_EVERY_S:
+            self._net_ts = now
+            self._net_last = self.net.sample({p.pid: p.display_name for p in procs})
+        return Snapshot(system=sys_sample, procs=procs, net=self._net_last)
 
     def _name_game_roots(self, procs: list[ProcSample]) -> None:
         """Steam's "reaper" is the top of every game's tree. Give that root the
