@@ -9,6 +9,16 @@ the same measurement core:
 | **Agent** (`archpm-agent`) | systemd --user service that samples every 2 s and writes `status.json` |
 | **Widget** | Plasma 6 plasmoid on your desktop that reads that `status.json` |
 
+## Screenshots
+
+**Overview** — CPU, GPU, memory and I/O at a glance, plus the heaviest processes.
+
+![Overview tab](docs/overview.png)
+
+**Processes** — the full list with CPU, memory, per-process GPU usage, nice and disk I/O. Right-click a row to terminate, suspend, renice or pin it to cores.
+
+![Processes tab](docs/processes.png)
+
 ## Status and support
 
 Built for and tested on one machine: CachyOS (Arch), KDE Plasma 6 on Wayland,
