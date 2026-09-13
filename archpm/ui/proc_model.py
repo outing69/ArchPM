@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from PySide6.QtCore import QAbstractItemModel, QModelIndex, QSortFilterProxyModel, Qt
 from PySide6.QtGui import QColor
 
+from ..appinfo import describe
 from ..model import ProcSample
 from . import theme
 from .widgets import app_icon, human_bytes
@@ -69,17 +70,19 @@ class Totals:
     io: float = 0.0
 
 
-# "Busy" means worth showing even without a name and icon. A process stays
+# "Busy" means worth showing even without a name and icon: really working the
+# CPU or GPU, really moving data, or really large. Merely holding some VRAM
+# (every compositor does) or idling at 3% does not count. A process stays
 # visible this long after it was last busy, so a value hovering around the
 # threshold does not make the row blink in and out.
-BUSY_CPU = 1.0        # %
-BUSY_IO = 512 * 1024  # B/s
-BUSY_RSS = 256 << 20  # bytes
+BUSY_CPU = 5.0          # % of one core
+BUSY_IO = 1024 * 1024   # B/s
+BUSY_RSS = 1 << 30      # bytes
 BUSY_HOLD_S = 15.0
 
 
 def is_busy(p: ProcSample) -> bool:
-    return (p.cpu_percent >= BUSY_CPU or p.gpu_sm > 0 or p.gpu_mem_mb > 0
+    return (p.cpu_percent >= BUSY_CPU or p.gpu_sm > 0
             or p.io_read_bps + p.io_write_bps >= BUSY_IO or p.mem_rss >= BUSY_RSS)
 
 
@@ -180,8 +183,15 @@ class ProcModel(QAbstractItemModel):
         if role == Qt.ItemDataRole.ToolTipRole:
             if totals and col in _SUMMED:
                 return f"Total of {totals.count} processes in this tree"
-            if col == COL_NAME and p.app_name:
-                return f"{p.name}\n{p.cmdline}" if p.cmdline else p.name
+            if col == COL_NAME:
+                exe = p.cmdline.split(" ", 1)[0] if p.cmdline else p.name
+                about = describe(exe) or describe(p.name)
+                lines = [about] if about else []
+                if p.app_name:
+                    lines.append(p.name)
+                if p.cmdline:
+                    lines.append(p.cmdline)
+                return "\n".join(lines) or p.name
             return p.cmdline or p.name
         if role != Qt.ItemDataRole.DisplayRole:
             return None
@@ -457,10 +467,10 @@ class ProcFilter(QSortFilterProxyModel):
     any descendant passes, so a game's ancestry (systemd, steam, reaper)
     remains as context.
 
-    Default view ("programs"): your own processes that have a name and icon
-    (a menu entry or a Steam game) plus anything that is busy right now, icon
-    or not. `show_all` lifts every one of those restrictions, including other
-    users' processes and kernel threads."""
+    Default view ("programs"): your own processes that are user-facing programs
+    (a visible menu entry or a Steam game) plus anything that is busy right
+    now, icon or not. `show_all` lifts every one of those restrictions,
+    including other users' processes and kernel threads."""
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -488,8 +498,7 @@ class ProcFilter(QSortFilterProxyModel):
         if not self.show_all:
             if not p.owned or not p.cmdline:
                 return False
-            is_program = bool(p.app_name or p.icon)
-            if not is_program and model.busy_until.get(p.pid, 0.0) < time.monotonic():
+            if not p.program and model.busy_until.get(p.pid, 0.0) < time.monotonic():
                 return False
         if self.only_gpu and not (p.gpu_sm or p.gpu_mem_mb):
             return False

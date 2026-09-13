@@ -110,6 +110,13 @@ class DesktopParsing(unittest.TestCase):
         self.assertEqual(appinfo.exec_tokens('unbalanced "quote'), ())
 
 
+class Descriptions(unittest.TestCase):
+    def test_describe_by_path_or_name(self):
+        self.assertIn("window manager", appinfo.describe("/usr/bin/kwin_wayland"))
+        self.assertIn("Night Light", appinfo.describe("knighttimed"))
+        self.assertEqual(appinfo.describe("/usr/bin/nothing-known"), "")
+
+
 class Categories(unittest.TestCase):
     def test_specific_beats_broad(self):
         self.assertEqual(appinfo.coarse_category("Network;WebBrowser;Qt;"), "Browser")
@@ -160,6 +167,13 @@ class DesktopMatching(unittest.TestCase):
     def test_env_prefix_is_skipped(self):
         info = self.index.match(["/opt/envapp/bin/envapp", "--flag", "f"])
         self.assertEqual(info.name, "Env App")
+
+    def test_hidden_entry_names_but_is_not_a_program(self):
+        info = self.index.match(["konsole", "--profile", "x"])
+        self.assertTrue(info.hidden)
+        self.assertFalse(info.program)
+        self.assertTrue(self.index.match(["konsole"]).program)
+        self.assertFalse(appinfo.AppInfo().program)
 
     def test_visible_entry_wins_over_hidden_one_with_same_command(self):
         self.assertEqual(self.index.match(["konsole"]).name, "Konsole")
@@ -279,6 +293,7 @@ class Resolver(unittest.TestCase):
         self.assertEqual(info.name, "")
         self.assertTrue(info.icon.endswith("steam_icon_1091500.png"))
         self.assertEqual(info.category, "Game", "helpers of a game count as the game")
+        self.assertTrue(info.program, "a Steam game is a program even without a menu entry")
 
     def test_unowned_process_never_reads_environ(self):
         self.appids[102] = 1091500

@@ -44,6 +44,7 @@ class ProcSample:
     app_name: str = ""           # "Cyberpunk 2077", "Brave Web Browser"; "" if unknown
     icon: str = ""               # icon theme name or file path; "" if none
     category: str = ""           # "Game", "Browser", ... for a program; "" otherwise
+    program: bool = False        # a visible menu entry or a Steam game, i.e. a user-facing app
 
     @property
     def mem_mb(self) -> float:

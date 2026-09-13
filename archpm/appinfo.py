@@ -73,12 +73,78 @@ def coarse_category(categories: str) -> str:
     return "Other"
 
 
+# Plain-language descriptions for the background pieces of a KDE/Arch desktop,
+# keyed by executable name. Shown as tooltips in the process list and in the
+# Startup tab, where "kglobalacceld" alone would tell a beginner nothing.
+DESCRIPTIONS: dict[str, str] = {
+    "plasmashell": "The desktop itself: panels, widgets, wallpaper, system tray.",
+    "kwin_wayland": "KWin, the window manager and compositor: draws and moves every window.",
+    "kwin_wayland_wrapper": "Starts and restarts KWin, the window manager and compositor.",
+    "kwin_x11": "KWin, the window manager and compositor: draws and moves every window.",
+    "kglobalacceld": "Global keyboard shortcuts (Meta key, media keys, custom shortcuts).",
+    "org_kde_powerdevil": "Power management: screen dimming, sleep, brightness, battery.",
+    "polkit-kde-authentication-agent-1": "Asks for your password when an app needs admin rights.",
+    "xembedsniproxy": "System tray icons for older applications.",
+    "gmenudbusmenuproxy": "Application menus for GTK programs.",
+    "pam_kwallet_init": "Unlocks your KDE Wallet (saved passwords) at login.",
+    "kaccess": "Accessibility features: sticky keys, slow keys, screen reader hooks.",
+    "knighttimed": "Night Light: warmer screen colours in the evening.",
+    "plasma-fallback-session-restore": "Reopens the programs from your previous session.",
+    "ksmserver": "Session manager: remembers open programs for the next login.",
+    "kded6": "KDE background services (network status, device notifications, ...).",
+    "kactivitymanagerd": "KDE Activities and recent documents.",
+    "baloo_file": "File indexing for the search in the launcher and Dolphin.",
+    "xdg-user-dirs-update": "Keeps your Desktop, Downloads and Documents folder names up to date.",
+    "at-spi-bus-launcher": "Accessibility bus used by screen readers.",
+    "gnome-keyring-daemon": "Password storage for GNOME and GTK programs.",
+    "kdeconnectd": "KDE Connect: phone notifications, file sharing, remote control.",
+    "limine-snapper-notify": "Limine bootloader: notifies about snapper snapshots.",
+    "limine-snapper-restore": "Limine bootloader: notifies after a snapshot restore.",
+    "octopi-notifier": "Octopi: tells you when package updates are available.",
+    "protonvpn-app": "Proton VPN client.",
+    "pipewire": "Audio and video server: every sound on the system goes through it.",
+    "pipewire-pulse": "PulseAudio compatibility for PipeWire; older programs need it for sound.",
+    "wireplumber": "Session manager for PipeWire: routes audio between programs and devices.",
+    "dbus-broker": "Message bus: how desktop programs talk to each other.",
+    "xdg-desktop-portal": "Portals: file dialogs, screen sharing, permissions for sandboxed apps.",
+    "xdg-desktop-portal-kde": "KDE's file dialogs and screen sharing for sandboxed apps.",
+    "xdg-desktop-portal-gtk": "GTK file dialogs for sandboxed apps.",
+    "steamwebhelper": "Steam's built-in browser (store, library, overlay).",
+    "reaper": "Steam's launcher wrapper that keeps track of a game's processes.",
+    "srt-bwrap": "Steam Linux Runtime sandbox around a game.",
+    "pv-adverb": "Steam Linux Runtime helper inside the sandbox.",
+    "wineserver": "Wine/Proton core: emulates the Windows kernel for a game.",
+    "services.exe": "Wine/Proton: emulated Windows service manager.",
+    "explorer.exe": "Wine/Proton: emulated Windows shell (needed by many games).",
+}
+
+# Executables that make up the desktop session. Switching their autostart entry
+# off is the classic way to break a login; the Startup tab asks twice.
+DESKTOP_PARTS = frozenset({
+    "plasmashell", "kwin_wayland", "kwin_wayland_wrapper", "kwin_x11", "kglobalacceld",
+    "org_kde_powerdevil", "polkit-kde-authentication-agent-1", "xembedsniproxy",
+    "gmenudbusmenuproxy", "pam_kwallet_init", "kaccess", "plasma-fallback-session-restore",
+    "ksmserver", "kded6", "at-spi-bus-launcher", "gnome-keyring-daemon", "xdg-user-dirs-update",
+})
+
+
+def describe(executable: str) -> str:
+    """Description for an executable path or name; "" when we have none."""
+    return DESCRIPTIONS.get(_basename(executable), "")
+
+
 @dataclass(frozen=True)
 class AppInfo:
     name: str = ""          # human-readable name, "" when unknown
     icon: str = ""          # icon theme name or absolute file path, "" when none
     steam_appid: int = 0
     category: str = ""      # one of CATEGORIES for a program, "" otherwise
+    hidden: bool = False    # matched a NoDisplay entry: named, but not a "program"
+
+    @property
+    def program(self) -> bool:
+        """Something a user would recognise: a visible menu entry or a Steam game."""
+        return bool(self.steam_appid) or (bool(self.name or self.icon) and not self.hidden)
 
     def __bool__(self) -> bool:
         return bool(self.name or self.icon)
@@ -179,17 +245,17 @@ class DesktopIndex:
         candidates = self._by_first.get(first)
         if candidates:
             rest = [_basename(a) for a in argv[1:]]
-            for tail, name, icon, _hidden, category in candidates:
+            for tail, name, icon, hidden, category in candidates:
                 if tuple(rest[:len(tail)]) == tail:
-                    return AppInfo(name=name, icon=icon, category=category)
+                    return AppInfo(name=name, icon=icon, category=category, hidden=hidden)
         # `bash /home/x/.local/share/Steam/steam.sh` is how Steam actually runs:
         # a wrapper script that stays alive as the parent of the real binary.
         # Name it after the script when a plain entry for that name exists.
         if first in _INTERPRETERS and len(argv) > 1 and not argv[1].startswith("-"):
             script = _basename(argv[1]).rsplit(".", 1)[0]
-            for tail, name, icon, _hidden, category in self._by_first.get(script, ()):
+            for tail, name, icon, hidden, category in self._by_first.get(script, ()):
                 if not tail:
-                    return AppInfo(name=name, icon=icon, category=category)
+                    return AppInfo(name=name, icon=icon, category=category, hidden=hidden)
         return NONE
 
 

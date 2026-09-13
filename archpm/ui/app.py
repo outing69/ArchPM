@@ -225,7 +225,7 @@ class MainWindow(QMainWindow):
         geo = self.settings.value("geometry")
         if geo:
             self.restoreGeometry(geo)
-        self.tabs.setCurrentIndex(int(self.settings.value("tab", 0)))
+        self.tabs.setCurrentIndex(0)  # always Overview; the tab is a place, not a setting
 
     def shutdown(self) -> None:
         """Idempotent: both closeEvent and aboutToQuit pass through here.
@@ -237,7 +237,6 @@ class MainWindow(QMainWindow):
             return
         self._stopped = True
         self.settings.setValue("geometry", self.saveGeometry())
-        self.settings.setValue("tab", self.tabs.currentIndex())
         self.worker.stop()
         self.thread.quit()
         self.thread.wait(3000)

@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
     QLabel,
+    QMessageBox,
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
@@ -18,10 +19,12 @@ from PySide6.QtWidgets import (
 
 from ..autostart import Autostart, StartupEntry, running_pids
 from . import theme
-from .widgets import app_icon, mono
+from .widgets import app_icon
 
-COL_ON, COL_NAME, COL_STATE, COL_SOURCE, COL_CATEGORY, COL_CMD = range(6)
-HEADERS = ["", "Name", "Status", "Source", "Category", "Command"]
+COL_ON, COL_NAME, COL_DESC, COL_STATE, COL_KIND, COL_SOURCE = range(6)
+HEADERS = ["", "Name", "What it does", "Status", "Kind", "Source"]
+KIND_ORDER = {"App": 0, "System": 1, "Desktop": 2}
+KIND_LABEL = {"App": "App", "System": "System", "Desktop": "Desktop · keep on"}
 
 
 class StartupView(QWidget):
@@ -58,10 +61,14 @@ class StartupView(QWidget):
         outer.addLayout(head)
 
         hint = QLabel(
-            "Untick an entry and it will not start at your next login. Nothing is closed "
-            "now, nothing is deleted, and you can tick it back any time. ArchPM only writes "
-            f"in your own folder ({self.auto.user_dir})."
+            "Untick an entry and it will not start at your next login. Nothing is closed now, "
+            "nothing is deleted, and you can tick it back any time; ArchPM only writes in your "
+            f"own folder ({self.auto.user_dir}).<br>"
+            f"<span style='color:{theme.WARN}'>Rows marked <b>Desktop · keep on</b> are parts of "
+            "your desktop itself (panels, shortcuts, password prompts, power management). "
+            "Switching those off gives you a broken login, not a faster one.</span>"
         )
+        hint.setTextFormat(Qt.TextFormat.RichText)
         hint.setWordWrap(True)
         hint.setStyleSheet(f"color: {theme.MUTED};")
         outer.addWidget(hint)
@@ -77,10 +84,10 @@ class StartupView(QWidget):
         self.table.verticalHeader().setDefaultSectionSize(26)
         header = self.table.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
-        header.setSectionResizeMode(COL_CMD, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(COL_DESC, QHeaderView.ResizeMode.Stretch)
         header.setHighlightSections(False)
-        for col, w in ((COL_ON, 36), (COL_NAME, 260), (COL_STATE, 170), (COL_SOURCE, 80),
-                       (COL_CATEGORY, 110)):
+        for col, w in ((COL_ON, 36), (COL_NAME, 250), (COL_STATE, 170), (COL_KIND, 140),
+                       (COL_SOURCE, 120)):
             self.table.setColumnWidth(col, w)
         self.table.itemChanged.connect(self._toggled)
         outer.addWidget(self.table, 1)
@@ -98,7 +105,11 @@ class StartupView(QWidget):
             return
         if not self.cb_others.isChecked():
             entries = [e for e in entries if e.for_this_desktop]
-        entries.sort(key=lambda e: (not e.for_this_desktop, e.name.lower()))
+        # Your own apps first, the desktop's own parts last, so what you may
+        # want to switch off is at the top and what you should leave alone is
+        # grouped at the bottom.
+        entries.sort(key=lambda e: (not e.for_this_desktop, KIND_ORDER.get(e.kind, 1),
+                                    e.name.lower()))
         self.entries = entries
         self._fill()
 
@@ -117,19 +128,26 @@ class StartupView(QWidget):
             icon = app_icon(e.icon)
             if not icon.isNull():
                 name.setIcon(icon)
-            name.setToolTip(str(e.path))
+            name.setToolTip(f"{e.exec}\n{e.path}")
             self.table.setItem(row, COL_NAME, name)
 
+            desc = QTableWidgetItem(e.description)
+            desc.setToolTip(e.exec)
+            self.table.setItem(row, COL_DESC, desc)
+
             self.table.setItem(row, COL_STATE, QTableWidgetItem(""))
+
+            kind = QTableWidgetItem(KIND_LABEL.get(e.kind, e.kind))
+            if e.essential:
+                kind.setForeground(QColor(theme.WARN))
+                kind.setToolTip("Part of your desktop session. Leave it on.")
+            self.table.setItem(row, COL_KIND, kind)
+
             src = QTableWidgetItem(e.source + (" (override)" if e.is_override else ""))
             src.setToolTip("Your own entry" if e.source == "User" else "Installed with the system")
             self.table.setItem(row, COL_SOURCE, src)
-            self.table.setItem(row, COL_CATEGORY, QTableWidgetItem(e.category))
-            cmd = QTableWidgetItem(e.exec)
-            cmd.setFont(mono(9))
-            cmd.setToolTip(e.exec)
-            self.table.setItem(row, COL_CMD, cmd)
-            for col in (COL_SOURCE, COL_CATEGORY, COL_CMD):
+
+            for col in (COL_DESC, COL_SOURCE):
                 self.table.item(row, col).setForeground(QColor(theme.MUTED))
             if not e.for_this_desktop:
                 for col in range(len(HEADERS)):
@@ -138,7 +156,7 @@ class StartupView(QWidget):
         self._refresh_state()
 
     def update_view(self, snap) -> None:
-        """Called every sample; only the Running column changes."""
+        """Called every sample; only the Status column changes."""
         self._argvs = {p.pid: p.cmdline.split() for p in snap.procs if p.cmdline}
         if self.isVisible():
             self._refresh_state()
@@ -165,6 +183,11 @@ class StartupView(QWidget):
             return
         entry = self.entries[item.row()]
         enabled = item.checkState() == Qt.CheckState.Checked
+        if not enabled and entry.essential and not self._confirm_essential(entry):
+            self._loading = True
+            item.setCheckState(Qt.CheckState.Checked)
+            self._loading = False
+            return
         try:
             self.auto.set_enabled(entry, enabled)
         except OSError as exc:
@@ -174,3 +197,17 @@ class StartupView(QWidget):
         verb = "will start at login" if enabled else "will no longer start at login"
         self.status.emit(f"{entry.name} {verb}")
         self.reload()
+
+    def _confirm_essential(self, entry: StartupEntry) -> bool:
+        what = entry.description or entry.exec
+        answer = QMessageBox.warning(
+            self, "This is part of your desktop",
+            f"<b>{entry.name}</b> is part of the desktop session itself.<br><br>"
+            f"{what}<br><br>"
+            "If it does not start, your next login may come up without panels, shortcuts, "
+            "password prompts or power management. This is not a way to make the PC faster."
+            "<br><br>Switch it off anyway?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        return answer == QMessageBox.StandardButton.Yes

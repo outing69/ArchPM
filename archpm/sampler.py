@@ -119,6 +119,7 @@ class Sampler:
                 app_name=app.name,
                 icon=app.icon,
                 category=app.category,
+                program=app.program,
             ))
 
         sys_sample = self._system(now, len(procs), threads)

@@ -78,6 +78,26 @@ class Reading(unittest.TestCase):
         self.assertFalse(e["gnome-keyring-secrets.desktop"].for_this_desktop)
         self.assertFalse(e["nokde.desktop"].for_this_desktop)
 
+    def test_kind_and_description(self):
+        e = self.by_id()
+        self.assertEqual(e["octopi-notifier.desktop"].kind, "App")
+        self.assertEqual(e["octopi-notifier.desktop"].description,
+                         "Octopi: tells you when package updates are available.")
+        # kdeconnect: system-installed, no OnlyShowIn, not a desktop part
+        self.assertEqual(e["org.kde.kdeconnect.daemon.desktop"].kind, "System")
+        self.assertIn("KDE Connect", e["org.kde.kdeconnect.daemon.desktop"].description)
+        # gnome-keyring is a desktop part by executable and by OnlyShowIn
+        self.assertEqual(e["gnome-keyring-secrets.desktop"].kind, "Desktop")
+        self.assertTrue(e["gnome-keyring-secrets.desktop"].essential)
+
+    def test_comment_beats_curated_description(self):
+        write(self.sys / "powerdevil.desktop", "[Desktop Entry]\nName=Power Management\n"
+              "Exec=/usr/lib/org_kde_powerdevil\nComment=Battery, Display and CPU power\n"
+              "OnlyShowIn=KDE;\nType=Application\n")
+        e = self.by_id()["powerdevil.desktop"]
+        self.assertEqual(e.description, "Battery, Display and CPU power")
+        self.assertEqual(e.kind, "Desktop")
+
     def test_all_enabled_initially(self):
         self.assertTrue(all(e.enabled for e in self.a.entries()))
 

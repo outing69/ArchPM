@@ -19,7 +19,7 @@ import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from .appinfo import coarse_category, exec_tokens, parse_desktop_entry
+from .appinfo import DESKTOP_PARTS, coarse_category, describe, exec_tokens, parse_desktop_entry
 
 OVERRIDE_MARK = "X-ArchPM-Override"
 
@@ -37,10 +37,16 @@ class StartupEntry:
     for_this_desktop: bool      # OnlyShowIn / NotShowIn against XDG_CURRENT_DESKTOP
     category: str = ""
     tokens: tuple[str, ...] = field(default_factory=tuple)
+    description: str = ""
+    kind: str = "App"           # "Desktop" (part of the session), "System" or "App"
 
     @property
     def source(self) -> str:
         return "User" if self.path == self.user_path else "System"
+
+    @property
+    def essential(self) -> bool:
+        return self.kind == "Desktop"
 
     @property
     def is_override(self) -> bool:
@@ -69,6 +75,17 @@ def applies_to(entry: dict[str, str], desktops: set[str]) -> bool:
 
 def _truthy(value: str) -> bool:
     return value.strip().lower() == "true"
+
+
+def classify(entry: dict[str, str], from_system: bool, tokens: tuple[str, ...]) -> str:
+    """"Desktop" for pieces of the session itself, "System" for other entries the
+    system installed, "App" for the user's own. Desktop entries are what a
+    beginner must not switch off: no panels, no shortcuts, no password prompts."""
+    if tokens and tokens[0] in DESKTOP_PARTS:
+        return "Desktop"
+    if from_system and entry.get("OnlyShowIn", "").strip(";"):
+        return "Desktop"   # shipped for one desktop environment: part of it
+    return "System" if from_system else "App"
 
 
 class Autostart:
@@ -109,6 +126,7 @@ class Autostart:
                     entry = base
                 except OSError:
                     pass
+            tokens = exec_tokens(entry.get("Exec", ""))
             out.append(StartupEntry(
                 id=name,
                 name=entry.get("Name", "") or name.removesuffix(".desktop"),
@@ -120,7 +138,10 @@ class Autostart:
                 enabled=not _truthy(entry.get("Hidden", "")),
                 for_this_desktop=applies_to(entry, self.desktops),
                 category=coarse_category(entry.get("Categories", "")),
-                tokens=exec_tokens(entry.get("Exec", "")),
+                tokens=tokens,
+                description=(entry.get("Comment", "") or (describe(tokens[0]) if tokens else "")
+                             or entry.get("GenericName", "")),
+                kind=classify(entry, system is not None, tokens),
             ))
         return out
 
