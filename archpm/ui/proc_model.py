@@ -9,6 +9,9 @@ init or a subreaper adopted it) is removed and re-inserted under the new one.
 """
 from __future__ import annotations
 
+import time
+from dataclasses import dataclass
+
 from PySide6.QtCore import QAbstractItemModel, QModelIndex, QSortFilterProxyModel, Qt
 from PySide6.QtGui import QColor
 
@@ -36,16 +39,44 @@ ALIGN = {
     COL_VRAM: _RIGHT, COL_THREADS: _RIGHT, COL_NICE: _CENTER, COL_IO: _RIGHT,
     COL_STATUS: _CENTER,
 }
+_SUMMED = {COL_CPU, COL_MEM, COL_GPU, COL_VRAM, COL_THREADS, COL_IO}
+
+
+@dataclass(slots=True)
+class Totals:
+    """Sums over a process and its whole subtree; shown on a collapsed row."""
+    count: int = 0
+    cpu: float = 0.0
+    rss: int = 0
+    gpu_sm: float = 0.0
+    gpu_mem: float = 0.0
+    threads: int = 0
+    io: float = 0.0
+
+
+# "Busy" means worth showing even without a name and icon. A process stays
+# visible this long after it was last busy, so a value hovering around the
+# threshold does not make the row blink in and out.
+BUSY_CPU = 1.0        # %
+BUSY_IO = 512 * 1024  # B/s
+BUSY_RSS = 256 << 20  # bytes
+BUSY_HOLD_S = 15.0
+
+
+def is_busy(p: ProcSample) -> bool:
+    return (p.cpu_percent >= BUSY_CPU or p.gpu_sm > 0 or p.gpu_mem_mb > 0
+            or p.io_read_bps + p.io_write_bps >= BUSY_IO or p.mem_rss >= BUSY_RSS)
 
 
 class Node:
-    __slots__ = ("proc", "parent", "children", "row")
+    __slots__ = ("proc", "parent", "children", "row", "totals")
 
     def __init__(self, proc: ProcSample | None, parent: Node | None) -> None:
         self.proc = proc
         self.parent = parent
         self.children: list[Node] = []
         self.row = 0
+        self.totals = Totals()
 
     def reindex(self) -> None:
         for i, c in enumerate(self.children):
@@ -67,6 +98,8 @@ class ProcModel(QAbstractItemModel):
         self._root = Node(None, None)
         self._nodes: dict[int, Node] = {}
         self._last: list[ProcSample] = []
+        self.busy_until: dict[int, float] = {}   # pid -> monotonic deadline
+        self._expanded: set[int] = set()         # pids whose row the view shows expanded
 
     # -- Qt structure -------------------------------------------------------
     def _node(self, index: QModelIndex) -> Node:
@@ -109,55 +142,66 @@ class ProcModel(QAbstractItemModel):
     def data(self, index: QModelIndex, role=Qt.ItemDataRole.DisplayRole):
         if not index.isValid():
             return None
-        p: ProcSample = index.internalPointer().proc
+        node: Node = index.internalPointer()
+        p: ProcSample = node.proc
         col = index.column()
+        # A collapsed program stands for its whole subtree: show the sums.
+        totals = node.totals if (self.tree and node.children
+                                 and p.pid not in self._expanded) else None
 
         if role == PID_ROLE:
             return p.pid
         if role == SORT_ROLE:
-            return self._sort_value(p, col)
+            return self._sort_value(p, col, totals)
         if role == Qt.ItemDataRole.TextAlignmentRole:
             return ALIGN.get(col, _LEFT)
         if role == Qt.ItemDataRole.ForegroundRole:
-            return self._color(p, col)
+            return self._color(p, col, totals)
         if role == Qt.ItemDataRole.DecorationRole:
             if col == COL_NAME and p.icon:
                 icon = app_icon(p.icon)
                 return None if icon.isNull() else icon
             return None
         if role == Qt.ItemDataRole.ToolTipRole:
+            if totals and col in _SUMMED:
+                return f"Total of {totals.count} processes in this tree"
             if col == COL_NAME and p.app_name:
                 return f"{p.name}\n{p.cmdline}" if p.cmdline else p.name
             return p.cmdline or p.name
         if role != Qt.ItemDataRole.DisplayRole:
             return None
-        return self._text(p, col)
+        return self._text(p, col, totals)
 
     # -- content ------------------------------------------------------------
     def _cpu(self, p: ProcSample) -> float:
         return p.cpu_percent / self.ncpu if self.normalize_cpu else p.cpu_percent
 
-    def _text(self, p: ProcSample, col: int):
+    def _text(self, p: ProcSample, col: int, t: Totals | None = None):
+        cpu = t.cpu if t else p.cpu_percent
+        rss = t.rss if t else p.mem_rss
+        gpu_sm = t.gpu_sm if t else p.gpu_sm
+        gpu_mem = t.gpu_mem if t else p.gpu_mem_mb
+        threads = t.threads if t else p.num_threads
+        io = t.io if t else p.io_read_bps + p.io_write_bps
         if col == COL_PID:
             return str(p.pid)
         if col == COL_NAME:
             return p.display_name
         if col == COL_CPU:
-            v = self._cpu(p)
+            v = cpu / self.ncpu if self.normalize_cpu else cpu
             return f"{v:.1f}" if v >= 0.05 else "·"
         if col == COL_MEM:
-            return human_bytes(p.mem_rss)
+            return human_bytes(rss)
         if col == COL_GPU:
-            return f"{p.gpu_sm:.0f}" if p.gpu_sm else ("·" if p.gpu_mem_mb else "")
+            return f"{gpu_sm:.0f}" if gpu_sm else ("·" if gpu_mem else "")
         if col == COL_VRAM:
-            return f"{p.gpu_mem_mb:.0f} MB" if p.gpu_mem_mb else ""
+            return f"{gpu_mem:.0f} MB" if gpu_mem else ""
         if col == COL_THREADS:
-            return str(p.num_threads)
+            return str(threads)
         if col == COL_NICE:
             return str(p.nice)
         if col == COL_IO:
-            total = p.io_read_bps + p.io_write_bps
-            return f"{human_bytes(total)}/s" if total > 1024 else ""
+            return f"{human_bytes(io)}/s" if io > 1024 else ""
         if col == COL_USER:
             return p.username
         if col == COL_STATUS:
@@ -166,25 +210,28 @@ class ProcModel(QAbstractItemModel):
             return p.cmdline
         return None
 
-    def _sort_value(self, p: ProcSample, col: int):
+    def _sort_value(self, p: ProcSample, col: int, t: Totals | None = None):
         return {
-            COL_PID: p.pid, COL_NAME: p.display_name.lower(), COL_CPU: p.cpu_percent,
-            COL_MEM: p.mem_rss, COL_GPU: p.gpu_sm, COL_VRAM: p.gpu_mem_mb,
-            COL_THREADS: p.num_threads, COL_NICE: p.nice,
-            COL_IO: p.io_read_bps + p.io_write_bps, COL_USER: p.username,
+            COL_PID: p.pid, COL_NAME: p.display_name.lower(),
+            COL_CPU: t.cpu if t else p.cpu_percent,
+            COL_MEM: t.rss if t else p.mem_rss,
+            COL_GPU: t.gpu_sm if t else p.gpu_sm,
+            COL_VRAM: t.gpu_mem if t else p.gpu_mem_mb,
+            COL_THREADS: t.threads if t else p.num_threads, COL_NICE: p.nice,
+            COL_IO: t.io if t else p.io_read_bps + p.io_write_bps, COL_USER: p.username,
             COL_STATUS: p.status, COL_CMD: p.cmdline.lower(),
         }.get(col, "")
 
-    def _color(self, p: ProcSample, col: int):
+    def _color(self, p: ProcSample, col: int, t: Totals | None = None):
         if p.status == "stopped":
             return QColor(theme.WARN)
         if col == COL_CPU:
-            v = self._cpu(p)
+            v = (t.cpu if t else p.cpu_percent) / (self.ncpu if self.normalize_cpu else 1)
             if v >= 50:
                 return QColor(theme.CRIT if v >= 85 else theme.WARN)
             if v < 0.05:
                 return QColor(theme.MUTED)
-        elif col == COL_GPU and p.gpu_sm >= 20:
+        elif col == COL_GPU and (t.gpu_sm if t else p.gpu_sm) >= 20:
             return QColor(theme.GPU)
         elif col in (COL_VRAM, COL_CMD, COL_USER, COL_STATUS):
             return QColor(theme.MUTED)
@@ -192,6 +239,37 @@ class ProcModel(QAbstractItemModel):
             # yellow = stands out (higher priority), green = neatly tucked away
             return QColor(theme.OK if p.nice > 0 else theme.ACCENT)
         return None
+
+    # -- expansion state (fed by the view) --------------------------------------
+    def set_expanded(self, pid: int, expanded: bool) -> None:
+        if expanded:
+            self._expanded.add(pid)
+        else:
+            self._expanded.discard(pid)
+        node = self._nodes.get(pid)
+        if node is not None and node.children:
+            self.dataChanged.emit(self.createIndex(node.row, 0, node),
+                                  self.createIndex(node.row, len(HEADERS) - 1, node),
+                                  [Qt.ItemDataRole.DisplayRole, SORT_ROLE])
+
+    def _sum_totals(self, node: Node) -> Totals:
+        t = Totals()
+        if node.proc is not None:
+            p = node.proc
+            t.count, t.cpu, t.rss = 1, p.cpu_percent, p.mem_rss
+            t.gpu_sm, t.gpu_mem, t.threads = p.gpu_sm, p.gpu_mem_mb, p.num_threads
+            t.io = p.io_read_bps + p.io_write_bps
+        for c in node.children:
+            ct = self._sum_totals(c)
+            t.count += ct.count
+            t.cpu += ct.cpu
+            t.rss += ct.rss
+            t.gpu_sm += ct.gpu_sm
+            t.gpu_mem += ct.gpu_mem
+            t.threads += ct.threads
+            t.io += ct.io
+        node.totals = t
+        return t
 
     # -- lookups used by the view --------------------------------------------
     def proc_at(self, index: QModelIndex) -> ProcSample | None:
@@ -287,7 +365,6 @@ class ProcModel(QAbstractItemModel):
         # 2. Refresh the survivors' data.
         for pid, node in self._nodes.items():
             node.proc = incoming[pid]
-        self._emit_changed(self._root)
 
         # 3. Insert new (and re-homed) processes, parents before children.
         pending = [p for pid, p in incoming.items() if pid not in self._nodes]
@@ -308,6 +385,19 @@ class ProcModel(QAbstractItemModel):
                 self._insert(parent, group)
             pending = later
 
+        # 4. Busy deadlines (for the programs-only filter) and subtree totals,
+        #    then tell the views. Totals must exist before dataChanged fires.
+        now = time.monotonic()
+        for p in procs:
+            if is_busy(p):
+                self.busy_until[p.pid] = now + BUSY_HOLD_S
+        for pid in [pid for pid in self.busy_until if pid not in incoming]:
+            del self.busy_until[pid]
+        self._expanded &= incoming.keys()
+        if self.tree:
+            self._sum_totals(self._root)
+        self._emit_changed(self._root)
+
     def _emit_changed(self, node: Node) -> None:
         if node.children:
             self.dataChanged.emit(
@@ -326,6 +416,7 @@ class ProcModel(QAbstractItemModel):
         self.tree = on
         self._root = Node(None, None)
         self._nodes = {}
+        self._expanded = set()
         self.endResetModel()
         if self._last:
             self.update(self._last)
@@ -339,7 +430,12 @@ class ProcModel(QAbstractItemModel):
 class ProcFilter(QSortFilterProxyModel):
     """Filters on the process itself; in tree mode a parent stays visible when
     any descendant passes, so a game's ancestry (systemd, steam, reaper)
-    remains as context."""
+    remains as context.
+
+    Default view ("programs"): your own processes that have a name and icon
+    (a menu entry or a Steam game) plus anything that is busy right now, icon
+    or not. `show_all` lifts every one of those restrictions, including other
+    users' processes and kernel threads."""
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -347,10 +443,8 @@ class ProcFilter(QSortFilterProxyModel):
         self.setDynamicSortFilter(True)
         self.setRecursiveFilteringEnabled(True)
         self.text = ""
-        self.only_mine = True
-        self.hide_kernel = True
+        self.show_all = False
         self.only_gpu = False
-        self.min_cpu = 0.0
 
     def set_text(self, text: str) -> None:
         self.text = text.strip().lower()
@@ -365,13 +459,13 @@ class ProcFilter(QSortFilterProxyModel):
         p = model.proc_at(model.index(row, 0, parent))
         if p is None:
             return False
-        if self.only_mine and not p.owned:
-            return False
-        if self.hide_kernel and not p.cmdline:
-            return False
+        if not self.show_all:
+            if not p.owned or not p.cmdline:
+                return False
+            is_program = bool(p.app_name or p.icon)
+            if not is_program and model.busy_until.get(p.pid, 0.0) < time.monotonic():
+                return False
         if self.only_gpu and not (p.gpu_sm or p.gpu_mem_mb):
-            return False
-        if self.min_cpu and p.cpu_percent < self.min_cpu:
             return False
         if self.text:
             t = self.text

@@ -132,10 +132,12 @@ class ProcessView(QWidget):
         self.cb_tree = QCheckBox("Tree")
         self.cb_tree.setChecked(self.settings.value("tree", True, type=bool))
         self.cb_tree.setToolTip("Nest processes under their parent (Steam → reaper → game).")
-        self.cb_mine = QCheckBox("Only my processes")
-        self.cb_mine.setChecked(True)
-        self.cb_kernel = QCheckBox("Hide kernel threads")
-        self.cb_kernel.setChecked(True)
+        self.cb_all = QCheckBox("Show all processes")
+        self.cb_all.setChecked(self.settings.value("show_all", False, type=bool))
+        self.cb_all.setToolTip(
+            "Off: your programs (anything with a name and icon) plus whatever is busy.\n"
+            "On: every process, including other users' and kernel threads."
+        )
         self.cb_gpu = QCheckBox("GPU only")
         self.cb_norm = QCheckBox("CPU% ÷ cores")
         self.cb_norm.setToolTip(
@@ -143,8 +145,7 @@ class ProcessView(QWidget):
         )
         self.cb_freeze = QCheckBox("Pause list")
         self.cb_freeze.setToolTip("Freezes the list so rows stop jumping around.")
-        for cb in (self.cb_tree, self.cb_mine, self.cb_kernel, self.cb_gpu,
-                   self.cb_norm, self.cb_freeze):
+        for cb in (self.cb_tree, self.cb_all, self.cb_gpu, self.cb_norm, self.cb_freeze):
             bar.addWidget(cb)
         bar.addStretch(1)
 
@@ -158,6 +159,7 @@ class ProcessView(QWidget):
         self.model = ProcModel(ncpu, self)
         self.model.tree = self.cb_tree.isChecked()
         self.proxy = ProcFilter(self)
+        self.proxy.show_all = self.cb_all.isChecked()
         self.proxy.setSourceModel(self.model)
         self.table = QTreeView()
         # Breeze paints its own frame over the app-wide rule; state the border here.
@@ -212,9 +214,12 @@ class ProcessView(QWidget):
         header.sortIndicatorChanged.connect(self._remember_sort)
         self.search.textChanged.connect(self.proxy.set_text)
         self.cb_tree.toggled.connect(self._set_tree)
-        self.cb_mine.toggled.connect(lambda v: self.proxy.set_flag("only_mine", v))
-        self.cb_kernel.toggled.connect(lambda v: self.proxy.set_flag("hide_kernel", v))
+        self.cb_all.toggled.connect(self._set_show_all)
         self.cb_gpu.toggled.connect(lambda v: self.proxy.set_flag("only_gpu", v))
+        # A collapsed program row shows the totals of its tree; the model needs
+        # to know which rows are open to decide that.
+        self.table.expanded.connect(lambda i: self.model.set_expanded(i.data(PID_ROLE), True))
+        self.table.collapsed.connect(lambda i: self.model.set_expanded(i.data(PID_ROLE), False))
         self.cb_norm.toggled.connect(self.model.set_normalize)
         self.cb_freeze.toggled.connect(self._set_frozen)
 
@@ -244,6 +249,10 @@ class ProcessView(QWidget):
     def _set_frozen(self, frozen: bool) -> None:
         self.model.frozen = frozen
         self.proxy.setDynamicSortFilter(not frozen)
+
+    def _set_show_all(self, on: bool) -> None:
+        self.settings.setValue("show_all", on)
+        self.proxy.set_flag("show_all", on)
 
     def _remember_sort(self, column: int, order: Qt.SortOrder) -> None:
         self.settings.setValue("sort_column", column)
