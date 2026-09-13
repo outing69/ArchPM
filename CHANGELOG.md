@@ -3,6 +3,20 @@
 All notable changes, newest first. Versions are git tags on
 [github.com/outing69/ArchPM](https://github.com/outing69/ArchPM).
 
+## Unreleased
+
+- New **Network** tab, between Processes and Startup: your interfaces with
+  speed, address and a VPN mark; an "open doors" card naming the programs
+  other devices on your network can reach; and every program with connections,
+  its TCP download and upload, and each remote address with the service name
+  (https, ssh, Steam). Filter by program, address or port. Refreshes every five
+  seconds from one `ss` call; no root, no lookups on the internet.
+- New Plasma widget **ArchPM Network**: "↓ 1.2 MB/s ↑ 88 KB/s VPN" in the panel,
+  and a popup with interfaces, the programs using the most bandwidth and the
+  open doors. The ArchPM Monitor widget is unchanged.
+- The agent's status file carries a `net` section for the widget.
+- Help explains connection, port, open door, TCP versus UDP and VPN interfaces.
+
 ## 0.1.7 — 2026-09-13
 
 - Plasma's task manager and tooltips show "ArchPM" instead of "python3": the

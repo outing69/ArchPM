@@ -49,9 +49,11 @@ package() {
     sed -e '/^Path=/d' -e 's|^Exec=.*|Exec=archpm|' archpm.desktop \
         | install -Dm644 /dev/stdin "$pkgdir/usr/share/applications/archpm.desktop"
 
-    # Plasma widget
+    # Plasma widgets
     install -d "$pkgdir/usr/share/plasma/plasmoids/$_plasmoid"
     cp -r plasmoid/package/. "$pkgdir/usr/share/plasma/plasmoids/$_plasmoid/"
+    install -d "$pkgdir/usr/share/plasma/plasmoids/$_plasmoid.network"
+    cp -r plasmoid/network/. "$pkgdir/usr/share/plasma/plasmoids/$_plasmoid.network/"
 
     install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
     install -Dm644 README.md "$pkgdir/usr/share/doc/$pkgname/README.md"

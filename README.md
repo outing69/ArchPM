@@ -30,6 +30,12 @@ you select underneath. Right-click to terminate, suspend, renice or pin to cores
 
 ![Processes tab](docs/processes.png)
 
+**Network** — which of your programs talk to the network, at what speed, to
+which addresses, and which ones are "open doors" that other devices can reach.
+Interfaces with a VPN mark, so you can see the tunnel carrying the traffic.
+
+![Network tab](docs/network.png)
+
 **Startup** — what starts when you log in, with a switch per entry, what each
 one does, and whether it is running now. Parts of the desktop are marked
 "keep on".
@@ -47,10 +53,12 @@ tick, press and confirm.
 
 ![Cleanup tab](docs/cleanup.png)
 
-**Widget** — the Plasma plasmoid, fed by the agent, so it keeps working when
-the GUI is closed.
+**Widgets** — two Plasma plasmoids, fed by the agent, so they keep working when
+the GUI is closed: *ArchPM Monitor* (CPU, GPU, memory, game, top processes) and
+*ArchPM Network* (download and upload, VPN, top talkers, open doors).
 
 <img src="docs/widget.png" width="320" alt="Plasma widget">
+<img src="docs/widget-network.png" width="320" alt="Network widget">
 
 ## Status and support
 
@@ -110,9 +118,10 @@ git clone https://github.com/outing69/ArchPM.git && cd ArchPM
 ./install.sh --root   # the pkexec helper and the polkit policy
 ```
 
-Then: right-click your desktop → *Add Widgets* → **ArchPM Monitor**. The same
-widget can go in a panel: right-click the panel → *Add Widgets* → ArchPM
-Monitor. There it shows a one-line strip and opens the full view on click.
+Then: right-click your desktop → *Add Widgets* → **ArchPM Monitor** and, if
+you want it, **ArchPM Network**. Both can go in a panel too: right-click the
+panel → *Add Widgets*. There they show a one-line strip ("CPU 12% · GPU 83% ·
+RAM 51%", "↓ 1.2 MB/s ↑ 88 KB/s VPN") and open the full view on click.
 
 For frame rates and usage *inside* a full-screen game, use MangoHud; ArchPM is
 for before and after: what the game did to the machine, and what else runs.
@@ -185,6 +194,14 @@ the package, or the polkit policy file will conflict.
   itself on first open and asks for your password once for the two items that
   need root. Nothing is removed until you tick, press and confirm. Your files,
   saves and settings are never touched.
+- **Network** — every five seconds, one `ss` call lists the sockets of your
+  own processes: which program has which connections open, to which address
+  and port (named from `/etc/services`, never looked up online), download and
+  upload per program for TCP, throughput per interface with VPN tunnels
+  marked, and the "open doors": programs listening on every address, which
+  other devices on your network can reach. Games mostly use UDP, which the
+  kernel does not count, so a game shows its connections but not a speed.
+  No root, no packet capture, no DNS or location lookups.
 - **Startup** — what starts when you log in (XDG autostart), with a switch per
   entry and whether it is running now. Switching off writes an override in your
   own `~/.config/autostart`; nothing outside your home is touched.

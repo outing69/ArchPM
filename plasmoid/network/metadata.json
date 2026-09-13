@@ -1,0 +1,18 @@
+{
+    "KPackageStructure": "Plasma/Applet",
+    "KPlugin": {
+        "Authors": [
+            {
+                "Name": "Alex"
+            }
+        ],
+        "Category": "System Information",
+        "Description": "Download and upload speed, the programs using the network and the open doors",
+        "Icon": "network-connect",
+        "Id": "io.github.outing69.archpm.network",
+        "License": "MIT",
+        "Name": "ArchPM Network",
+        "Version": "0.1.0"
+    },
+    "X-Plasma-API-Minimum-Version": "6.0"
+}

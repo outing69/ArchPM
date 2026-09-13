@@ -31,12 +31,17 @@ install_user() {
     systemctl --user daemon-reload
     systemctl --user enable --now archpm-agent.service
 
-    echo "→ Plasma widget"
-    if kpackagetool6 -t Plasma/Applet -l 2>/dev/null | grep -q io.github.outing69.archpm; then
-        kpackagetool6 -t Plasma/Applet -u plasmoid/package
-    else
-        kpackagetool6 -t Plasma/Applet -i plasmoid/package
-    fi
+    echo "→ Plasma widgets"
+    local pkg
+    for pkg in plasmoid/package plasmoid/network; do
+        local id
+        id=$(sed -n 's/.*"Id": "\(.*\)".*/\1/p' "$pkg/metadata.json")
+        if kpackagetool6 -t Plasma/Applet -l 2>/dev/null | grep -qx "$id"; then
+            kpackagetool6 -t Plasma/Applet -u "$pkg"
+        else
+            kpackagetool6 -t Plasma/Applet -i "$pkg"
+        fi
+    done
 
     echo "→ menu entry"
     mkdir -p ~/.local/share/applications
