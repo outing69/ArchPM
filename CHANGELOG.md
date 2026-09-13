@@ -3,6 +3,15 @@
 All notable changes, newest first. Versions are git tags on
 [github.com/outing69/ArchPM](https://github.com/outing69/ArchPM).
 
+## Unreleased
+
+- Sampling costs less than half of what it did: sensors are read every fifth
+  tick, command lines and user names are cached. The agent is back to about 1%
+  of one core.
+- Startup: "running" detection works for programs whose path contains a space.
+- Closing the window while a Cleanup scan or System gather is still running no
+  longer risks a crash.
+
 ## 0.1.6 — 2026-09-13
 
 - Widget in the panel: a strip in the app's colours (CPU, GPU, RAM), the game's
