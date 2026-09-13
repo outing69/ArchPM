@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
 
 from ..game import game_tree, pick_game
 from ..model import ProcSample, Snapshot
+from ..sysinfo import cpu_model, short_cpu_name
 from . import theme
 from .history import ProcHistory
 from .proc_model import age_text
@@ -155,7 +156,7 @@ class GameCard(Card):
         self.t_cpu.set(f"{cpu / self.ncpu:.0f}%", f"{cpu / 100:.1f} of {self.ncpu} cores",
                        theme.heat(cpu / self.ncpu).name())
         self.t_gpu.set(f"{gpu:.0f}%", "GPU busy", theme.heat(gpu).name())
-        self.t_vram.set(f"{vram / 1024:.1f} G", f"{vram:.0f} MB")
+        self.t_vram.set(f"{vram / 1024:.1f} GB", f"{vram:.0f} MB")
         self.t_mem.set(human_bytes(rss), "Whole tree")
         self.t_thr.set(str(threads), f"In {len(tree)} processes")
         cores = self._cores_allowed(game.pid)
@@ -248,6 +249,7 @@ class Dashboard(QWidget):
         head.addWidget(self.btn_root)
         outer.addLayout(head)
 
+        self._cpu_name = short_cpu_name(cpu_model())
         self._machine = (
             platform.node(),
             platform.release(),
@@ -392,10 +394,9 @@ class Dashboard(QWidget):
         self._render_machine(time.time() - psutil.boot_time())
         self.g_cpu.push(s.cpu_percent)
         self.cores.set_values(s.per_core)
-        self.t_cpu.set(f"{s.cpu_percent:.0f}%", f"{s.freq_mhz:.0f} MHz · Load {s.load[0]:.2f}",
-                       theme.heat(s.cpu_percent).name())
+        self.t_cpu.set(f"{s.cpu_percent:.0f}%", self._cpu_name, theme.heat(s.cpu_percent).name())
         if s.cpu_temp_c:
-            self.t_cputemp.set(f"{s.cpu_temp_c:.0f}°", "Processor",
+            self.t_cputemp.set(f"{s.cpu_temp_c:.0f}°", "",
                                theme.heat(min(s.cpu_temp_c, 100)).name())
 
         if s.gpu:
@@ -405,8 +406,8 @@ class Dashboard(QWidget):
                            theme.heat(g.util).name())
             self.t_gputemp.set(f"{g.temp_c:.0f}°", f"Fan {g.fan_pct:.0f}%",
                                theme.heat(min(g.temp_c * 1.15, 100)).name())
-            self.t_vram.set(f"{g.mem_used_mb / 1024:.1f} G",
-                            f"{g.mem_pct:.0f}% of {g.mem_total_mb / 1024:.0f} G")
+            self.t_vram.set(f"{g.mem_used_mb / 1024:.1f} GB",
+                            f"{g.mem_pct:.0f}% of {g.mem_total_mb / 1024:.0f} GB")
             self.gpu_sub.setText(
                 f"{g.power_w:.0f} W  ·  {g.clock_mhz:.0f} MHz  ·  "
                 f"{g.mem_used_mb:.0f}/{g.mem_total_mb:.0f} MB"
@@ -416,12 +417,12 @@ class Dashboard(QWidget):
 
         swap_pct = 100.0 * s.swap_used / s.swap_total if s.swap_total else 0.0
         self.g_mem.push(s.mem_pct, swap_pct)
-        self.t_mem.set(f"{s.mem_used / 2**30:.1f} G",
-                       f"{s.mem_pct:.0f}% of {s.mem_total / 2**30:.0f} G",
+        self.t_mem.set(f"{s.mem_used / 2**30:.1f} GB",
+                       f"{s.mem_pct:.0f}% of {s.mem_total / 2**30:.0f} GB",
                        theme.heat(s.mem_pct).name())
         self.mem_sub.setText(
-            f"Free {s.mem_available / 2**30:.1f} G  ·  Swap "
-            f"{s.swap_used / 2**30:.1f}/{s.swap_total / 2**30:.0f} G  ·  "
+            f"Free {s.mem_available / 2**30:.1f} GB  ·  Swap "
+            f"{s.swap_used / 2**30:.1f}/{s.swap_total / 2**30:.0f} GB  ·  "
             f"{s.proc_count} processes, {s.thread_count} threads"
         )
 

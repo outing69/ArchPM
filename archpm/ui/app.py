@@ -273,8 +273,8 @@ class MainWindow(QMainWindow):
             tip = [f"CPU {s.cpu_percent:.0f}%{cpu_temp}"]
             if gpu is not None:
                 tip.append(f"GPU {gpu.util:.0f}% · {gpu.temp_c:.0f}° · VRAM "
-                           f"{gpu.mem_used_mb / 1024:.1f} / {gpu.mem_total_mb / 1024:.0f} G")
-            tip.append(f"RAM {s.mem_used / 2**30:.1f} / {s.mem_total / 2**30:.0f} G")
+                           f"{gpu.mem_used_mb / 1024:.1f} / {gpu.mem_total_mb / 1024:.0f} GB")
+            tip.append(f"RAM {s.mem_used / 2**30:.1f} / {s.mem_total / 2**30:.0f} GB")
             if self.dashboard.game_name():
                 tip.append(f"Game: {self.dashboard.game_name()}")
             self.tray.setToolTip("\n".join(t for t in tip if t))

@@ -84,12 +84,35 @@ def system_section() -> Section:
     return "System", rows
 
 
-def processor_section() -> Section:
-    model = ""
+_CPU_FILLER = {"amd", "intel", "intel(r)", "core(tm)", "core", "ryzen", "xeon(r)", "xeon",
+               "cpu", "processor", "(r)", "(tm)", "genuine", "authentic"}
+
+
+def cpu_model() -> str:
     for line in _read("/proc/cpuinfo").splitlines():
         if line.startswith("model name"):
-            model = line.partition(":")[2].strip()
-            break
+            return line.partition(":")[2].strip()
+    return platform.processor() or ""
+
+
+def short_cpu_name(model: str) -> str:
+    """"AMD Ryzen 7 7800X3D 8-Core Processor" -> "7800X3D",
+    "Intel(R) Core(TM) i7-13700K" -> "i7-13700K": the part a person quotes."""
+    out: list[str] = []
+    for tok in model.split():
+        low = tok.lower()
+        if low in ("@", "w/", "with"):
+            break                      # "@ 3.60GHz", "with Radeon Graphics": noise from here on
+        if low in _CPU_FILLER or low.endswith("-core") or low.endswith("ghz"):
+            continue
+        if tok.isdigit() and len(tok) <= 2 and not out:
+            continue                   # the "7" of "Ryzen 7", the "5" of "Ryzen 5"
+        out.append(tok)
+    return " ".join(out) or model
+
+
+def processor_section() -> Section:
+    model = cpu_model()
     physical = psutil.cpu_count(logical=False) or 0
     logical = psutil.cpu_count(logical=True) or 0
     rows = [("Model", model or platform.processor() or "unknown"),
