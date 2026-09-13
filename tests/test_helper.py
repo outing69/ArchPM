@@ -9,6 +9,7 @@ Run with:  python3 -m unittest discover tests
 """
 from __future__ import annotations
 
+import contextlib
 import io
 import json
 import os
@@ -239,6 +240,31 @@ class MemoryCommands(unittest.TestCase):
                 helper.cmd_drop_caches(args(level=level))
 
 
+class CleanupCommands(unittest.TestCase):
+    """The two cleanup subcommands take nothing from the caller."""
+
+    def test_take_no_arguments(self):
+        for argv in (["paccache-clean", "-rk0"], ["paccache-clean", "/"],
+                     ["journal-vacuum", "--vacuum-size=0"], ["journal-vacuum", "x"]):
+            with self.subTest(argv=argv), self.assertRaises(SystemExit), \
+                    redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                helper.main(argv)
+
+    def test_run_fixed_command_lines(self):
+        calls = []
+
+        def fake_run(*cmd, timeout=20):
+            calls.append(cmd)
+            return "done"
+        original, helper.run = helper.run, fake_run
+        try:
+            helper.cmd_paccache_clean(None)
+            helper.cmd_journal_vacuum(None)
+        finally:
+            helper.run = original
+        self.assertEqual(calls, [("paccache", "-rk2"), ("journalctl", "--vacuum-size=100M")])
+
+
 class MainProtocol(unittest.TestCase):
     """The GUI relies on the JSON contract: one object per call with an `ok` key."""
 
@@ -265,7 +291,6 @@ class MainProtocol(unittest.TestCase):
             helper.main(["reboot"])
 
     def test_abbreviated_subcommands_are_rejected(self):
-        import contextlib
         for argv in (["proc", "2", "0"], ["serv", "stop", "x"], ["drop"]):
             with self.subTest(argv=argv), self.assertRaises(SystemExit), \
                     redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):

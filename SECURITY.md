@@ -60,6 +60,15 @@ This helper was reviewed once by an independent automated adversarial pass on
 the alias gap described above; all three are fixed and pinned by tests. It has
 not yet been reviewed by a second person.
 
+## The two cleanup commands
+
+`paccache-clean` runs `paccache -rk2` and `journal-vacuum` runs
+`journalctl --vacuum-size=100M`, exactly like that, with no argument from the
+caller: the subcommands accept none. They remove old package versions (the last
+two of each package are kept) and archived journal files beyond 100 MB. Nothing
+else on the Cleanup tab needs root; the user-level items are emptied by the GUI
+inside the user's own cache folders, symlinks never followed.
+
 ## What the tests cover
 
 `tests/test_helper.py` pins every refusal rule above so that a later change

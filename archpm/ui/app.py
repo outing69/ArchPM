@@ -24,6 +24,7 @@ from ..model import Snapshot
 from ..publisher import status_path
 from ..root.client import ElevatedBackend, RootClient
 from . import theme
+from .cleanup import CleanupView
 from .dashboard import Dashboard
 from .history import ProcHistory
 from .procview import ProcessView
@@ -109,6 +110,10 @@ class MainWindow(QMainWindow):
         self.tabs.addTab(self.procs, "Processes")
         self.tabs.addTab(self.startup, "Startup")
         self.tabs.addTab(self.system, "System")
+        self.cleanup = CleanupView(self.root_client)
+        self.tabs.addTab(self.cleanup, "Cleanup")
+        self.cleanup.leave.connect(lambda: self.tabs.setCurrentIndex(0))
+        self.cleanup.status.connect(self._flash)
         self.setCentralWidget(self.tabs)
 
         self.procs.status.connect(self._flash)

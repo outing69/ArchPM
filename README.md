@@ -56,7 +56,8 @@ are Arch's; on another distribution find the equivalents.
 |---|---|---|
 | GUI and agent | `python` (3.10+), `pyside6` (6.5+), `python-psutil` (5.9+), `git` | the only hard requirements |
 | Widget | KDE Plasma 6 (`plasma-desktop`, `kpackage`) | other desktops get the GUI but no widget |
-| Root tasks | `polkit` | provides `pkexec`; your user must be allowed to authenticate as admin (in Arch that is the `wheel` group) |
+| Root tasks, Cleanup | `polkit` | provides `pkexec`; your user must be allowed to authenticate as admin (in Arch that is the `wheel` group) |
+| Cleanup of the package cache | `pacman-contrib` | provides `paccache` |
 | NVIDIA telemetry | `nvidia-utils` | provides `nvidia-smi`; without it the GPU falls back to sysfs |
 | AMD telemetry | nothing extra | read from sysfs; `hwdata` gives the card a proper name |
 | Agent as a service | a systemd user session | standard on any systemd desktop |
@@ -133,6 +134,12 @@ the package, or the polkit policy file will conflict.
   doing real GPU work qualifies too.
 - **History** — select a process and the last minutes of its CPU, GPU and memory
   appear under the list; a collapsed program shows its whole tree.
+- **Cleanup** — free up space: per-program caches, Steam shader caches,
+  thumbnails, old package versions (the last two of each are kept) and old
+  logs, each with its size and a plain reason why it is safe. The tab explains
+  itself on first open and asks for your password once for the two items that
+  need root. Nothing is removed until you tick, press and confirm. Your files,
+  saves and settings are never touched.
 - **Startup** — what starts when you log in (XDG autostart), with a switch per
   entry and whether it is running now. Switching off writes an override in your
   own `~/.config/autostart`; nothing outside your home is touched.
@@ -180,6 +187,7 @@ for something you were already allowed to do.
 |---|---|
 | Processes | negative nice, realtime IO, acting on other users' processes |
 | Services and memory | start/stop/restart systemd units, swappiness, drop caches |
+| Cleanup | `paccache -rk2` and `journalctl --vacuum-size=100M`, fixed, no arguments |
 
 **GPU tuning is deliberately left out.** Power limit, clock cap and persistence
 mode used to be here and were removed: it is not process management. The helper

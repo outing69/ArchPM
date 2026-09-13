@@ -2,11 +2,12 @@
 """archpm-helper -- the only piece of ArchPM that runs as root.
 
 Invoked via pkexec, one action per call, and replies with JSON on stdout.
-Limited to process management, system services and memory; GPU tuning belongs
-in a different tool. Deliberately stdlib-only and without imports from the archpm
-package: this file lives root-owned in /usr/lib/archpm/ (or /usr/local/lib/archpm/
-when installed from a checkout) and must not be able
-to load anything from a directory a regular user can write to.
+Limited to process management, system services, memory and two fixed cleanup
+commands (package cache, journal); GPU tuning belongs in a different tool.
+Deliberately stdlib-only and without imports from the archpm package: this
+file lives root-owned in /usr/lib/archpm/ (or /usr/local/lib/archpm/ when
+installed from a checkout) and must not be able to load anything from a
+directory a regular user can write to.
 
 Everything that comes in is validated: fixed subcommands, numeric bounds, a
 unit-name regex and a list of services we refuse to stop because your session
@@ -237,6 +238,19 @@ def cmd_drop_caches(args) -> dict:
     return {"dropped": level}
 
 
+# -- cleanup: fixed commands, nothing from the caller reaches them --------------
+def cmd_paccache_clean(_args) -> dict:
+    """Remove cached package versions beyond the last two of each package."""
+    out = run("paccache", "-rk2", timeout=120)
+    return {"paccache": out.splitlines()[-1] if out else "nothing to do"}
+
+
+def cmd_journal_vacuum(_args) -> dict:
+    """Shrink archived journal files to the most recent 100 MB."""
+    out = run("journalctl", "--vacuum-size=100M", timeout=60)
+    return {"journal": out.splitlines()[-1] if out else "nothing to do"}
+
+
 # -- status -------------------------------------------------------------------
 def cmd_status(_args) -> dict:
     out: dict = {"uid": os.getuid()}
@@ -267,6 +281,8 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("swappiness"); p.add_argument("value"); p.set_defaults(fn=cmd_swappiness)
     p = sub.add_parser("drop-caches"); p.add_argument("level", nargs="?", default="3")
     p.set_defaults(fn=cmd_drop_caches)
+    sub.add_parser("paccache-clean").set_defaults(fn=cmd_paccache_clean)
+    sub.add_parser("journal-vacuum").set_defaults(fn=cmd_journal_vacuum)
     sub.add_parser("status").set_defaults(fn=cmd_status)
     return ap
 
