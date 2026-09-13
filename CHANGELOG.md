@@ -13,6 +13,9 @@ All notable changes, newest first. Versions are git tags on
 - Processes: right-click a column header to tick columns on and off. Nice,
   User and Status start hidden; the choice is remembered.
 - Help: the terms Category and User.
+- Fixed: Top processes on the Overview showed "0%" for everything on an idle
+  desktop. Shares of the whole machine now have one decimal below 10%, and the
+  bars are relative to the busiest entry, like the memory and VRAM lists.
 
 ## 0.1.8 — 2026-09-13
 

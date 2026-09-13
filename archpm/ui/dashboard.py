@@ -193,6 +193,13 @@ class TopProcList(QWidget):
         self.scale = scale or max([v for _, _, v, _ in self.items] + [1.0])
         self.update()
 
+    def _fmt(self, value: float) -> str:
+        # Shares of the whole machine are small at idle (kwin at 3% of one
+        # core is 0.2% of sixteen); a bare "0%" reads as a broken list.
+        if self.unit == "%" and value < 10:
+            return f"{value:.1f}%"
+        return f"{value:,.0f}{self.unit}".replace(",", " ")
+
     def paintEvent(self, _event) -> None:
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
@@ -220,7 +227,7 @@ class TopProcList(QWidget):
             p.setPen(QColor(theme.MUTED))
             p.drawText(QRectF(self.width() - val_w - 6, y, val_w, h - 2),
                        int(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter),
-                       f"{value:,.0f}{self.unit}".replace(",", " "))
+                       self._fmt(value))
         p.end()
 
 
@@ -453,10 +460,11 @@ class Dashboard(QWidget):
         self.game.update_view(procs, self.history)
         # Shown as a share of the whole machine, like the CPU tile above it;
         # "135%" (top's one-core notation) reads as an error to most people.
+        # Bars are relative to the busiest entry, like the two lists next to
+        # it: against a fixed 100% nothing is visible on an idle desktop.
         self.top_cpu.set_items(
             [(p.display_name, p.pid, p.cpu_percent / self.ncpu, p.icon)
-             for p in sorted(procs, key=lambda x: x.cpu_percent, reverse=True)[:5]],
-            scale=100.0,
+             for p in sorted(procs, key=lambda x: x.cpu_percent, reverse=True)[:5]]
         )
         self.top_mem.set_items(
             [(p.display_name, p.pid, p.mem_mb, p.icon)
