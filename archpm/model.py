@@ -45,6 +45,7 @@ class ProcSample:
     icon: str = ""               # icon theme name or file path; "" if none
     category: str = ""           # "Game", "Browser", ... for a program; "" otherwise
     program: bool = False        # a visible menu entry or a Steam game, i.e. a user-facing app
+    steam_appid: int = 0         # set on every process launched by Steam for that game
 
     @property
     def mem_mb(self) -> float:

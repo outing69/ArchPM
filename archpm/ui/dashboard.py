@@ -17,9 +17,151 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ..model import Snapshot
+from ..model import ProcSample, Snapshot
 from . import theme
+from .history import ProcHistory
+from .proc_model import age_text
 from .widgets import Card, CoreGrid, Graph, StatTile, app_icon, human_bytes, mono
+
+
+def game_tree(game: ProcSample, procs: list[ProcSample]) -> list[ProcSample]:
+    """Everything that belongs to the game: all processes Steam launched for the
+    same app id, or, for a game started some other way, the process and its
+    descendants."""
+    if game.steam_appid:
+        return [p for p in procs if p.steam_appid == game.steam_appid]
+    children: dict[int, list[ProcSample]] = {}
+    for p in procs:
+        children.setdefault(p.ppid, []).append(p)
+    out, stack = [], [game]
+    while stack:
+        p = stack.pop()
+        out.append(p)
+        stack.extend(children.get(p.pid, []))
+    return out
+
+
+def pick_game(procs: list[ProcSample], current_pid: int) -> ProcSample | None:
+    """The game to show: a Game-category process using the GPU, preferring the
+    one shown last tick so the card does not hop between a game and its
+    launcher. Without a Game, any program doing real GPU work."""
+    # Steam's own client is category Game too (its menu entry says so) and
+    # always holds a little VRAM; a game is something Steam *launched* (it has
+    # an app id) or, outside Steam, a program doing real GPU work.
+    games = [p for p in procs if p.steam_appid and (p.gpu_sm > 0 or p.gpu_mem_mb > 0)]
+    if not games:
+        games = [p for p in procs if p.program and not p.steam_appid and p.gpu_sm >= 20]
+    if not games:
+        return None
+    for p in games:
+        if p.pid == current_pid:
+            return p
+    return max(games, key=lambda p: (p.gpu_sm, p.gpu_mem_mb, p.cpu_percent))
+
+
+class GameCard(Card):
+    """What is my game doing right now: one process, its tree, its last minutes."""
+
+    def __init__(self, ncpu: int, parent=None) -> None:
+        super().__init__("game", parent)
+        self.ncpu = ncpu
+        self.pid = 0
+        self._affinity: tuple[int, int, int] = (0, 0, 0)  # pid, cores, tick
+        self._tick = 0
+        row = QHBoxLayout()
+        row.setSpacing(18)
+
+        left = QVBoxLayout()
+        left.setSpacing(4)
+        self.lbl_name = QLabel("No game running")
+        self.lbl_name.setFont(mono(12, bold=True))
+        self.lbl_name.setTextFormat(Qt.TextFormat.RichText)
+        left.addWidget(self.lbl_name)
+        self.lbl_sub = QLabel("A Steam game, or any program doing real GPU work, shows up here "
+                              "the moment it starts.")
+        self.lbl_sub.setWordWrap(True)
+        self.lbl_sub.setStyleSheet(f"color: {theme.MUTED};")
+        self.lbl_sub.setFont(mono(8))
+        left.addWidget(self.lbl_sub)
+        self.tiles = QHBoxLayout()
+        self.tiles.setSpacing(8)
+        self.t_cpu = StatTile("cpu", theme.CPU)
+        self.t_gpu = StatTile("gpu", theme.GPU)
+        self.t_vram = StatTile("vram", theme.GPU)
+        self.t_mem = StatTile("ram", theme.MEM)
+        self.t_thr = StatTile("threads")
+        self.t_cores = StatTile("cores")
+        for t in (self.t_cpu, self.t_gpu, self.t_vram, self.t_mem, self.t_thr, self.t_cores):
+            self.tiles.addWidget(t)
+        left.addLayout(self.tiles)
+        left.addStretch(1)
+        row.addLayout(left, 3)
+
+        self.graph = Graph([("cpu", theme.CPU), ("gpu", theme.GPU)], maximum=None, fill=False)
+        self.graph.setMinimumHeight(110)
+        row.addWidget(self.graph, 2)
+        self.body.addLayout(row)
+        self._set_tiles_visible(False)
+
+    def _set_tiles_visible(self, on: bool) -> None:
+        for t in (self.t_cpu, self.t_gpu, self.t_vram, self.t_mem, self.t_thr, self.t_cores):
+            t.setVisible(on)
+        self.graph.setVisible(on)
+
+    def _cores_allowed(self, pid: int) -> int:
+        """One syscall, for one process, every fifth tick: cheap enough."""
+        self._tick += 1
+        cached_pid, cores, tick = self._affinity
+        if cached_pid == pid and self._tick - tick < 5:
+            return cores
+        try:
+            cores = len(psutil.Process(pid).cpu_affinity())
+        except psutil.Error:
+            cores = 0
+        self._affinity = (pid, cores, self._tick)
+        return cores
+
+    def update_view(self, procs: list[ProcSample], history: ProcHistory | None) -> None:
+        game = pick_game(procs, self.pid)
+        if game is None:
+            if self.pid:
+                self.pid = 0
+                self.lbl_name.setText("No game running")
+                self.lbl_sub.setText("A Steam game, or any program doing real GPU work, "
+                                     "shows up here the moment it starts.")
+                self._set_tiles_visible(False)
+            return
+        if not self.pid:
+            self._set_tiles_visible(True)
+        self.pid = game.pid
+        tree = game_tree(game, procs)
+        cpu = sum(p.cpu_percent for p in tree)
+        rss = sum(p.mem_rss for p in tree)
+        gpu = max(p.gpu_sm for p in tree)
+        vram = sum(p.gpu_mem_mb for p in tree)
+        threads = sum(p.num_threads for p in tree)
+        icon = app_icon(game.icon)
+        self.lbl_name.setText(
+            f"<span style='color:{theme.ACCENT}'>{game.display_name}</span>"
+            f"<span style='color:{theme.FAINT}'>&nbsp;&nbsp;·&nbsp;&nbsp;pid {game.pid}"
+            f"&nbsp;&nbsp;·&nbsp;&nbsp;{len(tree)} processes</span>"
+        )
+        self.lbl_name.setToolTip(game.cmdline)
+        started = age_text(time.time() - game.create_time) if game.create_time else "?"
+        self.lbl_sub.setText(f"running {started}  ·  nice {game.nice}"
+                             + (f"  ·  {game.name}" if game.app_name else ""))
+        self.t_cpu.set(f"{cpu:.0f}%", f"of {100 * self.ncpu}% total",
+                       theme.heat(cpu / self.ncpu).name())
+        self.t_gpu.set(f"{gpu:.0f}%", "sm", theme.heat(gpu).name())
+        self.t_vram.set(f"{vram / 1024:.1f} G", f"{vram:.0f} MB")
+        self.t_mem.set(human_bytes(rss), "whole tree")
+        self.t_thr.set(str(threads), "")
+        cores = self._cores_allowed(game.pid)
+        self.t_cores.set(f"{cores or '?'}", f"of {self.ncpu} allowed")
+        if history is not None:
+            track = history.tree([p.pid for p in tree])
+            self.graph.set_history(track.cpu, track.gpu)
+        del icon  # the name label is text; the icon lives in the process list
 
 
 class TopProcList(QWidget):
@@ -75,9 +217,10 @@ class TopProcList(QWidget):
 class Dashboard(QWidget):
     root_requested = Signal()
 
-    def __init__(self, ncpu: int, parent=None) -> None:
+    def __init__(self, ncpu: int, history: ProcHistory | None = None, parent=None) -> None:
         super().__init__(parent)
         self.ncpu = ncpu
+        self.history = history
         outer = QVBoxLayout(self)
         outer.setContentsMargins(12, 10, 12, 12)
         outer.setSpacing(10)
@@ -166,6 +309,10 @@ class Dashboard(QWidget):
         io_card.body.addWidget(self.g_disk, 1)
         grid.addWidget(io_card, 1, 1)
 
+        # -- game ----------------------------------------------------------
+        self.game = GameCard(ncpu)
+        grid.addWidget(self.game, 2, 0, 1, 2)
+
         # -- top lists -----------------------------------------------------
         top_card = Card("top processes")
         row = QHBoxLayout()
@@ -185,11 +332,12 @@ class Dashboard(QWidget):
         for col in (cpu_col, mem_col, gpu_col):
             row.addLayout(col, 1)
         top_card.body.addLayout(row)
-        grid.addWidget(top_card, 2, 0, 1, 2)
+        grid.addWidget(top_card, 3, 0, 1, 2)
 
         grid.setRowStretch(0, 3)
         grid.setRowStretch(1, 3)
         grid.setRowStretch(2, 2)
+        grid.setRowStretch(3, 2)
         grid.setColumnStretch(0, 1)
         grid.setColumnStretch(1, 1)
 
@@ -273,6 +421,7 @@ class Dashboard(QWidget):
         self.g_disk.push(s.disk_r_bps, s.disk_w_bps)
 
         procs = snap.procs
+        self.game.update_view(procs, self.history)
         self.top_cpu.set_items(
             [(p.display_name, p.pid, p.cpu_percent, p.icon)
              for p in sorted(procs, key=lambda x: x.cpu_percent, reverse=True)[:5]],

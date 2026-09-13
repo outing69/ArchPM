@@ -107,6 +107,12 @@ class Graph(QWidget):
     def set_formatter(self, fn) -> None:
         self._formatter = fn
 
+    def set_history(self, *histories) -> None:
+        """Replace every series at once with an existing history (newest last)."""
+        for s, values in zip(self.series, histories, strict=False):
+            s.values = deque((float(v) for v in values), maxlen=s.values.maxlen)
+        self.update()
+
     def push(self, *values: float) -> None:
         for s, v in zip(self.series, values, strict=False):
             if not s.values:

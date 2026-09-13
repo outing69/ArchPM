@@ -327,6 +327,9 @@ class ProcModel(QAbstractItemModel):
     def pids(self):
         return self._nodes.keys()
 
+    def is_expanded(self, pid: int) -> bool:
+        return pid in self._expanded
+
     def has_children(self, pid: int) -> bool:
         node = self._nodes.get(pid)
         return bool(node and node.children)

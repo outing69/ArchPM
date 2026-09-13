@@ -109,6 +109,12 @@ the package, or the polkit policy file will conflict.
   that has none. By default you see your programs plus whatever is busy; "Show
   all processes" shows everything. A collapsed program shows the totals of its
   whole tree, so a browser reads as one row with its real memory use.
+- **Game** — a card on the Overview for whatever game is running: its whole
+  process tree's CPU, GPU, VRAM, RAM and threads, how many cores it may use, and
+  a graph of its last minutes. Steam games are found by app id; anything else
+  doing real GPU work qualifies too.
+- **History** — select a process and the last minutes of its CPU, GPU and memory
+  appear under the list; a collapsed program shows its whole tree.
 - **Startup** — what starts when you log in (XDG autostart), with a switch per
   entry and whether it is running now. Switching off writes an override in your
   own `~/.config/autostart`; nothing outside your home is touched.

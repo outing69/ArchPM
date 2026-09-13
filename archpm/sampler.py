@@ -120,6 +120,7 @@ class Sampler:
                 icon=app.icon,
                 category=app.category,
                 program=app.program,
+                steam_appid=app.steam_appid,
             ))
 
         sys_sample = self._system(now, len(procs), threads)

@@ -5,7 +5,7 @@ import signal
 
 import psutil
 from PySide6.QtCore import QModelIndex, QSettings, QSize, Qt, Signal
-from PySide6.QtGui import QAction, QGuiApplication, QKeySequence
+from PySide6.QtGui import QAction, QGuiApplication, QKeySequence, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
     QMenu,
     QMessageBox,
     QPushButton,
+    QSplitter,
     QTreeView,
     QVBoxLayout,
     QWidget,
@@ -29,6 +30,7 @@ from ..actions import ActionError, UserBackend
 from ..appinfo import CATEGORIES
 from ..model import ProcSample
 from . import theme
+from .history import ProcHistory
 from .proc_model import (
     COL_CATEGORY,
     COL_CMD,
@@ -48,6 +50,7 @@ from .proc_model import (
     ProcFilter,
     ProcModel,
 )
+from .widgets import Graph, app_icon, human_bytes, mono
 
 NICE_PRESETS = [
     ("Game priority (nice -10)", -10),
@@ -111,13 +114,53 @@ class AffinityDialog(QDialog):
         return [i for i, cb in enumerate(self.boxes) if cb.isChecked()]
 
 
+class HistoryPanel(QWidget):
+    """The last minutes of one process (or a collapsed program's whole tree)."""
+
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(0, 6, 0, 0)
+        lay.setSpacing(6)
+        head = QHBoxLayout()
+        self.lbl_icon = QLabel()
+        self.lbl_icon.setFixedSize(18, 18)
+        head.addWidget(self.lbl_icon)
+        self.lbl = QLabel("Select a process to see its last minutes")
+        self.lbl.setFont(mono(9, bold=True))
+        self.lbl.setTextFormat(Qt.TextFormat.RichText)
+        head.addWidget(self.lbl, 1)
+        lay.addLayout(head)
+        graphs = QHBoxLayout()
+        graphs.setSpacing(10)
+        self.g_cpu = Graph([("cpu", theme.CPU), ("gpu", theme.GPU)], maximum=None, fill=False)
+        self.g_mem = Graph([("memory", theme.MEM)], maximum=None, fill=True)
+        self.g_mem.set_formatter(human_bytes)
+        for g in (self.g_cpu, self.g_mem):
+            g.setMinimumHeight(90)
+            graphs.addWidget(g, 1)
+        lay.addLayout(graphs)
+
+    def show_track(self, p: ProcSample, track, tree_size: int) -> None:
+        scope = f"whole tree, {tree_size} processes" if tree_size > 1 else f"pid {p.pid}"
+        sep = "&nbsp;&nbsp;·&nbsp;&nbsp;"
+        self.lbl.setText(f"<span style='color:{theme.ACCENT}'>{p.display_name}</span>"
+                         f"<span style='color:{theme.FAINT}'>{sep}{scope}</span>")
+        icon = app_icon(p.icon)
+        self.lbl_icon.setPixmap(icon.pixmap(16, 16) if not icon.isNull() else QPixmap())
+        self.g_cpu.set_history(track.cpu, track.gpu)
+        self.g_mem.set_history(track.rss)
+
+
 class ProcessView(QWidget):
     status = Signal(str)
 
-    def __init__(self, ncpu: int, backend: UserBackend, parent=None) -> None:
+    def __init__(self, ncpu: int, backend: UserBackend, history: ProcHistory | None = None,
+                 parent=None) -> None:
         super().__init__(parent)
         self.ncpu = ncpu
         self.backend = backend
+        self.history = history
         self.settings = QSettings("archpm", "ArchPM")
 
         outer = QVBoxLayout(self)
@@ -212,7 +255,18 @@ class ProcessView(QWidget):
             (COL_CATEGORY, 104),
         ):
             self.table.setColumnWidth(col, w)
-        outer.addWidget(self.table, 1)
+        # History under the tree: shows once something is selected; the
+        # splitter lets the user give it more or less room.
+        self.split = QSplitter(Qt.Orientation.Vertical)
+        self.split.setChildrenCollapsible(False)
+        self.split.addWidget(self.table)
+        self.panel = HistoryPanel()
+        self.panel.setVisible(False)
+        self.split.addWidget(self.panel)
+        self.split.setStretchFactor(0, 4)
+        self.split.setStretchFactor(1, 1)
+        outer.addWidget(self.split, 1)
+        self.table.selectionModel().currentRowChanged.connect(lambda *_: self._show_history())
 
         # Collapsed by default, or a browser's twenty renderers bury everything.
         # The one exception, applied once per process the first time it is
@@ -261,6 +315,24 @@ class ProcessView(QWidget):
         self.model.update(snap.procs)
         if self.model.tree and not self.model.frozen:
             self._auto_expand()
+        if self.panel.isVisible():
+            self._show_history()
+
+    def _show_history(self) -> None:
+        if self.history is None:
+            return
+        idx = self.table.selectionModel().currentIndex()
+        p = self.model.proc_at(self.proxy.mapToSource(idx)) if idx.isValid() else None
+        if p is None:
+            self.panel.setVisible(False)
+            return
+        # A collapsed program row stands for its tree; so does its history.
+        pids = [p.pid]
+        if self.model.tree and self.model.has_children(p.pid) and not self.model.is_expanded(p.pid):
+            pids = self.model.subtree_pids(p.pid)
+        self.panel.show_track(p, self.history.tree(pids), len(pids))
+        if not self.panel.isVisible():
+            self.panel.setVisible(True)
 
     def _set_frozen(self, frozen: bool) -> None:
         self.model.frozen = frozen

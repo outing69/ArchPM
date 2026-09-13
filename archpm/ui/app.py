@@ -25,6 +25,7 @@ from ..publisher import status_path
 from ..root.client import ElevatedBackend, RootClient
 from . import theme
 from .dashboard import Dashboard
+from .history import ProcHistory
 from .procview import ProcessView
 from .startup import StartupView
 from .sysinfo import SystemView
@@ -99,8 +100,9 @@ class MainWindow(QMainWindow):
         ncpu = psutil.cpu_count(logical=True) or 1
 
         self.tabs = QTabWidget()
-        self.dashboard = Dashboard(ncpu)
-        self.procs = ProcessView(ncpu, self.backend)
+        self.history = ProcHistory()
+        self.dashboard = Dashboard(ncpu, self.history)
+        self.procs = ProcessView(ncpu, self.backend, self.history)
         self.startup = StartupView()
         self.system = SystemView()
         self.tabs.addTab(self.dashboard, "Overview")
@@ -201,6 +203,7 @@ class MainWindow(QMainWindow):
     # -- data -------------------------------------------------------------
     def _on_sample(self, snap: Snapshot) -> None:
         t0 = time.perf_counter()
+        self.history.update(snap.procs)
         self.dashboard.update_view(snap)
         self.procs.update_view(snap)
         self.startup.update_view(snap)
