@@ -3,7 +3,7 @@
 All notable changes, newest first. Versions are git tags on
 [github.com/outing69/ArchPM](https://github.com/outing69/ArchPM).
 
-## Unreleased
+## 0.1.7 — 2026-09-13
 
 - Plasma's task manager and tooltips show "ArchPM" instead of "python3": the
   install script rebuilds Plasma's service cache after installing the menu entry.
