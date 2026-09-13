@@ -8,10 +8,12 @@ Two sources, no Qt:
   becomes "ArchPM" without every other python3 following suit.
 - Steam. A process launched by Steam carries `SteamAppId` in its environment;
   the game's name is in `appmanifest_<id>.acf` in whichever library folder
-  holds it, and Steam drops an icon per game in ~/.local/share/icons. Only the
-  game binary itself is renamed (Windows .exe under Proton, or anything under
-  steamapps/common); the helpers around it (wineserver, reaper) keep their
-  names but share the icon.
+  holds it, and Steam drops an icon per game in ~/.local/share/icons. Only
+  processes whose executable lives in the game's own install directory
+  (`steamapps/common/<installdir>/`, as the manifest states it) are renamed.
+  Everything else that carries the app id -- reaper, the Steam runtime, Proton,
+  wineserver and the Windows services Wine spawns (services.exe, explorer.exe)
+  -- keeps its name but shares the icon.
 
 Icons are returned as either an icon-theme name or an absolute path; the UI
 turns those into QIcons. Everything is cached per pid.
@@ -28,6 +30,7 @@ from pathlib import Path
 _FIELD_CODE = re.compile(r"^%[a-zA-Z%]$")
 _VDF_PATH = re.compile(r'"path"\s+"((?:[^"\\]|\\.)*)"')
 _ACF_NAME = re.compile(r'"name"\s+"((?:[^"\\]|\\.)*)"')
+_ACF_INSTALLDIR = re.compile(r'"installdir"\s+"((?:[^"\\]|\\.)*)"')
 # Exec lines that start with one of these say nothing on their own: only match
 # them together with the arguments that follow.
 _INTERPRETERS = {"python", "python2", "python3", "sh", "bash", "zsh", "env", "wine", "wine64",
@@ -167,9 +170,12 @@ def parse_library_folders(text: str) -> list[str]:
     return [m.replace("\\\\", "\\") for m in _VDF_PATH.findall(text)]
 
 
-def parse_appmanifest_name(text: str) -> str:
-    m = _ACF_NAME.search(text)
-    return m.group(1).replace('\\"', '"') if m else ""
+def parse_appmanifest(text: str) -> tuple[str, str]:
+    """(name, installdir) from an appmanifest_<id>.acf; "" for whatever is missing."""
+    name = _ACF_NAME.search(text)
+    installdir = _ACF_INSTALLDIR.search(text)
+    return (name.group(1).replace('\\"', '"') if name else "",
+            installdir.group(1).replace('\\"', '"') if installdir else "")
 
 
 def read_environ(pid: int) -> dict[str, str]:
@@ -187,9 +193,19 @@ def read_environ(pid: int) -> dict[str, str]:
     return out
 
 
-def is_game_binary(argv0: str, name: str) -> bool:
-    low = argv0.lower()
-    return low.endswith(".exe") or name.lower().endswith(".exe") or "/steamapps/common/" in low
+def is_game_binary(argv0: str, name: str, installdir: str) -> bool:
+    """True when the executable lives in the game's own install directory.
+
+    Windows paths from Proton (Z:\\...\\steamapps\\common\\CULTIC\\CULTIC.exe) are
+    normalised first. Crash handlers that ship with the game are not "the game".
+    """
+    if not installdir:
+        return False
+    path = argv0.replace("\\", "/").lower()
+    if f"/steamapps/common/{installdir.lower()}/" not in path:
+        return False
+    # comm is cut to 15 chars ("UnityCrashHandl"), so look at the file name too
+    return "crashhandler" not in name.lower() and "crashhandler" not in _basename(path)
 
 
 class SteamIndex:
@@ -200,7 +216,7 @@ class SteamIndex:
             / "icons" / "hicolor"
         )
         self._libraries: list[Path] | None = None
-        self._names: dict[int, str] = {}
+        self._apps: dict[int, tuple[str, str]] = {}   # appid -> (name, installdir)
         self._icons: dict[int, str] = {}
 
     def libraries(self) -> list[Path]:
@@ -218,20 +234,24 @@ class SteamIndex:
             self._libraries = [p for p in libs if not (p in seen or seen.add(p))]
         return self._libraries
 
-    def name(self, appid: int) -> str:
-        if appid in self._names:
-            return self._names[appid]
-        found = ""
+    def app(self, appid: int) -> tuple[str, str]:
+        """(name, installdir) of an installed app, ("", "") if unknown."""
+        if appid in self._apps:
+            return self._apps[appid]
+        found = ("", "")
         for lib in self.libraries():
             f = lib / "steamapps" / f"appmanifest_{appid}.acf"
             try:
-                found = parse_appmanifest_name(f.read_text(encoding="utf-8", errors="replace"))
+                found = parse_appmanifest(f.read_text(encoding="utf-8", errors="replace"))
             except OSError:
                 continue
-            if found:
+            if found[0]:
                 break
-        self._names[appid] = found
+        self._apps[appid] = found
         return found
+
+    def name(self, appid: int) -> str:
+        return self.app(appid)[0]
 
     def icon(self, appid: int) -> str:
         if appid in self._icons:
@@ -282,10 +302,10 @@ class AppResolver:
     def resolve(self, pid: int, name: str, argv: list[str], owned: bool) -> AppInfo:
         appid = self.steam.appid_of(pid) if owned else 0
         if appid:
-            game = self.steam.name(appid)
+            game, installdir = self.steam.app(appid)
             icon = self.steam.icon(appid)
             argv0 = argv[0] if argv else ""
-            if game and is_game_binary(argv0, name):
+            if game and is_game_binary(argv0, name, installdir):
                 return AppInfo(name=game, icon=icon, steam_appid=appid)
             desktop = self.desktop.match(argv)
             return AppInfo(name=desktop.name, icon=icon or desktop.icon, steam_appid=appid)

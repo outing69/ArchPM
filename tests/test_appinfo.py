@@ -156,17 +156,36 @@ class SteamParsing(unittest.TestCase):
         self.assertEqual(appinfo.parse_library_folders(LIBRARYFOLDERS),
                          ["/home/alex/.local/share/Steam", "/mnt/games/SteamLibrary"])
 
-    def test_appmanifest_name(self):
-        self.assertEqual(appinfo.parse_appmanifest_name(APPMANIFEST), "Cyberpunk 2077")
-        self.assertEqual(appinfo.parse_appmanifest_name("garbage"), "")
+    def test_appmanifest_name_and_installdir(self):
+        self.assertEqual(appinfo.parse_appmanifest(APPMANIFEST),
+                         ("Cyberpunk 2077", "Cyberpunk 2077"))
+        self.assertEqual(appinfo.parse_appmanifest("garbage"), ("", ""))
 
-    def test_game_binary_rule(self):
-        self.assertTrue(appinfo.is_game_binary("Z:\\games\\Cyberpunk2077.exe", "Cyberpunk2077.exe"))
-        native = "/mnt/games/SteamLibrary/steamapps/common/cs2/cs2"
-        self.assertTrue(appinfo.is_game_binary(native, "cs2"))
-        self.assertFalse(appinfo.is_game_binary("/usr/bin/wineserver", "wineserver"))
-        reaper = "/home/alex/.local/share/Steam/ubuntu12_32/reaper"
-        self.assertFalse(appinfo.is_game_binary(reaper, "reaper"))
+    def test_game_binary_rule_is_the_install_directory(self):
+        """Captured from a real Proton launch of CULTIC (appid 1684930): every one
+        of these carried the app id, only the last two live in the game's dir."""
+        d = "CULTIC"
+        not_game = [
+            ("/home/alex/.local/share/Steam/ubuntu12_32/reaper", "reaper"),
+            ("/run/pressure-vessel/libexec/steam-runtime-tools-0/srt-bwrap", "srt-bwrap"),
+            ("/mnt/games/SteamLibrary/steamapps/common/Proton 9.0/files/bin/wineserver",
+             "wineserver"),
+            ("c:\\windows\\system32\\steam.exe", "steam.exe"),
+            ("C:\\windows\\system32\\services.exe", "services.exe"),
+            ("C:\\windows\\system32\\explorer.exe", "explorer.exe"),
+            ("python3", "python3"),
+        ]
+        for argv0, name in not_game:
+            with self.subTest(argv0=argv0):
+                self.assertFalse(appinfo.is_game_binary(argv0, name, d))
+        game = "Z:\\mnt\\games\\SteamLibrary\\steamapps\\common\\CULTIC\\CULTIC.exe"
+        self.assertTrue(appinfo.is_game_binary(game, "CULTIC.exe", d))
+        native = "/mnt/games/SteamLibrary/steamapps/common/CULTIC/cultic"
+        self.assertTrue(appinfo.is_game_binary(native, "cultic", d))
+        crash = "Z:\\mnt\\games\\SteamLibrary\\steamapps\\common\\CULTIC\\UnityCrashHandler64.exe"
+        self.assertFalse(appinfo.is_game_binary(crash, "UnityCrashHandl", d))
+        self.assertFalse(appinfo.is_game_binary(game, "CULTIC.exe", ""),
+                         "no installdir: never rename")
 
 
 class SteamIndexOnFixtures(unittest.TestCase):
@@ -215,15 +234,17 @@ class Resolver(unittest.TestCase):
 
     def test_game_binary_gets_the_game_name_and_icon(self):
         self.appids[100] = 1091500
-        info = self.resolver.lookup(100, "Cyberpunk2077.exe", ["Z:\\g\\Cyberpunk2077.exe"],
-                                    owned=True)
+        exe = ("Z:\\mnt\\games\\SteamLibrary\\steamapps\\common\\Cyberpunk 2077"
+               "\\bin\\x64\\Cyberpunk2077.exe")
+        info = self.resolver.lookup(100, "Cyberpunk2077.exe", [exe], owned=True)
         self.assertEqual(info.name, "Cyberpunk 2077")
         self.assertTrue(info.icon.endswith("steam_icon_1091500.png"))
         self.assertEqual(info.steam_appid, 1091500)
 
     def test_helper_process_keeps_its_name_but_shares_the_icon(self):
         self.appids[101] = 1091500
-        info = self.resolver.lookup(101, "wineserver", ["/usr/bin/wineserver"], owned=True)
+        wineserver = "/mnt/games/SteamLibrary/steamapps/common/Proton 9.0/files/bin/wineserver"
+        info = self.resolver.lookup(101, "wineserver", [wineserver], owned=True)
         self.assertEqual(info.name, "")
         self.assertTrue(info.icon.endswith("steam_icon_1091500.png"))
 
