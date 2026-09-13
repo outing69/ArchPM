@@ -15,6 +15,7 @@ Name=Brave Web Browser
 Exec=brave %U
 Icon=brave-desktop
 Type=Application
+Categories=Network;WebBrowser;
 Actions=new-window;
 
 [Desktop Action new-window]
@@ -109,6 +110,24 @@ class DesktopParsing(unittest.TestCase):
         self.assertEqual(appinfo.exec_tokens('unbalanced "quote'), ())
 
 
+class Categories(unittest.TestCase):
+    def test_specific_beats_broad(self):
+        self.assertEqual(appinfo.coarse_category("Network;WebBrowser;Qt;"), "Browser")
+        self.assertEqual(appinfo.coarse_category("Network;FileTransfer;"), "Network")
+        self.assertEqual(appinfo.coarse_category("Game;"), "Game")
+        self.assertEqual(appinfo.coarse_category("Development;IDE;Qt;KDE;"), "Development")
+        self.assertEqual(appinfo.coarse_category("System;TerminalEmulator;"), "System")
+        self.assertEqual(appinfo.coarse_category("AudioVideo;Player;"), "Media")
+
+    def test_unknown_or_empty_is_other(self):
+        self.assertEqual(appinfo.coarse_category(""), "Other")
+        self.assertEqual(appinfo.coarse_category("Qt;KDE;X-Something;"), "Other")
+
+    def test_every_rule_label_is_listed(self):
+        self.assertEqual(appinfo.CATEGORIES[-1], "Other")
+        self.assertIn("Game", appinfo.CATEGORIES)
+
+
 class DesktopMatching(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -130,6 +149,8 @@ class DesktopMatching(unittest.TestCase):
     def test_matches_by_basename_of_argv0(self):
         info = self.index.match(["/opt/brave-bin/brave", "--type=renderer", "--x"])
         self.assertEqual((info.name, info.icon), ("Brave Web Browser", "brave-desktop"))
+        self.assertEqual(info.category, "Browser")
+        self.assertEqual(self.index.match(["konsole"]).category, "Other", "no Categories= line")
 
     def test_interpreter_entry_needs_its_arguments(self):
         self.assertEqual(self.index.match(["/usr/bin/python3", "-m", "archpm"]).name, "ArchPM")
@@ -249,6 +270,7 @@ class Resolver(unittest.TestCase):
         self.assertEqual(info.name, "Cyberpunk 2077")
         self.assertTrue(info.icon.endswith("steam_icon_1091500.png"))
         self.assertEqual(info.steam_appid, 1091500)
+        self.assertEqual(info.category, "Game")
 
     def test_helper_process_keeps_its_name_but_shares_the_icon(self):
         self.appids[101] = 1091500
@@ -256,6 +278,7 @@ class Resolver(unittest.TestCase):
         info = self.resolver.lookup(101, "wineserver", [wineserver], owned=True)
         self.assertEqual(info.name, "")
         self.assertTrue(info.icon.endswith("steam_icon_1091500.png"))
+        self.assertEqual(info.category, "Game", "helpers of a game count as the game")
 
     def test_unowned_process_never_reads_environ(self):
         self.appids[102] = 1091500

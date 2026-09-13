@@ -39,11 +39,46 @@ _STEAM_ICON_SIZES = ("48x48", "32x32", "64x64", "128x128", "256x256", "24x24", "
                      "96x96", "192x192")
 
 
+# freedesktop menu categories collapsed to a handful a user recognises. First
+# match wins, so the specific ones (WebBrowser, Game) come before the broad
+# ones (Network, Utility). "Other" is a program whose entry names none of these.
+_CATEGORY_RULES: tuple[tuple[str, frozenset[str]], ...] = (
+    ("Browser", frozenset({"WebBrowser"})),
+    ("Game", frozenset({"Game"})),
+    ("Communication", frozenset({"InstantMessaging", "Chat", "Email", "VideoConference",
+                                 "IRCClient", "Telephony"})),
+    ("Development", frozenset({"Development", "IDE", "TextEditor"})),
+    ("Media", frozenset({"AudioVideo", "Audio", "Video", "Player", "Music", "TV",
+                         "Recorder"})),
+    ("Graphics", frozenset({"Graphics", "Photography", "2DGraphics", "3DGraphics",
+                            "RasterGraphics", "VectorGraphics"})),
+    ("Office", frozenset({"Office", "WordProcessor", "Spreadsheet", "Presentation",
+                          "Finance"})),
+    ("System", frozenset({"System", "Settings", "Monitor", "PackageManager",
+                          "TerminalEmulator", "Security"})),
+    ("Utility", frozenset({"Utility", "FileManager", "FileTools", "Archiving",
+                           "Viewer", "Calculator", "Clock"})),
+    ("Network", frozenset({"Network", "FileTransfer", "P2P", "RemoteAccess"})),
+    ("Science", frozenset({"Education", "Science", "Math"})),
+)
+CATEGORIES = tuple(name for name, _ in _CATEGORY_RULES) + ("Other",)
+
+
+def coarse_category(categories: str) -> str:
+    """`Categories=Network;WebBrowser;Qt;` -> "Browser". "Other" when nothing matches."""
+    have = {c.strip() for c in categories.split(";") if c.strip()}
+    for label, members in _CATEGORY_RULES:
+        if have & members:
+            return label
+    return "Other"
+
+
 @dataclass(frozen=True)
 class AppInfo:
     name: str = ""          # human-readable name, "" when unknown
     icon: str = ""          # icon theme name or absolute file path, "" when none
     steam_appid: int = 0
+    category: str = ""      # one of CATEGORIES for a program, "" otherwise
 
     def __bool__(self) -> bool:
         return bool(self.name or self.icon)
@@ -101,8 +136,8 @@ class DesktopIndex:
 
     def __init__(self, dirs: list[Path] | None = None) -> None:
         self.dirs = dirs if dirs is not None else [d / "applications" for d in data_dirs()]
-        # first token -> list of (remaining tokens, name, icon, hidden)
-        self._by_first: dict[str, list[tuple[tuple[str, ...], str, str, bool]]] = {}
+        # first token -> list of (remaining tokens, name, icon, hidden, category)
+        self._by_first: dict[str, list[tuple[tuple[str, ...], str, str, bool, str]]] = {}
         self.scan()
 
     def scan(self) -> None:
@@ -130,7 +165,8 @@ class DesktopIndex:
                           or entry.get("Hidden", "").lower() == "true")
                 name = entry.get("Name", "") or f.stem
                 self._by_first.setdefault(tokens[0], []).append(
-                    (tokens[1:], name, entry.get("Icon", ""), hidden)
+                    (tokens[1:], name, entry.get("Icon", ""), hidden,
+                     coarse_category(entry.get("Categories", "")))
                 )
         for entries in self._by_first.values():
             # longest prefix first; among equals, visible entries before hidden ones
@@ -143,17 +179,17 @@ class DesktopIndex:
         candidates = self._by_first.get(first)
         if candidates:
             rest = [_basename(a) for a in argv[1:]]
-            for tail, name, icon, _hidden in candidates:
+            for tail, name, icon, _hidden, category in candidates:
                 if tuple(rest[:len(tail)]) == tail:
-                    return AppInfo(name=name, icon=icon)
+                    return AppInfo(name=name, icon=icon, category=category)
         # `bash /home/x/.local/share/Steam/steam.sh` is how Steam actually runs:
         # a wrapper script that stays alive as the parent of the real binary.
         # Name it after the script when a plain entry for that name exists.
         if first in _INTERPRETERS and len(argv) > 1 and not argv[1].startswith("-"):
             script = _basename(argv[1]).rsplit(".", 1)[0]
-            for tail, name, icon, _hidden in self._by_first.get(script, ()):
+            for tail, name, icon, _hidden, category in self._by_first.get(script, ()):
                 if not tail:
-                    return AppInfo(name=name, icon=icon)
+                    return AppInfo(name=name, icon=icon, category=category)
         return NONE
 
 
@@ -313,9 +349,10 @@ class AppResolver:
             icon = self.steam.icon(appid)
             argv0 = argv[0] if argv else ""
             if game and is_game_binary(argv0, name, installdir):
-                return AppInfo(name=game, icon=icon, steam_appid=appid)
+                return AppInfo(name=game, icon=icon, steam_appid=appid, category="Game")
             desktop = self.desktop.match(argv)
-            return AppInfo(name=desktop.name, icon=icon or desktop.icon, steam_appid=appid)
+            return AppInfo(name=desktop.name, icon=icon or desktop.icon, steam_appid=appid,
+                           category="Game")
         return self.desktop.match(argv)
 
     def forget(self, pid: int) -> None:

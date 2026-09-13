@@ -9,6 +9,7 @@ from PySide6.QtGui import QAction, QGuiApplication, QKeySequence
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
+    QComboBox,
     QDialog,
     QDialogButtonBox,
     QGridLayout,
@@ -25,9 +26,11 @@ from PySide6.QtWidgets import (
 )
 
 from ..actions import ActionError, UserBackend
+from ..appinfo import CATEGORIES
 from ..model import ProcSample
 from . import theme
 from .proc_model import (
+    COL_CATEGORY,
     COL_CMD,
     COL_CPU,
     COL_GPU,
@@ -129,6 +132,14 @@ class ProcessView(QWidget):
         self.search.setMinimumWidth(240)
         bar.addWidget(self.search, 2)
 
+        self.combo_category = QComboBox()
+        self.combo_category.addItem("All categories", "")
+        for c in CATEGORIES:
+            self.combo_category.addItem(c, c)
+        self.combo_category.setToolTip("Only programs of one kind, from their menu entry; "
+                                       "Steam games are Game.")
+        bar.addWidget(self.combo_category)
+
         self.cb_tree = QCheckBox("Tree")
         self.cb_tree.setChecked(self.settings.value("tree", True, type=bool))
         self.cb_tree.setToolTip("Nest processes under their parent (Steam → reaper → game).")
@@ -196,7 +207,7 @@ class ProcessView(QWidget):
         for col, w in (
             (COL_PID, 64), (COL_NAME, 280), (COL_CPU, 74), (COL_MEM, 86),
             (COL_GPU, 58), (COL_VRAM, 74), (COL_THREADS, 46), (COL_NICE, 48),
-            (COL_IO, 84), (COL_USER, 78), (COL_STATUS, 74),
+            (COL_IO, 84), (COL_USER, 78), (COL_STATUS, 74), (COL_CATEGORY, 104),
         ):
             self.table.setColumnWidth(col, w)
         outer.addWidget(self.table, 1)
@@ -215,6 +226,9 @@ class ProcessView(QWidget):
         self.search.textChanged.connect(self.proxy.set_text)
         self.cb_tree.toggled.connect(self._set_tree)
         self.cb_all.toggled.connect(self._set_show_all)
+        self.combo_category.currentIndexChanged.connect(
+            lambda i: self.proxy.set_flag("category", self.combo_category.itemData(i))
+        )
         self.cb_gpu.toggled.connect(lambda v: self.proxy.set_flag("only_gpu", v))
         # A collapsed program row shows the totals of its tree; the model needs
         # to know which rows are open to decide that.

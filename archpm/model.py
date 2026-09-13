@@ -43,6 +43,7 @@ class ProcSample:
     owned: bool = False          # runs under our own uid
     app_name: str = ""           # "Cyberpunk 2077", "Brave Web Browser"; "" if unknown
     icon: str = ""               # icon theme name or file path; "" if none
+    category: str = ""           # "Game", "Browser", ... for a program; "" otherwise
 
     @property
     def mem_mb(self) -> float:
