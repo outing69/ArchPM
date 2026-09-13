@@ -166,7 +166,12 @@ class ProcessView(QWidget):
         )
         self.table.setModel(self.proxy)
         self.table.setSortingEnabled(True)
-        self.table.sortByColumn(COL_CPU, Qt.SortOrder.DescendingOrder)
+        # Sorted by name by default: sorting on a live value (CPU%) makes rows
+        # trade places every tick, which is unbearable in a tree. The last
+        # chosen sort is remembered.
+        col = self.settings.value("sort_column", COL_NAME, type=int)
+        order = self.settings.value("sort_order", int(Qt.SortOrder.AscendingOrder), type=int)
+        self.table.sortByColumn(col, Qt.SortOrder(order))
         self.table.setAlternatingRowColors(True)
         self.table.setUniformRowHeights(True)   # required for fast layout of ~500 rows
         self.table.setIndentation(16)
@@ -206,6 +211,7 @@ class ProcessView(QWidget):
         self.proxy.modelReset.connect(self._auto_done.clear)
 
         # -- behaviour -----------------------------------------------------
+        header.sortIndicatorChanged.connect(self._remember_sort)
         self.search.textChanged.connect(self.proxy.set_text)
         self.cb_tree.toggled.connect(self._set_tree)
         self.cb_mine.toggled.connect(lambda v: self.proxy.set_flag("only_mine", v))
@@ -240,6 +246,10 @@ class ProcessView(QWidget):
     def _set_frozen(self, frozen: bool) -> None:
         self.model.frozen = frozen
         self.proxy.setDynamicSortFilter(not frozen)
+
+    def _remember_sort(self, column: int, order: Qt.SortOrder) -> None:
+        self.settings.setValue("sort_column", column)
+        self.settings.setValue("sort_order", int(order))
 
     def _set_tree(self, on: bool) -> None:
         self.settings.setValue("tree", on)
