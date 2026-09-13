@@ -170,7 +170,7 @@ class ProcessView(QWidget):
         # trade places every tick, which is unbearable in a tree. The last
         # chosen sort is remembered.
         col = self.settings.value("sort_column", COL_NAME, type=int)
-        order = self.settings.value("sort_order", int(Qt.SortOrder.AscendingOrder), type=int)
+        order = self.settings.value("sort_order", Qt.SortOrder.AscendingOrder.value, type=int)
         self.table.sortByColumn(col, Qt.SortOrder(order))
         self.table.setAlternatingRowColors(True)
         self.table.setUniformRowHeights(True)   # required for fast layout of ~500 rows
@@ -249,7 +249,7 @@ class ProcessView(QWidget):
 
     def _remember_sort(self, column: int, order: Qt.SortOrder) -> None:
         self.settings.setValue("sort_column", column)
-        self.settings.setValue("sort_order", int(order))
+        self.settings.setValue("sort_order", order.value)
 
     def _set_tree(self, on: bool) -> None:
         self.settings.setValue("tree", on)
