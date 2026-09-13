@@ -94,7 +94,7 @@ def running_owner(item: CleanupItem, procs) -> str:
                 continue  # kernel threads such as irq/84-nvidia own no cache
             name = p.name.lower()
             if known is not None:
-                hit = any(n == name or (len(n) >= 4 and n in name) for n in known)
+                hit = name in known   # exact: Brave's chrome_crashpad_handler is not Chrome
             else:
                 hit = name == folder.lower()   # unknown folder: exact name only
             if hit:

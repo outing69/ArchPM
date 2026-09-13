@@ -120,7 +120,8 @@ class RunningOwner(unittest.TestCase):
                  ProcSample(pid=4, name="spotify", cmdline="spotify"),
                  ProcSample(pid=5, name="irq/84-nvidia"),                       # kernel thread
                  ProcSample(pid=6, name="protonvpn-app", app_name="Proton VPN",
-                            cmdline="protonvpn-app")]
+                            cmdline="protonvpn-app"),
+                 ProcSample(pid=7, name="chrome_crashpad_handler", cmdline="x")]
         brave = cleanup.CleanupItem("cache:BraveSoftware", "Brave cache", "", 1)
         jet = cleanup.CleanupItem("cache:JetBrains", "JetBrains cache", "", 1)
         doom = cleanup.CleanupItem("shader:/lib:3017860", "Shader cache: DOOM", "", 1)
@@ -139,6 +140,8 @@ class RunningOwner(unittest.TestCase):
         proton = cleanup.CleanupItem("cache:Proton", "Proton cache", "", 1)
         self.assertEqual(cleanup.running_owner(nvidia, procs), "", "kernel thread is no owner")
         self.assertEqual(cleanup.running_owner(proton, procs), "", "Proton VPN is not Proton")
+        chrome = cleanup.CleanupItem("cache:google-chrome", "Chrome cache", "", 1)
+        self.assertEqual(cleanup.running_owner(chrome, procs), "", "Brave's crashpad is not Chrome")
 
 
 class Deleting(Scanning):
