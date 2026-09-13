@@ -54,7 +54,8 @@ def human_bytes(n: float, suffix: str = "B") -> str:
 class Card(QFrame):
     """Panel with a title; the standard container on the dashboard."""
 
-    def __init__(self, title: str = "", parent: QWidget | None = None) -> None:
+    def __init__(self, title: str = "", parent: QWidget | None = None,
+                 color: str | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("card")
         self.setStyleSheet(
@@ -71,7 +72,9 @@ class Card(QFrame):
             f.setBold(True)
             f.setLetterSpacing(QFont.SpacingType.AbsoluteSpacing, 1.1)
             lbl.setFont(f)
-            lbl.setStyleSheet(f"color: {theme.MUTED};")
+            # The title takes the colour of the data it frames (CPU yellow, GPU
+            # purple, ...) so the reader links the two at a glance.
+            lbl.setStyleSheet(f"color: {color or theme.LABEL};")
             lay.addWidget(lbl)
         self.body = lay
 
@@ -325,7 +328,7 @@ class StatTile(QFrame):
         tf.setPointSize(8)
         tf.setBold(True)
         self._title.setFont(tf)
-        self._title.setStyleSheet(f"color: {theme.MUTED};")
+        self._title.setStyleSheet(f"color: {color if color != theme.TEXT else theme.LABEL};")
         self._value = QLabel("--")
         self._value.setFont(mono(15, bold=True))
         self._value.setStyleSheet(f"color: {color};")

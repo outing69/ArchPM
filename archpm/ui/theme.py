@@ -18,6 +18,7 @@ BORDER_HI = "#39404f"
 TEXT = "#e7eaf2"
 MUTED = "#868fa4"
 FAINT = "#5c6478"
+LABEL = "#aab3c8"          # card and tile titles without a series colour of their own
 
 # -- roles ---------------------------------------------------------------
 ACCENT = "#f5c542"        # yellow: highlight

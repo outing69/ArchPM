@@ -63,7 +63,7 @@ class GameCard(Card):
     """What is my game doing right now: one process, its tree, its last minutes."""
 
     def __init__(self, ncpu: int, parent=None) -> None:
-        super().__init__("game", parent)
+        super().__init__("game", parent, color=theme.ACCENT)
         self.ncpu = ncpu
         self.pid = 0
         self._affinity: tuple[int, int, int] = (0, 0, 0)  # pid, cores, tick
@@ -89,8 +89,8 @@ class GameCard(Card):
         self.t_gpu = StatTile("gpu", theme.GPU)
         self.t_vram = StatTile("vram", theme.GPU)
         self.t_mem = StatTile("ram", theme.MEM)
-        self.t_thr = StatTile("threads")
-        self.t_cores = StatTile("cores")
+        self.t_thr = StatTile("threads", theme.CPU)
+        self.t_cores = StatTile("cores", theme.CPU)
         for t in (self.t_cpu, self.t_gpu, self.t_vram, self.t_mem, self.t_thr, self.t_cores):
             self.tiles.addWidget(t)
         left.addLayout(self.tiles)
@@ -257,9 +257,9 @@ class Dashboard(QWidget):
         tiles = QHBoxLayout()
         tiles.setSpacing(10)
         self.t_cpu = StatTile("cpu", theme.CPU)
-        self.t_cputemp = StatTile("cpu temp")
+        self.t_cputemp = StatTile("cpu temp", theme.CPU)
         self.t_gpu = StatTile("gpu", theme.GPU)
-        self.t_gputemp = StatTile("gpu temp")
+        self.t_gputemp = StatTile("gpu temp", theme.GPU)
         self.t_mem = StatTile("memory", theme.MEM)
         self.t_vram = StatTile("vram", theme.GPU)
         for t in (self.t_cpu, self.t_cputemp, self.t_gpu, self.t_gputemp, self.t_mem, self.t_vram):
@@ -271,7 +271,7 @@ class Dashboard(QWidget):
         outer.addLayout(grid, 1)
 
         # -- CPU -----------------------------------------------------------
-        cpu_card = Card("processor")
+        cpu_card = Card("processor", color=theme.CPU)
         self.g_cpu = Graph([("total", theme.CPU)], maximum=100.0)
         cpu_card.body.addWidget(self.g_cpu, 1)
         self.cores = CoreGrid()
@@ -279,7 +279,7 @@ class Dashboard(QWidget):
         grid.addWidget(cpu_card, 0, 0)
 
         # -- GPU -----------------------------------------------------------
-        gpu_card = Card("graphics card")
+        gpu_card = Card("graphics card", color=theme.GPU)
         self.g_gpu = Graph([("sm", theme.GPU), ("vram", theme.DISK)], maximum=100.0)
         gpu_card.body.addWidget(self.g_gpu, 1)
         self.gpu_sub = QLabel("--")
@@ -289,7 +289,7 @@ class Dashboard(QWidget):
         grid.addWidget(gpu_card, 0, 1)
 
         # -- memory --------------------------------------------------------
-        mem_card = Card("memory")
+        mem_card = Card("memory", color=theme.MEM)
         self.g_mem = Graph([("ram", theme.MEM), ("swap", theme.SWAP)], maximum=100.0)
         mem_card.body.addWidget(self.g_mem, 1)
         self.mem_sub = QLabel("--")
@@ -299,7 +299,7 @@ class Dashboard(QWidget):
         grid.addWidget(mem_card, 1, 0)
 
         # -- I/O -----------------------------------------------------------
-        io_card = Card("network & disk")
+        io_card = Card("network & disk", color=theme.NET)
         self.g_net = Graph([("net ↓", theme.NET), ("net ↑", theme.CPU)], maximum=None, fill=False)
         self.g_net.set_formatter(lambda v: f"{human_bytes(v)}/s")
         io_card.body.addWidget(self.g_net, 1)
@@ -318,15 +318,15 @@ class Dashboard(QWidget):
         row = QHBoxLayout()
         row.setSpacing(18)
         cpu_col = QVBoxLayout()
-        cpu_col.addWidget(self._sublabel("cpu · of all cores"))
+        cpu_col.addWidget(self._sublabel("cpu · of all cores", theme.CPU))
         self.top_cpu = TopProcList(theme.CPU, "%")
         cpu_col.addWidget(self.top_cpu)
         mem_col = QVBoxLayout()
-        mem_col.addWidget(self._sublabel("memory"))
+        mem_col.addWidget(self._sublabel("memory", theme.MEM))
         self.top_mem = TopProcList(theme.MEM, " MB")
         mem_col.addWidget(self.top_mem)
         gpu_col = QVBoxLayout()
-        gpu_col.addWidget(self._sublabel("vram"))
+        gpu_col.addWidget(self._sublabel("vram", theme.GPU))
         self.top_gpu = TopProcList(theme.GPU, " MB")
         gpu_col.addWidget(self.top_gpu)
         for col in (cpu_col, mem_col, gpu_col):
@@ -369,13 +369,13 @@ class Dashboard(QWidget):
         self.btn_root.style().polish(self.btn_root)
 
     @staticmethod
-    def _sublabel(text: str) -> QLabel:
+    def _sublabel(text: str, color: str = theme.LABEL) -> QLabel:
         lbl = QLabel(text.upper())
         f = lbl.font()
         f.setPointSize(7)
         f.setBold(True)
         lbl.setFont(f)
-        lbl.setStyleSheet(f"color: {theme.MUTED};")
+        lbl.setStyleSheet(f"color: {color};")
         return lbl
 
     # ------------------------------------------------------------------
