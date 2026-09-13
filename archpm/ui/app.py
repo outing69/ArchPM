@@ -245,7 +245,6 @@ class MainWindow(QMainWindow):
 def main() -> int:
     app = QApplication(sys.argv)
     app.setApplicationName(APP_NAME)
-    app.setApplicationDisplayName(APP_NAME)
     app.setOrganizationName("archpm")
     app.setDesktopFileName("archpm")
     theme.apply(app)

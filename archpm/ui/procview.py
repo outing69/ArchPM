@@ -200,13 +200,11 @@ class ProcessView(QWidget):
         outer.addWidget(self.table, 1)
 
         # Collapsed by default, or a browser's twenty renderers bury everything.
-        # Exceptions, applied once per process the first time it is seen (so
-        # what you collapse stays collapsed): the top two levels (init and your
-        # session, which is where your programs live) and single-child chains
-        # such as reaper -> srt-bwrap -> pv-adverb, which would otherwise cost
-        # three clicks to reach a game. Done after each update rather than on
-        # rowsInserted: the proxy maps deeper rows lazily and emits nothing
-        # for them until the view looks.
+        # The one exception, applied once per process the first time it is
+        # seen (so what you collapse stays collapsed): the top two levels, init
+        # and your session, which is where your programs live. Done after each
+        # update rather than on rowsInserted: the proxy maps deeper rows lazily
+        # and emits nothing for them until the view looks.
         self._auto_done: set[int] = set()
         self.proxy.modelReset.connect(self._auto_done.clear)
 
@@ -269,8 +267,9 @@ class ProcessView(QWidget):
                 if children:
                     pending.append((index, depth + 1))
                     pid = index.data(PID_ROLE)
-                    if pid not in self._auto_done and (depth <= 1 or children == 1):
-                        self.table.expand(index)
+                    if pid not in self._auto_done:
+                        if depth <= 1:
+                            self.table.expand(index)
                         self._auto_done.add(pid)
 
     # -- selection --------------------------------------------------------

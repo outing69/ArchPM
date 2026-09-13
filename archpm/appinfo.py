@@ -141,12 +141,19 @@ class DesktopIndex:
             return NONE
         first = _basename(argv[0])
         candidates = self._by_first.get(first)
-        if not candidates:
-            return NONE
-        rest = [_basename(a) for a in argv[1:]]
-        for tail, name, icon, _hidden in candidates:
-            if tuple(rest[:len(tail)]) == tail:
-                return AppInfo(name=name, icon=icon)
+        if candidates:
+            rest = [_basename(a) for a in argv[1:]]
+            for tail, name, icon, _hidden in candidates:
+                if tuple(rest[:len(tail)]) == tail:
+                    return AppInfo(name=name, icon=icon)
+        # `bash /home/x/.local/share/Steam/steam.sh` is how Steam actually runs:
+        # a wrapper script that stays alive as the parent of the real binary.
+        # Name it after the script when a plain entry for that name exists.
+        if first in _INTERPRETERS and len(argv) > 1 and not argv[1].startswith("-"):
+            script = _basename(argv[1]).rsplit(".", 1)[0]
+            for tail, name, icon, _hidden in self._by_first.get(script, ()):
+                if not tail:
+                    return AppInfo(name=name, icon=icon)
         return NONE
 
 

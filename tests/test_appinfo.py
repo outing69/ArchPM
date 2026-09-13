@@ -146,6 +146,15 @@ class DesktopMatching(unittest.TestCase):
         self.assertEqual(self.index.match(["konsole", "--profile", "x"]).name,
                          "Konsole (hidden variant)")
 
+    def test_wrapper_script_is_named_after_its_script(self):
+        write(self.system / "steam.desktop", "[Desktop Entry]\nType=Application\nName=Steam\n"
+                                              "Exec=/usr/bin/steam %U\nIcon=steam\n")
+        self.index.scan()
+        info = self.index.match(["bash", "/home/alex/.local/share/Steam/steam.sh", "-srt-logger"])
+        self.assertEqual((info.name, info.icon), ("Steam", "steam"))
+        self.assertFalse(self.index.match(["bash", "-c", "steam.sh"]), "options are not scripts")
+        self.assertFalse(self.index.match(["bash", "/usr/bin/limine-snapper-notify"]))
+
     def test_non_applications_and_unknown_commands_give_nothing(self):
         self.assertFalse(self.index.match(["kwin_wayland"]))
         self.assertFalse(self.index.match([]))
