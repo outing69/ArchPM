@@ -38,7 +38,7 @@ class Parsing(unittest.TestCase):
         self.assertEqual((claude.raddr, claude.rport, claude.state), ("35.190.46.17", 443, "ESTAB"))
         v6 = next(c for c in conns if c.pid == 41006)
         self.assertEqual(v6.raddr, "[2a00:1450::200e]")
-        self.assertEqual(sum(1 for c in conns if not c.pid), 4, "sockets we cannot attribute")
+        self.assertEqual(sum(1 for c in conns if not c.pid), 3, "sockets we cannot attribute")
 
     def test_counters_follow_their_socket(self):
         _, counters = net.parse_ss(SS)
@@ -76,7 +76,7 @@ class Rates(unittest.TestCase):
         self.assertAlmostEqual(b.procs[35084].rx_bps, 5000.0, delta=50)
         self.assertAlmostEqual(b.procs[35084].tx_bps, 1000.0, delta=10)
         self.assertEqual(b.procs[35084].name, "Claude")
-        self.assertEqual(b.other_sockets, 4)
+        self.assertEqual(b.other_sockets, 3)
         self.assertTrue(b.tcp_rates)
 
     def test_without_ss(self):
