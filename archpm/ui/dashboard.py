@@ -150,7 +150,7 @@ class GameCard(Card):
         started = age_text(time.time() - game.create_time) if game.create_time else "?"
         self.lbl_sub.setText(f"running {started}  ·  nice {game.nice}"
                              + (f"  ·  {game.name}" if game.app_name else ""))
-        self.t_cpu.set(f"{cpu:.0f}%", f"of {100 * self.ncpu}% total",
+        self.t_cpu.set(f"{cpu / self.ncpu:.0f}%", f"of the whole CPU · {cpu / 100:.1f} cores",
                        theme.heat(cpu / self.ncpu).name())
         self.t_gpu.set(f"{gpu:.0f}%", "sm", theme.heat(gpu).name())
         self.t_vram.set(f"{vram / 1024:.1f} G", f"{vram:.0f} MB")
@@ -318,7 +318,7 @@ class Dashboard(QWidget):
         row = QHBoxLayout()
         row.setSpacing(18)
         cpu_col = QVBoxLayout()
-        cpu_col.addWidget(self._sublabel("cpu"))
+        cpu_col.addWidget(self._sublabel("cpu · of all cores"))
         self.top_cpu = TopProcList(theme.CPU, "%")
         cpu_col.addWidget(self.top_cpu)
         mem_col = QVBoxLayout()
@@ -422,10 +422,12 @@ class Dashboard(QWidget):
 
         procs = snap.procs
         self.game.update_view(procs, self.history)
+        # Shown as a share of the whole machine, like the CPU tile above it;
+        # "135%" (top's one-core notation) reads as an error to most people.
         self.top_cpu.set_items(
-            [(p.display_name, p.pid, p.cpu_percent, p.icon)
+            [(p.display_name, p.pid, p.cpu_percent / self.ncpu, p.icon)
              for p in sorted(procs, key=lambda x: x.cpu_percent, reverse=True)[:5]],
-            scale=100.0 * self.ncpu,
+            scale=100.0,
         )
         self.top_mem.set_items(
             [(p.display_name, p.pid, p.mem_mb, p.icon)

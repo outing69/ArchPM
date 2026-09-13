@@ -123,8 +123,18 @@ class Sampler:
                 steam_appid=app.steam_appid,
             ))
 
+        self._name_game_roots(procs)
         sys_sample = self._system(now, len(procs), threads)
         return Snapshot(system=sys_sample, procs=procs)
+
+    def _name_game_roots(self, procs: list[ProcSample]) -> None:
+        """Steam's "reaper" is the top of every game's tree. Give that root the
+        game's name too, so a collapsed Steam shows "DOOM: The Dark Ages" as
+        its child rather than "reaper". The real name stays in the tooltip."""
+        appid_of = {p.pid: p.steam_appid for p in procs if p.steam_appid}
+        for p in procs:
+            if p.steam_appid and not p.app_name and appid_of.get(p.ppid) != p.steam_appid:
+                p.app_name = self.apps.steam.name(p.steam_appid)
 
     # ------------------------------------------------------------------
     def _io_rates(self, pid: int, p: psutil.Process, now: float) -> tuple[float, float]:
