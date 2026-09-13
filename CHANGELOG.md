@@ -5,6 +5,11 @@ All notable changes, newest first. Versions are git tags on
 
 ## Unreleased
 
+- Plasma's task manager and tooltips show "ArchPM" instead of "python3": the
+  install script rebuilds Plasma's service cache after installing the menu entry.
+- End the detected game from the tray icon's menu or from the widget's popup
+  (second click within five seconds confirms), without opening the app.
+- The widget says GB and MB like the app.
 - Overview reads in plain words: Download/Upload, GPU load, Disk read/write,
   Processor for the CPU temperature, "58% of 15 G"; labels start with a capital.
   Help explains each of them. The CPU tile names the processor ("7800X3D"),
