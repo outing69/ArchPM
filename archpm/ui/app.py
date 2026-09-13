@@ -121,8 +121,11 @@ class MainWindow(QMainWindow):
         self.tabs.addTab(self.cleanup, "Cleanup")
         self.cleanup.leave.connect(lambda: self.tabs.setCurrentIndex(0))
         self.cleanup.status.connect(self._flash)
-        self.tabs.addTab(HelpView(), "Help")
+        self.help = HelpView()
+        self.tabs.addTab(self.help, "Help")
         self.setCentralWidget(self.tabs)
+        for view in (self.dashboard, self.procs, self.network, self.startup, self.cleanup):
+            view.help_requested.connect(self._show_help)
 
         self.procs.status.connect(self._flash)
         self.startup.status.connect(self._flash)
@@ -261,6 +264,10 @@ class MainWindow(QMainWindow):
                 failed += 1
         self._flash(f"{name}: asked {done} process(es) to quit"
                     + (f", {failed} refused" if failed else ""))
+
+    def _show_help(self, term: str) -> None:
+        self.help.show_term(term)
+        self.tabs.setCurrentWidget(self.help)
 
     # -- data -------------------------------------------------------------
     def _on_sample(self, snap: Snapshot) -> None:

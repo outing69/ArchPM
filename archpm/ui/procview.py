@@ -30,7 +30,7 @@ from PySide6.QtWidgets import (
 from ..actions import ActionError, UserBackend
 from ..appinfo import CATEGORIES
 from ..model import ProcSample
-from . import theme
+from . import hints, theme
 from .history import ProcHistory
 from .proc_model import (
     COL_CATEGORY,
@@ -47,6 +47,8 @@ from .proc_model import (
     COL_THREADS,
     COL_USER,
     COL_VRAM,
+    HEADERS,
+    HINT_KEYS,
     PID_ROLE,
     ProcFilter,
     ProcModel,
@@ -161,6 +163,7 @@ class HistoryPanel(QWidget):
 
 class ProcessView(QWidget):
     status = Signal(str)
+    help_requested = Signal(str)
 
     def __init__(self, ncpu: int, backend: UserBackend, history: ProcHistory | None = None,
                  parent=None) -> None:
@@ -258,6 +261,15 @@ class ProcessView(QWidget):
         header.setSectionResizeMode(COL_CMD, QHeaderView.ResizeMode.Stretch)
         header.setStretchLastSection(True)
         header.setHighlightSections(False)
+        # Right-click on a header: explain the column in Help, or tick columns
+        # on and off. Nice, User and Status are off by default: they answer
+        # questions a beginner does not ask yet.
+        hints.attach_header(
+            header, HINT_KEYS, self.help_requested.emit, names=HEADERS,
+            hideable=(COL_PID, COL_GPU, COL_VRAM, COL_THREADS, COL_NICE, COL_IO, COL_USER,
+                      COL_STATUS, COL_STARTED, COL_CATEGORY, COL_CMD),
+            settings=self.settings, default_hidden=(COL_NICE, COL_USER, COL_STATUS),
+        )
         # Draw the tree (arrows, indentation) in the Name column and show that
         # column first; PID stays a plain narrow column.
         self.table.setTreePosition(COL_NAME)

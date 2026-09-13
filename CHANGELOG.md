@@ -3,6 +3,17 @@
 All notable changes, newest first. Versions are git tags on
 [github.com/outing69/ArchPM](https://github.com/outing69/ArchPM).
 
+## Unreleased
+
+- Hover over anything and it explains itself: every tile, graph, top list and
+  column header has a one-line tooltip, and the Overview tiles add an "is this
+  normal?" line with the ranges to expect at idle and in a game.
+- Right-click a tile, graph or column header → "Explain … in Help" opens the
+  Help tab on that term, highlighted.
+- Processes: right-click a column header to tick columns on and off. Nice,
+  User and Status start hidden; the choice is remembered.
+- Help: the terms Category and User.
+
 ## 0.1.8 — 2026-09-13
 
 - New **Network** tab, between Processes and Startup: your interfaces with

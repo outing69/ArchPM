@@ -18,11 +18,13 @@ from PySide6.QtWidgets import (
 
 from ..model import ProcSample, Snapshot
 from ..net import Conn, NetSnapshot, ProcNet
-from . import theme
+from . import hints, theme
 from .widgets import Card, app_icon, human_bytes, mono
 
 COL_NAME, COL_CONNS, COL_RX, COL_TX, COL_LISTEN, COL_INFO = range(6)
 HEADERS = ["Program", "Connections", "Download", "Upload", "Listening", "Details"]
+HINT_KEYS = ["net.program", "net.connections", "net.download", "net.upload", "net.listening",
+             "net.details"]
 RIGHT = int(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
 
 
@@ -32,6 +34,7 @@ def _rate(v: float) -> str:
 
 class NetworkView(QWidget):
     status = Signal(str)
+    help_requested = Signal(str)
 
     def __init__(self, services, parent=None) -> None:
         super().__init__(parent)
@@ -81,6 +84,7 @@ class NetworkView(QWidget):
         self.grid_if.setVerticalSpacing(3)
         self.card_if.body.addLayout(self.grid_if)
         top.addWidget(self.card_if, 1)
+        hints.attach(self.card_if, "net.interfaces", self.help_requested.emit)
         self.card_doors = Card("open doors", color=theme.WARN)
         self.lbl_doors = QLabel("")
         self.lbl_doors.setWordWrap(True)
@@ -88,6 +92,7 @@ class NetworkView(QWidget):
         self.lbl_doors.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         self.card_doors.body.addWidget(self.lbl_doors)
         top.addWidget(self.card_doors, 1)
+        hints.attach(self.card_doors, "net.doors", self.help_requested.emit)
         outer.addLayout(top)
 
         self.tree = QTreeWidget()
@@ -107,6 +112,8 @@ class NetworkView(QWidget):
         for col, w in ((COL_NAME, 300), (COL_CONNS, 100), (COL_RX, 100), (COL_TX, 100),
                        (COL_LISTEN, 90)):
             self.tree.setColumnWidth(col, w)
+        hints.header_tooltips(self.tree, HINT_KEYS)
+        hints.attach_header(header, HINT_KEYS, self.help_requested.emit)
         self.tree.itemExpanded.connect(lambda i: self._expanded.add(i.text(COL_NAME)))
         self.tree.itemCollapsed.connect(lambda i: self._expanded.discard(i.text(COL_NAME)))
         outer.addWidget(self.tree, 1)

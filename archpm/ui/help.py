@@ -33,6 +33,10 @@ class HelpView(QWidget):
         f.setBold(True)
         title.setFont(f)
         head.addWidget(title)
+        how = QLabel("Hover over any tile, graph or column header for a one-line explanation; "
+                     "right-click it to land here.")
+        how.setStyleSheet(f"color: {theme.MUTED};")
+        head.addWidget(how)
         head.addStretch(1)
         self.search = QLineEdit()
         self.search.setPlaceholderText("Search the glossary… e.g. nice, VRAM, SIGKILL")
@@ -51,7 +55,16 @@ class HelpView(QWidget):
         self.body_lay.setSpacing(10)
         self.scroll.setWidget(self.body)
         outer.addWidget(self.scroll, 1)
+        self._focus = ""
         self._rebuild("")
+
+    def show_term(self, name: str) -> None:
+        """Open the glossary on one term (right-click → Help anywhere in the app)."""
+        self._focus = name
+        if self.search.text() == name:
+            self._rebuild(name)
+        else:
+            self.search.setText(name)
 
     # -- building ------------------------------------------------------------
     def _clear(self) -> None:
@@ -78,6 +91,11 @@ class HelpView(QWidget):
                 name = QLabel(term.name)
                 name.setFont(mono(9.5, bold=True))
                 name.setStyleSheet(f"color: {theme.ACCENT};")
+                if term.name == self._focus:
+                    # Only the words get the mark, not the whole cell.
+                    name.setTextFormat(Qt.TextFormat.RichText)
+                    name.setText(f"<span style='background:{theme.ACCENT_DIM};"
+                                 f" color:{theme.TEXT}'>&nbsp;{term.name}&nbsp;</span>")
                 name.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignTop)
                 name.setMinimumWidth(170)
                 name.setWordWrap(True)

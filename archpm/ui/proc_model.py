@@ -18,6 +18,7 @@ from PySide6.QtGui import QColor
 from ..appinfo import describe
 from ..model import ProcSample
 from . import theme
+from .hints import tooltip_html
 from .widgets import app_icon, human_bytes
 
 SORT_ROLE = Qt.ItemDataRole.UserRole + 1
@@ -29,6 +30,10 @@ COL_PID, COL_NAME, COL_CPU, COL_MEM, COL_GPU, COL_VRAM, COL_THREADS, \
 HEADERS = [
     "PID", "Name", "CPU %", "Memory", "GPU %", "VRAM", "Thr",
     "Nice", "Disk I/O", "User", "Status", "Started", "Category", "Command",
+]
+HINT_KEYS = [
+    "col.pid", "col.name", "col.cpu", "col.mem", "col.gpu", "col.vram", "col.threads",
+    "col.nice", "col.io", "col.user", "col.status", "col.started", "col.category", "col.cmd",
 ]
 
 
@@ -156,6 +161,8 @@ class ProcModel(QAbstractItemModel):
             if section == COL_CPU and self.normalize_cpu:
                 return "CPU % (norm)"
             return HEADERS[section]
+        if orientation == Qt.Orientation.Horizontal and role == Qt.ItemDataRole.ToolTipRole:
+            return tooltip_html(HINT_KEYS[section])
         return None
 
     def data(self, index: QModelIndex, role=Qt.ItemDataRole.DisplayRole):

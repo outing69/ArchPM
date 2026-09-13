@@ -18,17 +18,20 @@ from PySide6.QtWidgets import (
 )
 
 from ..autostart import Autostart, StartupEntry, running_pids
-from . import theme
+from . import hints, theme
 from .widgets import app_icon
 
 COL_ON, COL_NAME, COL_DESC, COL_STATE, COL_KIND, COL_SOURCE = range(6)
 HEADERS = ["", "Name", "What it does", "Status", "Kind", "Source"]
+HINT_KEYS = ["startup.on", "startup.name", "startup.what", "startup.status", "startup.kind",
+             "startup.source"]
 KIND_ORDER = {"App": 0, "System": 1, "Desktop": 2}
 KIND_LABEL = {"App": "App", "System": "System", "Desktop": "Desktop · keep on"}
 
 
 class StartupView(QWidget):
     status = Signal(str)
+    help_requested = Signal(str)
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -89,6 +92,8 @@ class StartupView(QWidget):
         for col, w in ((COL_ON, 36), (COL_NAME, 250), (COL_STATE, 170), (COL_KIND, 140),
                        (COL_SOURCE, 120)):
             self.table.setColumnWidth(col, w)
+        hints.header_tooltips(self.table, HINT_KEYS)
+        hints.attach_header(header, HINT_KEYS, self.help_requested.emit)
         self.table.itemChanged.connect(self._toggled)
         outer.addWidget(self.table, 1)
 

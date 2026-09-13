@@ -217,7 +217,9 @@ the package, or the polkit policy file will conflict.
   saves and settings are never touched.
 - **Help** — a searchable glossary in plain language (what nice -5 means, what a
   PID is, SIGTERM versus SIGKILL, why root is asked), what the colours mean, and
-  About with version, links and the changelog.
+  About with version, links and the changelog. Every tile, graph and column
+  header has a one-line tooltip with an "is this normal?" range where it
+  helps; right-click it to open the term in Help.
 
 ## What you can do with it
 

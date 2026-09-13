@@ -62,6 +62,17 @@ GLOSSARY: tuple[Section, ...] = (
              "The exact command line the process was started with, including its options. "
              "Useful to tell a browser tab from the browser itself.",
              "Command column, tooltip on the name"),
+        Term("Category",
+             "What kind of program it is, taken from its menu entry: Game, Internet, "
+             "Office, System and so on. Steam games are Game. Processes without a menu "
+             "entry have no category; that is normal for helpers and services.",
+             "Processes tab, Category column and dropdown"),
+        Term("User",
+             "Whose process it is. Almost everything you see is yours; root owns the "
+             "system's services and other names belong to services that run under their "
+             "own account (for example \"nobody\" or \"systemd-network\"). ArchPM can only "
+             "act on your own processes unless you unlock root.",
+             "Processes tab, User column"),
         Term("Show all processes",
              "Off, the list shows your own programs (anything with a menu entry or a Steam "
              "game) plus whatever is actually busy. On, it shows every process on the "
@@ -254,6 +265,149 @@ COLOURS: tuple[tuple[str, str], ...] = (
     ("Grey", "Context. Dimmed text is there when you need it and quiet when you don't: "
              "command lines, users, descriptions, other desktops' startup entries."),
 )
+
+
+@dataclass(frozen=True)
+class Hint:
+    """One sentence for a tooltip, an optional "is this normal?" line, and the
+    glossary term that explains it in full (right-click → Help)."""
+    text: str
+    term: str = ""
+    normal: str = ""
+
+
+HINTS: dict[str, Hint] = {
+    # -- Overview tiles ------------------------------------------------------
+    "tile.cpu": Hint(
+        "How busy the whole processor is, all cores together.", "CPU %",
+        "Idle desktop 1–5%. A browser playing video 10–20%. A game 20–60%. "
+        "Stuck at 100% with nothing open: look at Top processes."),
+    "tile.cpu temp": Hint(
+        "The processor's temperature (Tctl on AMD).", "CPU temperature",
+        "Idle 40–55°. Gaming 60–85° is fine; modern CPUs are built to run up to about 95° "
+        "and slow themselves down before harm."),
+    "tile.gpu": Hint(
+        "How hard the graphics card is working.", "GPU load",
+        "Idle 0–5%. In a game 90–100% is what you want: the card is fully used. Much "
+        "lower with a low frame rate means the CPU is holding it back."),
+    "tile.gpu temp": Hint(
+        "The graphics card's temperature and fan speed.", "GPU temperature and fan",
+        "Idle 30–45°. Gaming 60–80°. Above 85° check dust and case airflow."),
+    "tile.memory": Hint(
+        "RAM in use by programs, as a share of what the PC has.", "Memory (RSS)",
+        "Linux keeps spare RAM as cache, so a high number is not a problem by itself. "
+        "It matters when Swap is rising too."),
+    "tile.vram": Hint(
+        "Graphics memory in use, mostly by games.", "VRAM",
+        "A game fills most of it on purpose (textures loaded ahead). Full VRAM plus "
+        "stutter means the game's settings are too high for this card."),
+    # -- Overview cards --------------------------------------------------------
+    "graph.cpu": Hint(
+        "Total processor use over the last minutes, and one bar per core below.",
+        "Core strip",
+        "One tall bar with the rest low: a program that can only use one core. "
+        "That is common and not a fault."),
+    "graph.gpu": Hint(
+        "Purple: how hard the card works. Pink: how full its memory is.", "GPU load",
+        "In a game the purple line sits high and flat. Pink climbs when a level loads."),
+    "graph.mem": Hint(
+        "Green: RAM in use. Orange: swap in use.", "Swap and zram",
+        "Swap a little above zero is fine. Swap climbing while RAM is full means the PC "
+        "is short of memory: close something."),
+    "graph.net": Hint(
+        "Download and upload of the whole PC, every interface together.",
+        "Download and upload",
+        "Spikes when a page loads or Steam updates; a steady stream while you do "
+        "nothing deserves a look at the Network tab."),
+    "graph.disk": Hint(
+        "Bytes read from and written to disk per second.", "Disk read and write",
+        "Big reads when a game loads a level. Constant writes with nothing open: "
+        "a backup, an index, or a browser cache at work."),
+    "top.cpu": Hint(
+        "The five programs using the most processor right now, as a share of all cores.",
+        "CPU %"),
+    "top.mem": Hint("The five programs using the most RAM.", "Memory (RSS)"),
+    "top.vram": Hint("The five programs holding the most graphics memory.", "VRAM"),
+    # -- game card ---------------------------------------------------------------
+    "game.cpu": Hint(
+        "Processor used by the game and everything it started, as a share of all cores.",
+        "CPU %", "Most games use two to six cores' worth; the rest of the CPU sits idle."),
+    "game.gpu": Hint("How hard the game works the graphics card.", "GPU load",
+                     "90–100% is the card fully used, which is what you want."),
+    "game.vram": Hint("Graphics memory held by the game.", "VRAM"),
+    "game.ram": Hint("RAM held by the game's whole process tree.", "Memory (RSS)"),
+    "game.threads": Hint("Threads across the game's processes.", "Thread",
+                         "Hundreds is normal for a modern game."),
+    "game.cores": Hint("How many cores the game is allowed to use.", "Affinity",
+                       "Usually all of them. Fewer only if you pinned it yourself."),
+    "game.graph": Hint("CPU (yellow) and GPU (purple) of the game over the last minutes.",
+                       "GPU load"),
+    # -- Processes columns -------------------------------------------------------
+    "col.pid": Hint("The number the system gave this process.", "PID"),
+    "col.name": Hint("The program, with its icon when it has a menu entry; a collapsed "
+                     "program shows the totals of everything under it.", "Process"),
+    "col.cpu": Hint("Processor used by this row; 100% = one core fully used.", "CPU %"),
+    "col.mem": Hint("RAM held by this process (RSS).", "Memory (RSS)"),
+    "col.gpu": Hint("How hard this process works the graphics card.", "GPU load"),
+    "col.vram": Hint("Graphics memory this process holds.", "VRAM"),
+    "col.threads": Hint("Threads in this process.", "Thread"),
+    "col.nice": Hint("Priority from -20 (first in line) to 19 (last); 0 is normal.", "Nice"),
+    "col.io": Hint("Disk read plus write per second by this process.", "Disk read and write"),
+    "col.user": Hint("Whose process it is.", "User"),
+    "col.status": Hint("Running, sleeping (waiting for something) or stopped.", "Status"),
+    "col.started": Hint("How long ago the process started.", "Started"),
+    "col.category": Hint("What kind of program it is, from its menu entry.", "Category"),
+    "col.cmd": Hint("The exact command that started it.", "Command"),
+    # -- Network -------------------------------------------------------------------
+    "net.interfaces": Hint("Your network cards and tunnels, with the speed on each.",
+                           "Interface and VPN",
+                           "With a VPN on, the tunnel carries the traffic and the Wi-Fi "
+                           "or cable shows about the same amount."),
+    "net.doors": Hint("Programs that other devices on your network can connect to.",
+                      "Listening / open door",
+                      "KDE Connect, Steam and a printer helper are normal here. A "
+                      "program you do not recognise deserves a look."),
+    "net.program": Hint("The program; expand it to see each connection.", "Connection"),
+    "net.connections": Hint("Open conversations with another computer.", "Connection",
+                            "A browser opens dozens; a game a handful."),
+    "net.download": Hint("Bytes received per second over TCP by this program.",
+                         "TCP and UDP"),
+    "net.upload": Hint("Bytes sent per second over TCP by this program.", "TCP and UDP"),
+    "net.listening": Hint("Ports this program waits on; orange when reachable from "
+                          "other devices.", "Listening / open door"),
+    "net.details": Hint("Sockets and process ids; expand the row for each address and port.",
+                        "Port"),
+    # -- Startup ------------------------------------------------------------------
+    "startup.on": Hint("Ticked: starts at your next login. Untick to stop that; nothing "
+                       "is closed now.", "Autostart entry"),
+    "startup.name": Hint("The program that starts when you log in.", "Autostart entry"),
+    "startup.what": Hint("What the program is for, from its menu entry.", "Autostart entry"),
+    "startup.status": Hint("Whether it is running right now.", "Autostart entry"),
+    "startup.kind": Hint("Desktop · keep on marks parts of Plasma itself.",
+                         "Desktop · keep on"),
+    "startup.source": Hint("Where the entry lives: your home folder or the system.",
+                           "Autostart entry"),
+    # -- Cleanup ------------------------------------------------------------------
+    "cleanup.on": Hint("Tick what to remove; nothing goes until you press and confirm.",
+                       "Cache"),
+    "cleanup.what": Hint("The cache or leftover; every item comes back by itself when "
+                         "needed.", "Cache"),
+    "cleanup.why": Hint("Why removing it is safe.", "Cache"),
+    "cleanup.size": Hint("Space you get back.", "Cache"),
+    "cleanup.note": Hint("Whether it needs root, and other remarks.", "Package cache"),
+}
+
+
+def hint(key: str) -> Hint | None:
+    return HINTS.get(key)
+
+
+def term(name: str) -> Term | None:
+    for sec in GLOSSARY:
+        for t in sec.terms:
+            if t.name == name:
+                return t
+    return None
 
 
 def search(query: str) -> list[Section]:

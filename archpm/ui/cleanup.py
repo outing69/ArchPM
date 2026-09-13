@@ -26,11 +26,12 @@ from PySide6.QtWidgets import (
 from ..actions import ActionError
 from ..cleanup import Cleaner, CleanupItem, human, running_owner
 from ..root.client import RootClient, check
-from . import theme
+from . import hints, theme
 from .widgets import mono
 
 COL_ON, COL_NAME, COL_DESC, COL_SIZE, COL_ROOT = range(5)
 HEADERS = ["", "What", "Why it is safe to remove", "Size", "Note"]
+HINT_KEYS = ["cleanup.on", "cleanup.what", "cleanup.why", "cleanup.size", "cleanup.note"]
 
 
 class _Scan(QThread):
@@ -67,6 +68,7 @@ class _Empty(QThread):
 
 class CleanupView(QWidget):
     status = Signal(str)
+    help_requested = Signal(str)
     leave = Signal()   # the user did not want this tab after all
 
     def __init__(self, client: RootClient, parent=None) -> None:
@@ -136,6 +138,8 @@ class CleanupView(QWidget):
         header.setHighlightSections(False)
         for col, w in ((COL_ON, 36), (COL_NAME, 300), (COL_SIZE, 100), (COL_ROOT, 190)):
             self.table.setColumnWidth(col, w)
+        hints.header_tooltips(self.table, HINT_KEYS)
+        hints.attach_header(header, HINT_KEYS, self.help_requested.emit)
         self.table.itemChanged.connect(self._recount)
         outer.addWidget(self.table, 1)
 

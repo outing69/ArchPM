@@ -46,3 +46,23 @@ class Changelog(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class Hints(unittest.TestCase):
+    def test_every_hint_points_at_a_real_term_and_reads_as_a_sentence(self):
+        for key, h in helptext.HINTS.items():
+            self.assertTrue(h.text.endswith("."), key)
+            self.assertLess(len(h.text), 160, f"{key}: a tooltip is one line, not a lecture")
+            if h.term:
+                self.assertIsNotNone(helptext.term(h.term), f"{key} → {h.term!r}")
+            if h.normal:
+                self.assertTrue(h.normal.endswith("."), key)
+
+    def test_the_things_a_beginner_hovers_over_have_a_normal_line(self):
+        for key in ("tile.cpu", "tile.cpu temp", "tile.gpu", "tile.gpu temp", "tile.memory",
+                    "tile.vram", "graph.mem", "net.doors"):
+            self.assertTrue(helptext.hint(key).normal, key)
+
+    def test_unknown_key_is_none(self):
+        self.assertIsNone(helptext.hint("tile.nonsense"))
+        self.assertIsNone(helptext.term("Nonsense"))

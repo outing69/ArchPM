@@ -21,13 +21,15 @@ from PySide6.QtWidgets import (
 from ..game import game_tree, pick_game
 from ..model import ProcSample, Snapshot
 from ..sysinfo import cpu_model, short_cpu_name
-from . import theme
+from . import hints, theme
 from .history import ProcHistory
 from .proc_model import age_text
 from .widgets import Card, CoreGrid, Graph, StatTile, app_icon, human_bytes, mono
 
 
 class GameCard(Card):
+    help_requested = Signal(str)
+
     """What is my game doing right now: one process, its tree, its last minutes."""
 
     terminate_requested = Signal(list, str)   # pids (children first), game name
@@ -76,14 +78,18 @@ class GameCard(Card):
         self.t_mem = StatTile("ram", theme.MEM)
         self.t_thr = StatTile("threads", theme.CPU)
         self.t_cores = StatTile("cores", theme.CPU)
-        for t in (self.t_cpu, self.t_gpu, self.t_vram, self.t_mem, self.t_thr, self.t_cores):
+        for t, key in ((self.t_cpu, "game.cpu"), (self.t_gpu, "game.gpu"),
+                       (self.t_vram, "game.vram"), (self.t_mem, "game.ram"),
+                       (self.t_thr, "game.threads"), (self.t_cores, "game.cores")):
             self.tiles.addWidget(t, 1)   # equal widths, like the six tiles at the top
+            hints.attach(t, key, self.help_requested.emit)
         left.addLayout(self.tiles)
         left.addStretch(1)
         row.addLayout(left, 3)
 
         self.graph = Graph([("CPU", theme.CPU), ("GPU", theme.GPU)], maximum=None, fill=False)
         self.graph.setMinimumHeight(110)
+        hints.attach(self.graph, "game.graph", self.help_requested.emit)
         row.addWidget(self.graph, 2)
         self.body.addLayout(row)
         self._set_tiles_visible(False)
@@ -220,6 +226,7 @@ class TopProcList(QWidget):
 
 class Dashboard(QWidget):
     root_requested = Signal()
+    help_requested = Signal(str)
 
     def __init__(self, ncpu: int, history: ProcHistory | None = None, parent=None) -> None:
         super().__init__(parent)
@@ -267,8 +274,11 @@ class Dashboard(QWidget):
         self.t_gputemp = StatTile("gpu temp", theme.GPU)
         self.t_mem = StatTile("memory", theme.MEM)
         self.t_vram = StatTile("vram", theme.GPU)
-        for t in (self.t_cpu, self.t_cputemp, self.t_gpu, self.t_gputemp, self.t_mem, self.t_vram):
+        for t, key in ((self.t_cpu, "tile.cpu"), (self.t_cputemp, "tile.cpu temp"),
+                       (self.t_gpu, "tile.gpu"), (self.t_gputemp, "tile.gpu temp"),
+                       (self.t_mem, "tile.memory"), (self.t_vram, "tile.vram")):
             tiles.addWidget(t)
+            hints.attach(t, key, self.help_requested.emit)
         outer.addLayout(tiles)
 
         grid = QGridLayout()
@@ -281,12 +291,15 @@ class Dashboard(QWidget):
         cpu_card.body.addWidget(self.g_cpu, 1)
         self.cores = CoreGrid()
         cpu_card.body.addWidget(self.cores)
+        hints.attach(self.g_cpu, "graph.cpu", self.help_requested.emit)
+        hints.attach(self.cores, "graph.cpu", self.help_requested.emit)
         grid.addWidget(cpu_card, 0, 0)
 
         # -- GPU -----------------------------------------------------------
         gpu_card = Card("graphics card", color=theme.GPU)
         self.g_gpu = Graph([("GPU load", theme.GPU), ("VRAM", theme.DISK)], maximum=100.0)
         gpu_card.body.addWidget(self.g_gpu, 1)
+        hints.attach(self.g_gpu, "graph.gpu", self.help_requested.emit)
         self.gpu_sub = QLabel("--")
         self.gpu_sub.setFont(mono(8))
         self.gpu_sub.setStyleSheet(f"color: {theme.MUTED};")
@@ -297,6 +310,7 @@ class Dashboard(QWidget):
         mem_card = Card("memory", color=theme.MEM)
         self.g_mem = Graph([("RAM", theme.MEM), ("Swap", theme.SWAP)], maximum=100.0)
         mem_card.body.addWidget(self.g_mem, 1)
+        hints.attach(self.g_mem, "graph.mem", self.help_requested.emit)
         self.mem_sub = QLabel("--")
         self.mem_sub.setFont(mono(8))
         self.mem_sub.setStyleSheet(f"color: {theme.MUTED};")
@@ -309,14 +323,17 @@ class Dashboard(QWidget):
                            maximum=None, fill=False)
         self.g_net.set_formatter(lambda v: f"{human_bytes(v)}/s")
         io_card.body.addWidget(self.g_net, 1)
+        hints.attach(self.g_net, "graph.net", self.help_requested.emit)
         self.g_disk = Graph([("Disk read", theme.DISK), ("Disk write", theme.SWAP)],
                             maximum=None, fill=False)
         self.g_disk.set_formatter(lambda v: f"{human_bytes(v)}/s")
         io_card.body.addWidget(self.g_disk, 1)
+        hints.attach(self.g_disk, "graph.disk", self.help_requested.emit)
         grid.addWidget(io_card, 1, 1)
 
         # -- game ----------------------------------------------------------
         self.game = GameCard(ncpu)
+        self.game.help_requested.connect(self.help_requested.emit)
         grid.addWidget(self.game, 2, 0, 1, 2)
 
         # -- top lists -----------------------------------------------------
@@ -337,6 +354,9 @@ class Dashboard(QWidget):
         gpu_col.addWidget(self.top_gpu)
         for col in (cpu_col, mem_col, gpu_col):
             row.addLayout(col, 1)
+        for lst, key in ((self.top_cpu, "top.cpu"), (self.top_mem, "top.mem"),
+                         (self.top_gpu, "top.vram")):
+            hints.attach(lst, key, self.help_requested.emit)
         top_card.body.addLayout(row)
         grid.addWidget(top_card, 3, 0, 1, 2)
 
