@@ -423,9 +423,10 @@ class AppResolver:
             game, installdir = self.steam.app(appid)
             icon = self.steam.icon(appid)
             argv0 = argv[0] if argv else ""
-            if argv0 and "/" not in argv0 and "\\" not in argv0:
+            if argv0.lower().endswith(".exe") and "/" not in argv0 and "\\" not in argv0:
                 # Proton often starts a game as a bare "Game.exe" from inside
                 # the game's directory; the working directory tells us where.
+                # Only for .exe: Proton's own python3 also runs from there.
                 cwd = cwd_of(pid)
                 if cwd:
                     argv0 = f"{cwd}/{argv0}"

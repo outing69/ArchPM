@@ -298,6 +298,10 @@ class Resolver(unittest.TestCase):
                                      cwd_of=lambda pid: "/tmp")
         self.appids[106] = 1091500
         self.assertEqual(info.name, "", "outside the game folder it is not the game")
+        self.appids[107] = 1091500
+        info = self.resolver.resolve(107, "python3", ["python3", "proton", "waitforexitandrun"],
+                                     owned=True, cwd_of=lambda pid: cwd)
+        self.assertEqual(info.name, "", "Proton's python runs from the game folder too")
 
     def test_helper_process_keeps_its_name_but_shares_the_icon(self):
         self.appids[101] = 1091500
