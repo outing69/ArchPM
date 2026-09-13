@@ -137,7 +137,7 @@ class HistoryPanel(QWidget):
         self.g_mem = Graph([("memory", theme.MEM)], maximum=None, fill=True)
         self.g_mem.set_formatter(human_bytes)
         for g in (self.g_cpu, self.g_mem):
-            g.setMinimumHeight(90)
+            g.setMinimumHeight(140)
             graphs.addWidget(g, 1)
         lay.addLayout(graphs)
 
@@ -263,8 +263,9 @@ class ProcessView(QWidget):
         self.panel = HistoryPanel()
         self.panel.setVisible(False)
         self.split.addWidget(self.panel)
-        self.split.setStretchFactor(0, 4)
+        self.split.setStretchFactor(0, 3)
         self.split.setStretchFactor(1, 1)
+        self.panel.setMinimumHeight(190)
         outer.addWidget(self.split, 1)
         self.table.selectionModel().currentRowChanged.connect(lambda *_: self._show_history())
 
