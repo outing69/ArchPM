@@ -302,6 +302,14 @@ def read_environ(pid: int) -> dict[str, str]:
     return out
 
 
+def process_cwd(pid: int) -> str:
+    """Working directory of a process; "" when it is not ours or gone."""
+    try:
+        return os.readlink(f"/proc/{pid}/cwd")
+    except OSError:
+        return ""
+
+
 def is_game_binary(argv0: str, name: str, installdir: str) -> bool:
     """True when the executable lives in the game's own install directory.
 
@@ -408,12 +416,19 @@ class AppResolver:
         self._cache[pid] = (name, info)
         return info
 
-    def resolve(self, pid: int, name: str, argv: list[str], owned: bool) -> AppInfo:
+    def resolve(self, pid: int, name: str, argv: list[str], owned: bool,
+                cwd_of=process_cwd) -> AppInfo:
         appid = self.steam.appid_of(pid) if owned else 0
         if appid:
             game, installdir = self.steam.app(appid)
             icon = self.steam.icon(appid)
             argv0 = argv[0] if argv else ""
+            if argv0 and "/" not in argv0 and "\\" not in argv0:
+                # Proton often starts a game as a bare "Game.exe" from inside
+                # the game's directory; the working directory tells us where.
+                cwd = cwd_of(pid)
+                if cwd:
+                    argv0 = f"{cwd}/{argv0}"
             if game and is_game_binary(argv0, name, installdir):
                 return AppInfo(name=game, icon=icon, steam_appid=appid, category="Game")
             desktop = self.desktop.match(argv)

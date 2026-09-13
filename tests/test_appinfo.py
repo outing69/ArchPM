@@ -286,6 +286,19 @@ class Resolver(unittest.TestCase):
         self.assertEqual(info.steam_appid, 1091500)
         self.assertEqual(info.category, "Game")
 
+    def test_bare_exe_is_resolved_against_the_working_directory(self):
+        """DOOM: The Dark Ages under Proton: argv0 is just "DOOMTheDarkAges.exe",
+        comm is "Titan", and only the cwd says it lives in the game's folder."""
+        self.appids[105] = 1091500
+        cwd = "/mnt/games/SteamLibrary/steamapps/common/Cyberpunk 2077"
+        info = self.resolver.resolve(105, "Titan", ["DOOMTheDarkAges.exe"], owned=True,
+                                     cwd_of=lambda pid: cwd)
+        self.assertEqual(info.name, "Cyberpunk 2077")
+        info = self.resolver.resolve(106, "Titan", ["DOOMTheDarkAges.exe"], owned=True,
+                                     cwd_of=lambda pid: "/tmp")
+        self.appids[106] = 1091500
+        self.assertEqual(info.name, "", "outside the game folder it is not the game")
+
     def test_helper_process_keeps_its_name_but_shares_the_icon(self):
         self.appids[101] = 1091500
         wineserver = "/mnt/games/SteamLibrary/steamapps/common/Proton 9.0/files/bin/wineserver"

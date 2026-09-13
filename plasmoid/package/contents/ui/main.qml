@@ -165,13 +165,18 @@ PlasmoidItem {
                 visible: root.coreBars.length > 0
                 Repeater {
                     model: root.coreBars
-                    Rectangle {
+                    // Track and fill are siblings: a child would inherit the
+                    // track's 0.13 opacity and the fill would look washed out.
+                    Item {
                         width: (parent.width - (parent.spacing * (root.coreBars.length - 1)))
                                / Math.max(1, root.coreBars.length)
                         height: Kirigami.Units.gridUnit
-                        radius: 2
-                        color: Kirigami.Theme.textColor
-                        opacity: 0.13
+                        Rectangle {
+                            anchors.fill: parent
+                            radius: 2
+                            color: Kirigami.Theme.textColor
+                            opacity: 0.13
+                        }
                         Rectangle {
                             anchors.bottom: parent.bottom
                             width: parent.width

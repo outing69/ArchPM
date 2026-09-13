@@ -68,8 +68,10 @@ def to_payload(snap: Snapshot, top_n: int = 5) -> dict:
         "net_tx": round(s.net_tx_bps),
         "disk_r": round(s.disk_r_bps),
         "disk_w": round(s.disk_w_bps),
-        "top_cpu": [{"name": p.name, "pid": p.pid, "v": round(p.cpu_percent, 1)} for p in top_cpu],
-        "top_mem": [{"name": p.name, "pid": p.pid, "v": round(p.mem_mb)} for p in top_mem],
+        "top_cpu": [{"name": p.display_name, "pid": p.pid, "v": round(p.cpu_percent, 1)}
+                    for p in top_cpu],
+        "top_mem": [{"name": p.display_name, "pid": p.pid, "v": round(p.mem_mb)}
+                    for p in top_mem],
     }
     if s.gpu is not None:
         g = s.gpu
