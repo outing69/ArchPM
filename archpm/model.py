@@ -41,10 +41,16 @@ class ProcSample:
     create_time: float = 0.0
     affinity: int = 0            # number of cores this process may run on
     owned: bool = False          # runs under our own uid
+    app_name: str = ""           # "Cyberpunk 2077", "Brave Web Browser"; "" if unknown
+    icon: str = ""               # icon theme name or file path; "" if none
 
     @property
     def mem_mb(self) -> float:
         return self.mem_rss / 1048576.0
+
+    @property
+    def display_name(self) -> str:
+        return self.app_name or self.name
 
 
 @dataclass(slots=True)

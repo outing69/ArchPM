@@ -19,7 +19,7 @@ from PySide6.QtWidgets import (
 
 from ..model import Snapshot
 from . import theme
-from .widgets import Card, CoreGrid, Graph, StatTile, human_bytes, mono
+from .widgets import Card, CoreGrid, Graph, StatTile, app_icon, human_bytes, mono
 
 
 class TopProcList(QWidget):
@@ -30,14 +30,15 @@ class TopProcList(QWidget):
         self.color = color
         self.unit = unit
         self.rows = rows
-        self.items: list[tuple[str, int, float]] = []
+        self.items: list[tuple[str, int, float, str]] = []  # name, pid, value, icon
         self.scale = 100.0
         self.setMinimumHeight(rows * 22)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
 
-    def set_items(self, items: list[tuple[str, int, float]], scale: float | None = None) -> None:
+    def set_items(self, items: list[tuple[str, int, float, str]],
+                  scale: float | None = None) -> None:
         self.items = items[: self.rows]
-        self.scale = scale or max([v for _, _, v in self.items] + [1.0])
+        self.scale = scale or max([v for _, _, v, _ in self.items] + [1.0])
         self.update()
 
     def paintEvent(self, _event) -> None:
@@ -46,7 +47,7 @@ class TopProcList(QWidget):
         h = self.height() / max(self.rows, 1)
         p.setFont(mono(9))
         val_w = 74.0
-        for i, (name, _pid, value) in enumerate(self.items):
+        for i, (name, _pid, value, icon_key) in enumerate(self.items):
             y = i * h
             frac = min(value / self.scale, 1.0) if self.scale else 0.0
             col = QColor(self.color)
@@ -54,8 +55,14 @@ class TopProcList(QWidget):
             p.setPen(Qt.PenStyle.NoPen)
             p.setBrush(col)
             p.drawRoundedRect(QRectF(0, y + 1, self.width() * frac, h - 3), 4, 4)
+            text_x = 6.0
+            icon = app_icon(icon_key)
+            if not icon.isNull():
+                size = int(min(h - 6, 16))
+                icon.paint(p, int(text_x), int(y + (h - size) / 2), size, size)
+                text_x += size + 6
             p.setPen(QColor(theme.TEXT))
-            p.drawText(QRectF(6, y, self.width() - val_w - 6, h - 2),
+            p.drawText(QRectF(text_x, y, self.width() - val_w - text_x, h - 2),
                        int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter),
                        f"{name}")
             p.setPen(QColor(theme.MUTED))
@@ -267,16 +274,16 @@ class Dashboard(QWidget):
 
         procs = snap.procs
         self.top_cpu.set_items(
-            [(p.name, p.pid, p.cpu_percent)
+            [(p.display_name, p.pid, p.cpu_percent, p.icon)
              for p in sorted(procs, key=lambda x: x.cpu_percent, reverse=True)[:5]],
             scale=100.0 * self.ncpu,
         )
         self.top_mem.set_items(
-            [(p.name, p.pid, p.mem_mb)
+            [(p.display_name, p.pid, p.mem_mb, p.icon)
              for p in sorted(procs, key=lambda x: x.mem_rss, reverse=True)[:5]]
         )
         gpu_procs = [p for p in procs if p.gpu_mem_mb]
         self.top_gpu.set_items(
-            [(p.name, p.pid, p.gpu_mem_mb)
+            [(p.display_name, p.pid, p.gpu_mem_mb, p.icon)
              for p in sorted(gpu_procs, key=lambda x: x.gpu_mem_mb, reverse=True)[:5]]
         )

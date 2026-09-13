@@ -11,6 +11,7 @@ import time
 
 import psutil
 
+from .appinfo import AppResolver
 from .gpu import GpuMonitor
 from .model import ProcSample, Snapshot, SystemSample
 
@@ -37,6 +38,7 @@ class Sampler:
         self._net: tuple[float, float, float] | None = None
         self._disk: tuple[float, float, float] | None = None
         self._boot = psutil.boot_time()
+        self.apps = AppResolver()
         psutil.cpu_percent(percpu=True)  # baseline for the first tick
 
     # ------------------------------------------------------------------
@@ -67,6 +69,7 @@ class Sampler:
             del self._procs[pid]
             self._starts.pop(pid, None)
             self._io.pop(pid, None)
+            self.apps.forget(pid)
 
     # ------------------------------------------------------------------
     def sample(self) -> Snapshot:
@@ -92,10 +95,13 @@ class Sampler:
             gsm, gmb = gpu_procs.get(pid, (0.0, 0.0))
             n_thr = info.get("num_threads") or 0
             threads += n_thr
+            name = info.get("name") or ""
+            owned = bool(uids and uids.real == self.uid)
+            app = self.apps.lookup(pid, name, cmd, owned)
             procs.append(ProcSample(
                 pid=pid,
                 ppid=info.get("ppid") or 0,
-                name=info.get("name") or "",
+                name=name,
                 username=info.get("username") or "",
                 cmdline=" ".join(cmd),
                 cpu_percent=cpu,
@@ -109,7 +115,9 @@ class Sampler:
                 gpu_sm=gsm,
                 gpu_mem_mb=gmb,
                 create_time=info.get("create_time") or 0.0,
-                owned=bool(uids and uids.real == self.uid),
+                owned=owned,
+                app_name=app.name,
+                icon=app.icon,
             ))
 
         sys_sample = self._system(now, len(procs), threads)

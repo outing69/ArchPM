@@ -4,7 +4,7 @@ from __future__ import annotations
 import signal
 
 import psutil
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QModelIndex, QSettings, QSize, Qt, Signal
 from PySide6.QtGui import QAction, QGuiApplication, QKeySequence
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -19,7 +19,7 @@ from PySide6.QtWidgets import (
     QMenu,
     QMessageBox,
     QPushButton,
-    QTableView,
+    QTreeView,
     QVBoxLayout,
     QWidget,
 )
@@ -58,12 +58,12 @@ class AffinityDialog(QDialog):
 
     def __init__(self, proc: ProcSample, current: list[int], ncpu: int, parent=None) -> None:
         super().__init__(parent)
-        self.setWindowTitle(f"CPU affinity — {proc.name} ({proc.pid})")
+        self.setWindowTitle(f"CPU affinity — {proc.display_name} ({proc.pid})")
         self.ncpu = ncpu
         lay = QVBoxLayout(self)
         lay.setSpacing(10)
         lay.addWidget(QLabel(
-            f"Which logical cores may <b>{proc.name}</b> run on?<br>"
+            f"Which logical cores may <b>{proc.display_name}</b> run on?<br>"
             f"<span style='color:{theme.MUTED}'>Even numbers are usually physical "
             f"cores, odd ones the SMT siblings.</span>"
         ))
@@ -113,6 +113,7 @@ class ProcessView(QWidget):
         super().__init__(parent)
         self.ncpu = ncpu
         self.backend = backend
+        self.settings = QSettings("archpm", "ArchPM")
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(12, 10, 12, 12)
@@ -127,6 +128,9 @@ class ProcessView(QWidget):
         self.search.setMinimumWidth(240)
         bar.addWidget(self.search, 2)
 
+        self.cb_tree = QCheckBox("Tree")
+        self.cb_tree.setChecked(self.settings.value("tree", True, type=bool))
+        self.cb_tree.setToolTip("Nest processes under their parent (Steam → reaper → game).")
         self.cb_mine = QCheckBox("Only my processes")
         self.cb_mine.setChecked(True)
         self.cb_kernel = QCheckBox("Hide kernel threads")
@@ -137,8 +141,9 @@ class ProcessView(QWidget):
             "Off: 100% = one core fully used (like top).\nOn: 100% = all cores fully used."
         )
         self.cb_freeze = QCheckBox("Pause list")
-        self.cb_freeze.setToolTip("Freezes the table so rows stop jumping around.")
-        for cb in (self.cb_mine, self.cb_kernel, self.cb_gpu, self.cb_norm, self.cb_freeze):
+        self.cb_freeze.setToolTip("Freezes the list so rows stop jumping around.")
+        for cb in (self.cb_tree, self.cb_mine, self.cb_kernel, self.cb_gpu,
+                   self.cb_norm, self.cb_freeze):
             bar.addWidget(cb)
         bar.addStretch(1)
 
@@ -148,38 +153,56 @@ class ProcessView(QWidget):
         bar.addWidget(self.btn_kill)
         outer.addLayout(bar)
 
-        # -- table ---------------------------------------------------------
+        # -- tree ----------------------------------------------------------
         self.model = ProcModel(ncpu, self)
+        self.model.tree = self.cb_tree.isChecked()
         self.proxy = ProcFilter(self)
         self.proxy.setSourceModel(self.model)
-        self.table = QTableView()
+        self.table = QTreeView()
+        # Breeze paints its own frame over the app-wide rule; state the border here.
+        self.table.setStyleSheet(
+            f"QTreeView {{ border: 1px solid {theme.BORDER}; border-radius: 10px; }}"
+        )
         self.table.setModel(self.proxy)
         self.table.setSortingEnabled(True)
         self.table.sortByColumn(COL_CPU, Qt.SortOrder.DescendingOrder)
         self.table.setAlternatingRowColors(True)
-        self.table.setShowGrid(False)
+        self.table.setUniformRowHeights(True)   # required for fast layout of ~500 rows
+        self.table.setIndentation(16)
+        self.table.setIconSize(QSize(16, 16))
+        self.table.setExpandsOnDoubleClick(False)
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.table.customContextMenuRequested.connect(self._menu)
-        self.table.verticalHeader().setVisible(False)
-        self.table.verticalHeader().setDefaultSectionSize(24)
-        header = self.table.horizontalHeader()
+        header = self.table.header()
         header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         header.setSectionResizeMode(COL_CMD, QHeaderView.ResizeMode.Stretch)
+        header.setStretchLastSection(True)
         header.setHighlightSections(False)
+        # Draw the tree (arrows, indentation) in the Name column and show that
+        # column first; PID stays a plain narrow column.
+        self.table.setTreePosition(COL_NAME)
+        header.moveSection(COL_NAME, 0)
         # Without explicit widths the middle columns swallow everything and
         # nothing is left for the command.
         for col, w in (
-            (COL_PID, 64), (COL_NAME, 180), (COL_CPU, 74), (COL_MEM, 86),
+            (COL_PID, 64), (COL_NAME, 280), (COL_CPU, 74), (COL_MEM, 86),
             (COL_GPU, 58), (COL_VRAM, 74), (COL_THREADS, 46), (COL_NICE, 48),
             (COL_IO, 84), (COL_USER, 78), (COL_STATUS, 74),
         ):
             self.table.setColumnWidth(col, w)
         outer.addWidget(self.table, 1)
 
+        # New rows arrive expanded, so a game that just launched shows its
+        # whole tree; what the user collapsed stays collapsed because only the
+        # inserted rows themselves are expanded, not their parent.
+        self.proxy.rowsInserted.connect(self._expand_new)
+        self.proxy.modelReset.connect(self.table.expandAll)
+
         # -- behaviour -----------------------------------------------------
         self.search.textChanged.connect(self.proxy.set_text)
+        self.cb_tree.toggled.connect(self._set_tree)
         self.cb_mine.toggled.connect(lambda v: self.proxy.set_flag("only_mine", v))
         self.cb_kernel.toggled.connect(lambda v: self.proxy.set_flag("hide_kernel", v))
         self.cb_gpu.toggled.connect(lambda v: self.proxy.set_flag("only_gpu", v))
@@ -211,14 +234,36 @@ class ProcessView(QWidget):
         self.model.frozen = frozen
         self.proxy.setDynamicSortFilter(not frozen)
 
+    def _set_tree(self, on: bool) -> None:
+        self.settings.setValue("tree", on)
+        self.model.set_tree(on)
+        self.table.setRootIsDecorated(on)
+
+    def _expand_new(self, parent: QModelIndex, first: int, last: int) -> None:
+        if not self.model.tree:
+            return
+        for row in range(first, last + 1):
+            self.table.expandRecursively(self.proxy.index(row, 0, parent))
+
     # -- selection --------------------------------------------------------
     def _selected(self) -> list[ProcSample]:
-        rows = self.table.selectionModel().selectedRows()
         out = []
-        for idx in rows:
-            p = self.model.proc_at(self.proxy.mapToSource(idx).row())
+        for idx in self.table.selectionModel().selectedRows():
+            p = self.model.proc_at(self.proxy.mapToSource(idx))
             if p is not None:
                 out.append(p)
+        return out
+
+    def _selected_trees(self) -> list[ProcSample]:
+        """Selected processes plus every descendant, children first, no duplicates."""
+        by_pid = {p.pid: p for p in self.model._last}
+        seen: set[int] = set()
+        out: list[ProcSample] = []
+        for p in self._selected():
+            for pid in self.model.subtree_pids(p.pid):
+                if pid not in seen and pid in by_pid:
+                    seen.add(pid)
+                    out.append(by_pid[pid])
         return out
 
     # -- context menu -----------------------------------------------------
@@ -227,7 +272,7 @@ class ProcessView(QWidget):
         if not procs:
             return
         one = procs[0] if len(procs) == 1 else None
-        title = one.name if one else f"{len(procs)} processes"
+        title = one.display_name if one else f"{len(procs)} processes"
         menu = QMenu(self)
         header = menu.addAction(f"{title}" + (f"  ·  pid {one.pid}" if one else ""))
         header.setEnabled(False)
@@ -237,6 +282,12 @@ class ProcessView(QWidget):
                        lambda: self._signal_selected(signal.SIGTERM))
         menu.addAction("Force kill  (SIGKILL)",
                        lambda: self._signal_selected(signal.SIGKILL, confirm=True))
+        if self.model.tree and any(self.model.has_children(p.pid) for p in procs):
+            n = len(self._selected_trees())
+            menu.addAction(f"Terminate with children  ({n} processes)",
+                           lambda: self._signal_selected(signal.SIGTERM, tree=True))
+            menu.addAction(f"Force kill with children  ({n} processes)",
+                           lambda: self._signal_selected(signal.SIGKILL, confirm=True, tree=True))
         if one and one.status == "stopped":
             menu.addAction("Resume  (SIGCONT)",
                            lambda: self._signal_selected(signal.SIGCONT))
@@ -274,7 +325,7 @@ class ProcessView(QWidget):
                 fn(p)
                 done += 1
             except ActionError as exc:
-                errors.append(f"{p.name} ({p.pid}): {exc}")
+                errors.append(f"{p.display_name} ({p.pid}): {exc}")
         if done:
             self.status.emit(f"{verb}: {done} process(es)")
         if errors:
@@ -285,12 +336,13 @@ class ProcessView(QWidget):
             box.setDetailedText("\n".join(errors))
             box.exec()
 
-    def _signal_selected(self, sig: signal.Signals, confirm: bool = False) -> None:
-        procs = self._selected()
+    def _signal_selected(self, sig: signal.Signals, confirm: bool = False,
+                         tree: bool = False) -> None:
+        procs = self._selected_trees() if tree else self._selected()
         if not procs:
             return
         if confirm:
-            names = ", ".join(f"{p.name} ({p.pid})" for p in procs[:6])
+            names = ", ".join(f"{p.display_name} ({p.pid})" for p in procs[:6])
             extra = "" if len(procs) <= 6 else f" and {len(procs) - 6} more"
             answer = QMessageBox.question(
                 self, "Force kill",

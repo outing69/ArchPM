@@ -10,6 +10,7 @@ from PySide6.QtGui import (
     QColor,
     QFont,
     QFontDatabase,
+    QIcon,
     QLinearGradient,
     QPainter,
     QPainterPath,
@@ -25,6 +26,21 @@ def mono(size: float = 9, bold: bool = False) -> QFont:
     f.setPointSizeF(float(size))
     f.setBold(bold)
     return f
+
+
+_ICONS: dict[str, QIcon] = {}
+
+
+def app_icon(key: str) -> QIcon:
+    """Icon for a theme name or file path as produced by archpm.appinfo; cached.
+    A null QIcon means "no icon", which callers must respect: no fallback."""
+    if not key:
+        return QIcon()
+    icon = _ICONS.get(key)
+    if icon is None:
+        icon = QIcon(key) if key.startswith("/") else QIcon.fromTheme(key)
+        _ICONS[key] = icon
+    return icon
 
 
 def human_bytes(n: float, suffix: str = "B") -> str:

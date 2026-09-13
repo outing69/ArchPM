@@ -1,16 +1,20 @@
-"""Table model for the process list.
+"""Item model for the process list: a tree by parent pid, or flat.
 
-Rows are not rebuilt every tick but updated in place: otherwise you lose your
-selection and the table flickers on every sample.
+Rows are updated in place every tick instead of rebuilt: a rebuild would drop
+the selection and the expanded/collapsed state and make the view flicker.
+Processes that appear are inserted under their parent (or at the top level
+when the parent is not in the snapshot), processes that vanish are removed
+with their subtree, and a process whose parent changed (the parent died and
+init or a subreaper adopted it) is removed and re-inserted under the new one.
 """
 from __future__ import annotations
 
-from PySide6.QtCore import QAbstractTableModel, QModelIndex, QSortFilterProxyModel, Qt
+from PySide6.QtCore import QAbstractItemModel, QModelIndex, QSortFilterProxyModel, Qt
 from PySide6.QtGui import QColor
 
 from ..model import ProcSample
 from . import theme
-from .widgets import human_bytes
+from .widgets import app_icon, human_bytes
 
 SORT_ROLE = Qt.ItemDataRole.UserRole + 1
 PID_ROLE = Qt.ItemDataRole.UserRole + 2
@@ -34,21 +38,66 @@ ALIGN = {
 }
 
 
-class ProcModel(QAbstractTableModel):
+class Node:
+    __slots__ = ("proc", "parent", "children", "row")
+
+    def __init__(self, proc: ProcSample | None, parent: Node | None) -> None:
+        self.proc = proc
+        self.parent = parent
+        self.children: list[Node] = []
+        self.row = 0
+
+    def reindex(self) -> None:
+        for i, c in enumerate(self.children):
+            c.row = i
+
+    def descendants(self):
+        for c in self.children:
+            yield c
+            yield from c.descendants()
+
+
+class ProcModel(QAbstractItemModel):
     def __init__(self, ncpu: int, parent=None) -> None:
         super().__init__(parent)
         self.ncpu = ncpu
         self.normalize_cpu = False   # True = CPU% divided by number of cores
-        self._rows: list[ProcSample] = []
-        self._pids: dict[int, int] = {}
         self.frozen = False
+        self.tree = True
+        self._root = Node(None, None)
+        self._nodes: dict[int, Node] = {}
+        self._last: list[ProcSample] = []
 
-    # -- Qt ---------------------------------------------------------------
+    # -- Qt structure -------------------------------------------------------
+    def _node(self, index: QModelIndex) -> Node:
+        return index.internalPointer() if index.isValid() else self._root
+
+    def index(self, row: int, column: int, parent=QModelIndex()) -> QModelIndex:
+        node = self._node(parent)
+        if 0 <= row < len(node.children) and 0 <= column < len(HEADERS):
+            return self.createIndex(row, column, node.children[row])
+        return QModelIndex()
+
+    def parent(self, index: QModelIndex) -> QModelIndex:  # type: ignore[override]
+        if not index.isValid():
+            return QModelIndex()
+        p = index.internalPointer().parent
+        if p is None or p is self._root:
+            return QModelIndex()
+        return self.createIndex(p.row, 0, p)
+
     def rowCount(self, parent=QModelIndex()) -> int:
-        return 0 if parent.isValid() else len(self._rows)
+        if parent.isValid() and parent.column() > 0:
+            return 0
+        return len(self._node(parent).children)
 
     def columnCount(self, parent=QModelIndex()) -> int:
-        return 0 if parent.isValid() else len(HEADERS)
+        return len(HEADERS)
+
+    def hasChildren(self, parent=QModelIndex()) -> bool:
+        if parent.isValid() and parent.column() > 0:
+            return False
+        return bool(self._node(parent).children)
 
     def headerData(self, section, orientation, role=Qt.ItemDataRole.DisplayRole):
         if orientation == Qt.Orientation.Horizontal and role == Qt.ItemDataRole.DisplayRole:
@@ -60,7 +109,7 @@ class ProcModel(QAbstractTableModel):
     def data(self, index: QModelIndex, role=Qt.ItemDataRole.DisplayRole):
         if not index.isValid():
             return None
-        p = self._rows[index.row()]
+        p: ProcSample = index.internalPointer().proc
         col = index.column()
 
         if role == PID_ROLE:
@@ -71,13 +120,20 @@ class ProcModel(QAbstractTableModel):
             return ALIGN.get(col, _LEFT)
         if role == Qt.ItemDataRole.ForegroundRole:
             return self._color(p, col)
+        if role == Qt.ItemDataRole.DecorationRole:
+            if col == COL_NAME and p.icon:
+                icon = app_icon(p.icon)
+                return None if icon.isNull() else icon
+            return None
         if role == Qt.ItemDataRole.ToolTipRole:
+            if col == COL_NAME and p.app_name:
+                return f"{p.name}\n{p.cmdline}" if p.cmdline else p.name
             return p.cmdline or p.name
         if role != Qt.ItemDataRole.DisplayRole:
             return None
         return self._text(p, col)
 
-    # -- content ----------------------------------------------------------
+    # -- content ------------------------------------------------------------
     def _cpu(self, p: ProcSample) -> float:
         return p.cpu_percent / self.ncpu if self.normalize_cpu else p.cpu_percent
 
@@ -85,7 +141,7 @@ class ProcModel(QAbstractTableModel):
         if col == COL_PID:
             return str(p.pid)
         if col == COL_NAME:
-            return p.name
+            return p.display_name
         if col == COL_CPU:
             v = self._cpu(p)
             return f"{v:.1f}" if v >= 0.05 else "·"
@@ -112,7 +168,7 @@ class ProcModel(QAbstractTableModel):
 
     def _sort_value(self, p: ProcSample, col: int):
         return {
-            COL_PID: p.pid, COL_NAME: p.name.lower(), COL_CPU: p.cpu_percent,
+            COL_PID: p.pid, COL_NAME: p.display_name.lower(), COL_CPU: p.cpu_percent,
             COL_MEM: p.mem_rss, COL_GPU: p.gpu_sm, COL_VRAM: p.gpu_mem_mb,
             COL_THREADS: p.num_threads, COL_NICE: p.nice,
             COL_IO: p.io_read_bps + p.io_write_bps, COL_USER: p.username,
@@ -137,56 +193,156 @@ class ProcModel(QAbstractTableModel):
             return QColor(theme.OK if p.nice > 0 else theme.ACCENT)
         return None
 
-    # -- updates ----------------------------------------------------------
+    # -- lookups used by the view --------------------------------------------
+    def proc_at(self, index: QModelIndex) -> ProcSample | None:
+        return index.internalPointer().proc if index.isValid() else None
+
+    def index_for_pid(self, pid: int) -> QModelIndex:
+        node = self._nodes.get(pid)
+        return self.createIndex(node.row, 0, node) if node else QModelIndex()
+
+    def subtree_pids(self, pid: int) -> list[int]:
+        """The process and all its descendants, deepest first (children before parents)."""
+        node = self._nodes.get(pid)
+        if node is None:
+            return [pid]
+        out = [d.proc.pid for d in node.descendants()]
+        out.reverse()
+        out.append(pid)
+        return out
+
+    def has_children(self, pid: int) -> bool:
+        node = self._nodes.get(pid)
+        return bool(node and node.children)
+
+    # -- updates --------------------------------------------------------------
+    def _parent_for(self, p: ProcSample, incoming: dict[int, ProcSample]) -> Node:
+        if self.tree and p.ppid in incoming and p.ppid != p.pid:
+            node = self._nodes.get(p.ppid)
+            if node is not None:
+                return node
+        return self._root
+
+    def _desired_parent_pid(self, p: ProcSample, incoming: dict[int, ProcSample]) -> int:
+        if self.tree and p.ppid in incoming and p.ppid != p.pid:
+            return p.ppid
+        return 0
+
+    def _index_of(self, node: Node) -> QModelIndex:
+        return QModelIndex() if node is self._root else self.createIndex(node.row, 0, node)
+
+    def _remove(self, node: Node) -> None:
+        """Remove a node with its whole subtree from the structure and the view."""
+        parent = node.parent
+        self.beginRemoveRows(self._index_of(parent), node.row, node.row)
+        del parent.children[node.row]
+        parent.reindex()
+        self._nodes.pop(node.proc.pid, None)
+        for d in node.descendants():
+            self._nodes.pop(d.proc.pid, None)
+        self.endRemoveRows()
+
+    def _insert(self, parent: Node, procs: list[ProcSample]) -> None:
+        start = len(parent.children)
+        self.beginInsertRows(self._index_of(parent), start, start + len(procs) - 1)
+        for p in procs:
+            node = Node(p, parent)
+            node.row = len(parent.children)
+            parent.children.append(node)
+            self._nodes[p.pid] = node
+        self.endInsertRows()
+
     def update(self, procs: list[ProcSample]) -> None:
+        self._last = procs
         if self.frozen:
             return
         incoming = {p.pid: p for p in procs}
-        gone = [pid for pid in self._pids if pid not in incoming]
-        if gone:
-            for pid in sorted(gone, key=lambda x: self._pids[x], reverse=True):
-                row = self._pids[pid]
-                self.beginRemoveRows(QModelIndex(), row, row)
-                del self._rows[row]
-                self.endRemoveRows()
-            self._reindex()
 
-        for pid, row in self._pids.items():
-            self._rows[row] = incoming[pid]
-        if self._rows:
+        # 1. Remove what is gone, and what must move (its parent changed). A
+        #    removed subtree may contain processes that still exist: they are
+        #    re-inserted below, under their current parent.
+        doomed = []
+        for pid, node in self._nodes.items():
+            p = incoming.get(pid)
+            if p is None:
+                doomed.append(node)
+                continue
+            cur_parent_pid = node.parent.proc.pid if node.parent is not self._root else 0
+            if cur_parent_pid != self._desired_parent_pid(p, incoming):
+                doomed.append(node)
+        # Deepest first so a child is never removed after its parent already went.
+        depth = {}
+        for node in doomed:
+            d, n = 0, node
+            while n.parent is not None:
+                d, n = d + 1, n.parent
+            depth[id(node)] = d
+        for node in sorted(doomed, key=lambda n: -depth[id(n)]):
+            if node.proc.pid in self._nodes:  # not already gone with an ancestor
+                self._remove(node)
+
+        # 2. Refresh the survivors' data.
+        for pid, node in self._nodes.items():
+            node.proc = incoming[pid]
+        self._emit_changed(self._root)
+
+        # 3. Insert new (and re-homed) processes, parents before children.
+        pending = [p for pid, p in incoming.items() if pid not in self._nodes]
+        while pending:
+            by_parent: dict[int, list[ProcSample]] = {}
+            later = []
+            for p in pending:
+                want = self._desired_parent_pid(p, incoming)
+                if want == 0 or want in self._nodes:
+                    by_parent.setdefault(want, []).append(p)
+                else:
+                    later.append(p)
+            if not by_parent:  # only cycles left, which /proc cannot produce; be safe
+                by_parent[0] = later
+                later = []
+            for parent_pid, group in by_parent.items():
+                parent = self._root if parent_pid == 0 else self._nodes[parent_pid]
+                self._insert(parent, group)
+            pending = later
+
+    def _emit_changed(self, node: Node) -> None:
+        if node.children:
             self.dataChanged.emit(
-                self.index(0, 0),
-                self.index(len(self._rows) - 1, len(HEADERS) - 1),
+                self.createIndex(0, 0, node.children[0]),
+                self.createIndex(len(node.children) - 1, len(HEADERS) - 1, node.children[-1]),
                 [Qt.ItemDataRole.DisplayRole, Qt.ItemDataRole.ForegroundRole, SORT_ROLE],
             )
+            for c in node.children:
+                self._emit_changed(c)
 
-        added = [p for pid, p in incoming.items() if pid not in self._pids]
-        if added:
-            start = len(self._rows)
-            self.beginInsertRows(QModelIndex(), start, start + len(added) - 1)
-            self._rows.extend(added)
-            self.endInsertRows()
-            self._reindex()
-
-    def _reindex(self) -> None:
-        self._pids = {p.pid: i for i, p in enumerate(self._rows)}
-
-    def proc_at(self, row: int) -> ProcSample | None:
-        return self._rows[row] if 0 <= row < len(self._rows) else None
+    def set_tree(self, on: bool) -> None:
+        """Flat <-> tree is a structural change, so rebuild; selection is lost once."""
+        if on == self.tree:
+            return
+        self.beginResetModel()
+        self.tree = on
+        self._root = Node(None, None)
+        self._nodes = {}
+        self.endResetModel()
+        if self._last:
+            self.update(self._last)
 
     def set_normalize(self, on: bool) -> None:
         self.normalize_cpu = on
         self.headerDataChanged.emit(Qt.Orientation.Horizontal, COL_CPU, COL_CPU)
-        if self._rows:
-            self.dataChanged.emit(self.index(0, COL_CPU),
-                                  self.index(len(self._rows) - 1, COL_CPU))
+        self._emit_changed(self._root)
 
 
 class ProcFilter(QSortFilterProxyModel):
+    """Filters on the process itself; in tree mode a parent stays visible when
+    any descendant passes, so a game's ancestry (systemd, steam, reaper)
+    remains as context."""
+
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self.setSortRole(SORT_ROLE)
         self.setDynamicSortFilter(True)
+        self.setRecursiveFilteringEnabled(True)
         self.text = ""
         self.only_mine = True
         self.hide_kernel = True
@@ -203,7 +359,7 @@ class ProcFilter(QSortFilterProxyModel):
 
     def filterAcceptsRow(self, row: int, parent: QModelIndex) -> bool:
         model: ProcModel = self.sourceModel()
-        p = model.proc_at(row)
+        p = model.proc_at(model.index(row, 0, parent))
         if p is None:
             return False
         if self.only_mine and not p.owned:
@@ -216,6 +372,7 @@ class ProcFilter(QSortFilterProxyModel):
             return False
         if self.text:
             t = self.text
-            if t not in p.name.lower() and t not in p.cmdline.lower() and t != str(p.pid):
+            if (t not in p.name.lower() and t not in p.app_name.lower()
+                    and t not in p.cmdline.lower() and t != str(p.pid)):
                 return False
         return True

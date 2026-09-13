@@ -1,5 +1,13 @@
 # ArchPM
 
+> **Built with AI, in the open.** This project was written with Claude (via Claude
+> Code), from the first line of code to this README. I set the direction, decided
+> what goes in and what stays out, and tested everything on my own machine; the
+> AI wrote most of the code. I'm saying so up front because you deserve to know
+> that when you read a root helper written by someone else. About me: three years
+> on Linux, almost a year on CachyOS. Not an expert in Linux or Arch, but not a
+> beginner either. Read the code, and `SECURITY.md`, with that in mind.
+
 Process management and monitoring for a Linux gaming PC. Three parts that share
 the same measurement core:
 
@@ -94,7 +102,10 @@ the package, or the polkit policy file will conflict.
 - **GPU** — SM utilisation, VRAM, temperature, power draw and clock speed, plus
   **per-process GPU usage** via `nvidia-smi pmon` (works for games too, not
   just CUDA). AMD/Intel fall back to sysfs, without per-process data.
-- **Processes** — CPU, RSS, threads, nice, disk I/O, VRAM, affinity
+- **Processes** — CPU, RSS, threads, nice, disk I/O, VRAM, affinity. Shown as a
+  tree by parent (Steam → reaper → Proton → game) or flat. Programs with a
+  `.desktop` entry get their proper name and icon; Steam games get the game's
+  name and Steam's icon for it. No icon is shown for anything that has none.
 - **System** — network and disk throughput, swap, sensors
 
 ## What you can do with it
@@ -102,7 +113,8 @@ the package, or the polkit policy file will conflict.
 Right-click in the process list: terminate (SIGTERM), force kill (SIGKILL),
 suspend/resume (SIGSTOP/SIGCONT), set nice, set disk priority, and choose CPU
 affinity per process — with presets for "physical cores only" (no SMT
-siblings) and each half.
+siblings) and each half. In tree view, "Terminate with children" takes a whole
+process tree down at once, so a killed game does not leave its launcher behind.
 
 ## Permissions
 
