@@ -3,7 +3,7 @@
 All notable changes, newest first. Versions are git tags on
 [github.com/outing69/ArchPM](https://github.com/outing69/ArchPM).
 
-## Unreleased
+## 0.1.8 — 2026-09-13
 
 - New **Network** tab, between Processes and Startup: your interfaces with
   speed, address and a VPN mark; an "open doors" card naming the programs
