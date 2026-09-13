@@ -42,6 +42,9 @@ install_user() {
     mkdir -p ~/.local/share/applications
     sed "s|@ROOT@|$ROOT|g" archpm.desktop > ~/.local/share/applications/archpm.desktop
     update-desktop-database ~/.local/share/applications 2>/dev/null || true
+    # Plasma's task manager and tooltips match the window's app id ("archpm")
+    # against its own service cache; without a rebuild it shows "python3".
+    kbuildsycoca6 --noincremental >/dev/null 2>&1 || true
 
     echo "→ desktop shortcut"
     local desk

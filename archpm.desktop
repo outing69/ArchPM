@@ -8,4 +8,5 @@ Path=@ROOT@
 Icon=utilities-system-monitor
 Terminal=false
 Categories=System;Monitor;Qt;
+StartupWMClass=archpm
 StartupNotify=true

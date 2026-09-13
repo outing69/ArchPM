@@ -149,7 +149,7 @@ PlasmoidItem {
     }
 
     function fmtBytes(n) {
-        var units = ["B", "K", "M", "G", "T"]
+        var units = ["B", "KB", "MB", "GB", "TB"]
         var i = 0
         while (n >= 1024 && i < units.length - 1) { n /= 1024; i++ }
         return (i === 0 ? n.toFixed(0) : n.toFixed(1)) + " " + units[i]
@@ -208,13 +208,38 @@ PlasmoidItem {
                 Layout.fillWidth: true
                 visible: root.game !== null
                 spacing: 1
-                Text {
+                RowLayout {
                     Layout.fillWidth: true
-                    elide: Text.ElideRight
-                    text: root.game ? root.game.name : ""
-                    color: "#f5c542"
-                    font.bold: true
-                    font.pointSize: Kirigami.Theme.smallFont.pointSize
+                    Text {
+                        Layout.fillWidth: true
+                        elide: Text.ElideRight
+                        text: root.game ? root.game.name : ""
+                        color: "#f5c542"
+                        font.bold: true
+                        font.pointSize: Kirigami.Theme.smallFont.pointSize
+                    }
+                    // Ends the game from the widget: first click asks, second
+                    // click within five seconds sends SIGTERM to its whole
+                    // tree (own processes, so no root involved).
+                    Text {
+                        id: endGame
+                        property bool armed: false
+                        text: armed ? "Sure? Click again" : "End game"
+                        color: root.hotColor
+                        font.bold: armed
+                        font.pointSize: Kirigami.Theme.smallFont.pointSize
+                        Timer { id: disarm; interval: 5000; onTriggered: endGame.armed = false }
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                if (!endGame.armed) { endGame.armed = true; disarm.restart(); return }
+                                endGame.armed = false
+                                if (root.game && root.game.pids && root.game.pids.length)
+                                    launcher.connectSource("kill -TERM " + root.game.pids.join(" "))
+                            }
+                        }
+                    }
                 }
                 Text {
                     Layout.fillWidth: true
@@ -224,7 +249,7 @@ PlasmoidItem {
                     font.pointSize: Kirigami.Theme.smallFont.pointSize - 1
                     text: root.game
                           ? "GPU " + root.pct(root.game.gpu) + "  ·  " + root.game.cores.toFixed(1) + " cores  ·  VRAM "
-                            + (root.game.vram / 1024).toFixed(1) + " G  ·  " + root.game.procs + " proc"
+                            + (root.game.vram / 1024).toFixed(1) + " GB  ·  " + root.game.procs + " proc"
                           : ""
                 }
             }
@@ -287,7 +312,7 @@ PlasmoidItem {
                 value: root.stats.gpu ? root.stats.gpu.mem_pct : 0
                 text: root.stats.gpu
                       ? (root.stats.gpu.mem_used / 1024).toFixed(1) + " / "
-                        + (root.stats.gpu.mem_total / 1024).toFixed(0) + " G"
+                        + (root.stats.gpu.mem_total / 1024).toFixed(0) + " GB"
                       : ""
             }
             Bar {

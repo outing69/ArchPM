@@ -53,4 +53,5 @@ def game_summary(game: ProcSample, procs: list[ProcSample], ncpu: int) -> dict:
         "vram": round(sum(p.gpu_mem_mb for p in tree)),
         "rss": sum(p.mem_rss for p in tree),
         "since": game.create_time,
+        "pids": [p.pid for p in tree if p.pid != game.pid] + [game.pid],   # children first
     }

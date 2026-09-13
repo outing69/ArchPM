@@ -171,6 +171,10 @@ class MainWindow(QMainWindow):
         self.act_game = QAction("No game running", self)
         self.act_game.setEnabled(False)
         menu.addAction(self.act_game)
+        self.act_end_game = QAction("End game…", self)
+        self.act_end_game.setVisible(False)
+        self.act_end_game.triggered.connect(self.dashboard.game._confirm_terminate)
+        menu.addAction(self.act_end_game)
         menu.addSeparator()
         act_show = QAction("Show / hide", self)
         act_show.triggered.connect(self._toggle_window)
@@ -278,7 +282,10 @@ class MainWindow(QMainWindow):
             if self.dashboard.game_name():
                 tip.append(f"Game: {self.dashboard.game_name()}")
             self.tray.setToolTip("\n".join(t for t in tip if t))
-            self.act_game.setText(self.dashboard.game_name() or "No game running")
+            name = self.dashboard.game_name()
+            self.act_game.setText(name or "No game running")
+            self.act_end_game.setVisible(bool(name))
+            self.act_end_game.setText(f"End {name}…" if name else "End game…")
 
     def _flash(self, message: str, msec: int = 4000) -> None:
         self.lbl_msg.setText(message)

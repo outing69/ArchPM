@@ -46,6 +46,7 @@ class Tree(unittest.TestCase):
         self.assertEqual(s["cpu"], 10.0)      # 160% of one core = 10% of 16
         self.assertEqual(s["cores"], 1.6)
         self.assertEqual(s["rss"], 200 << 20)
+        self.assertEqual(s["pids"], [3, 5], "children first, the game itself last")
 
 
 if __name__ == "__main__":
