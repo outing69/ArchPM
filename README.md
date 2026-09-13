@@ -19,15 +19,36 @@ the same measurement core:
 
 ## Screenshots
 
-**Overview** — CPU, GPU, memory and I/O at a glance, plus the heaviest processes.
+**Overview** — the machine at a glance: CPU per core, GPU, memory, network and
+disk, the running game, and the heaviest programs.
 
 ![Overview tab](docs/overview.png)
 
-**Processes** — the full list with CPU, memory, per-process GPU usage, nice and disk I/O. Right-click a row to terminate, suspend, renice or pin it to cores.
+**Processes** — your programs as a tree with real names and icons, a collapsed
+program showing the totals of its whole tree, and the last minutes of whatever
+you select underneath. Right-click to terminate, suspend, renice or pin to cores.
 
 ![Processes tab](docs/processes.png)
 
-**Widget** — the Plasma plasmoid, fed by the agent, so it keeps working when the GUI is closed.
+**Startup** — what starts when you log in, with a switch per entry, what each
+one does, and whether it is running now. Parts of the desktop are marked
+"keep on".
+
+![Startup tab](docs/startup.png)
+
+**System** — the specs on one card, from motherboard and BIOS to disks and
+network, with "Copy as text" for a forum post.
+
+![System tab](docs/system.png)
+
+**Cleanup** — caches, shader caches, thumbnails, old package versions and old
+logs, each with its size and why it is safe to remove. Nothing goes until you
+tick, press and confirm.
+
+![Cleanup tab](docs/cleanup.png)
+
+**Widget** — the Plasma plasmoid, fed by the agent, so it keeps working when
+the GUI is closed.
 
 <img src="docs/widget.png" width="320" alt="Plasma widget">
 
