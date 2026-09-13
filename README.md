@@ -19,6 +19,10 @@ the same measurement core:
 
 ![Processes tab](docs/processes.png)
 
+**Widget** — the Plasma plasmoid, fed by the agent, so it keeps working when the GUI is closed.
+
+<img src="docs/widget.png" width="320" alt="Plasma widget">
+
 ## Status and support
 
 Built for and tested on one machine: CachyOS (Arch), KDE Plasma 6 on Wayland,
