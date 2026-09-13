@@ -1,0 +1,17 @@
+[Unit]
+Description=Glorified PM sampler (feeds the Plasma widget)
+Documentation=file:@ROOT@/README.md
+
+[Service]
+Type=simple
+WorkingDirectory=@ROOT@
+ExecStart=/usr/bin/python3 -m gpm.agent --interval 2
+Restart=on-failure
+RestartSec=5
+Nice=10
+IOSchedulingClass=idle
+# Sampling must never cost you frames
+CPUWeight=20
+
+[Install]
+WantedBy=default.target

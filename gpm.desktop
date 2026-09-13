@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Glorified PM
+GenericName=Process Manager
+Comment=Keep an eye on processes, CPU, GPU and memory
+Exec=/usr/bin/python3 -m gpm
+Path=@ROOT@
+Icon=utilities-system-monitor
+Terminal=false
+Categories=System;Monitor;Qt;
+StartupNotify=true
