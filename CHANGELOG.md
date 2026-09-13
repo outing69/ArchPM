@@ -3,7 +3,7 @@
 All notable changes, newest first. Versions are git tags on
 [github.com/outing69/ArchPM](https://github.com/outing69/ArchPM).
 
-## Unreleased
+## 0.1.6 — 2026-09-13
 
 - Widget in the panel: a strip in the app's colours (CPU, GPU, RAM), the game's
   name in front when one runs, red above 85 °C; percentages, temperatures or
