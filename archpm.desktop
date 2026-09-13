@@ -1,9 +1,9 @@
 [Desktop Entry]
 Type=Application
-Name=Glorified PM
+Name=ArchPM
 GenericName=Process Manager
 Comment=Keep an eye on processes, CPU, GPU and memory
-Exec=/usr/bin/python3 -m gpm
+Exec=/usr/bin/python3 -m archpm
 Path=@ROOT@
 Icon=utilities-system-monitor
 Terminal=false

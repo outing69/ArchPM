@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""gpm-helper -- the only piece of Glorified PM that runs as root.
+"""archpm-helper -- the only piece of ArchPM that runs as root.
 
 Invoked via pkexec, one action per call, and replies with JSON on stdout.
 Limited to process management, system services and memory; GPU tuning belongs
-in a different tool. Deliberately stdlib-only and without imports from the gpm
-package: this file lives root-owned in /usr/local/lib/gpm/ and must not be able
+in a different tool. Deliberately stdlib-only and without imports from the archpm
+package: this file lives root-owned in /usr/local/lib/archpm/ and must not be able
 to load anything from a directory a regular user can write to.
 
 Everything that comes in is validated: fixed subcommands, numeric bounds, a
@@ -154,7 +154,7 @@ def cmd_status(_args) -> dict:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    ap = argparse.ArgumentParser(prog="gpm-helper", description="Glorified PM root helper")
+    ap = argparse.ArgumentParser(prog="archpm-helper", description="ArchPM root helper")
     sub = ap.add_subparsers(dest="cmd", required=True)
 
     p = sub.add_parser("proc-nice"); p.add_argument("pid"); p.add_argument("value")

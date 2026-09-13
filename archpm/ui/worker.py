@@ -62,7 +62,7 @@ class SampleWorker(QObject):
 
 def run_in_thread(worker: SampleWorker) -> QThread:
     thread = QThread()
-    thread.setObjectName("gpm-sampler")
+    thread.setObjectName("archpm-sampler")
     worker.moveToThread(thread)
     thread.started.connect(worker.start)
     thread.start()

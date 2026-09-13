@@ -1,4 +1,4 @@
-"""`python -m gpm` starts the GUI."""
+"""`python -m archpm` starts the GUI."""
 import sys
 
 from .ui.app import main

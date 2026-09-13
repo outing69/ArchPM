@@ -9,15 +9,15 @@ import org.kde.kirigami as Kirigami
 PlasmoidItem {
     id: root
 
-    // The agent writes to $XDG_RUNTIME_DIR/gpm/status.json and puts a symlink
-    // to it in ~/.cache/gpm/ -- that path is predictable from QML.
+    // The agent writes to $XDG_RUNTIME_DIR/archpm/status.json and puts a symlink
+    // to it in ~/.cache/archpm/ -- that path is predictable from QML.
     //
     // Reading goes through the executable data engine, not XMLHttpRequest: Qt 6
     // blocks XHR on file:// unless QML_XHR_ALLOW_FILE_READ is set, and that
     // is an environment variable for all of plasmashell -- we do not set it.
     readonly property string statusFile:
         StandardPaths.writableLocation(StandardPaths.GenericCacheLocation)
-            .toString().replace("file://", "") + "/gpm/status.json"
+            .toString().replace("file://", "") + "/archpm/status.json"
     readonly property string readCommand: "cat '" + statusFile + "'"
 
     property var stats: ({})
@@ -109,7 +109,7 @@ PlasmoidItem {
             RowLayout {
                 Layout.fillWidth: true
                 Kirigami.Heading {
-                    text: "Glorified PM"
+                    text: "ArchPM"
                     level: 5
                     Layout.fillWidth: true
                 }
@@ -129,7 +129,7 @@ PlasmoidItem {
                 color: Kirigami.Theme.textColor
                 opacity: 0.7
                 font: Kirigami.Theme.smallFont
-                text: "No data. Start the agent:\nsystemctl --user start gpm-agent"
+                text: "No data. Start the agent:\nsystemctl --user start archpm-agent"
             }
 
             // -- meters ---------------------------------------------------

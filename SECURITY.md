@@ -2,8 +2,8 @@
 
 ## What runs as root
 
-Exactly one file: `gpm/root/helper.py`, installed root-owned as
-`/usr/local/lib/gpm/gpm-helper` and invoked through `pkexec`. Nothing else in
+Exactly one file: `archpm/root/helper.py`, installed root-owned as
+`/usr/local/lib/archpm/archpm-helper` and invoked through `pkexec`. Nothing else in
 this project ever runs with elevated privileges. The GUI never sees a password;
 polkit handles authentication.
 

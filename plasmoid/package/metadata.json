@@ -11,7 +11,7 @@
         "Icon": "utilities-system-monitor",
         "Id": "io.github.outing69.archpm",
         "License": "MIT",
-        "Name": "Glorified PM Monitor",
+        "Name": "ArchPM Monitor",
         "Version": "0.1.0"
     },
     "X-Plasma-API-Minimum-Version": "6.0"

@@ -1,11 +1,11 @@
 [Unit]
-Description=Glorified PM sampler (feeds the Plasma widget)
+Description=ArchPM sampler (feeds the Plasma widget)
 Documentation=file:@ROOT@/README.md
 
 [Service]
 Type=simple
 WorkingDirectory=@ROOT@
-ExecStart=/usr/bin/python3 -m gpm.agent --interval 2
+ExecStart=/usr/bin/python3 -m archpm.agent --interval 2
 Restart=on-failure
 RestartSec=5
 Nice=10

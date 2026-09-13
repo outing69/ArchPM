@@ -8,7 +8,7 @@ from pathlib import Path
 
 from .model import Snapshot
 
-_APP = "gpm"
+_APP = "archpm"
 
 
 def status_dir() -> Path:
@@ -23,7 +23,7 @@ def status_path() -> Path:
 
 
 def cache_link() -> Path:
-    """~/.cache/gpm/status.json -> $XDG_RUNTIME_DIR/gpm/status.json
+    """~/.cache/archpm/status.json -> $XDG_RUNTIME_DIR/archpm/status.json
 
     The widget runs inside plasmashell and does not know $XDG_RUNTIME_DIR; via
     StandardPaths it does always end up at ~/.cache.

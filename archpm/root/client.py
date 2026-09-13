@@ -1,7 +1,7 @@
 """The user side of the root layer.
 
 Nothing in this file runs as root; it only builds calls to
-`pkexec /usr/local/lib/gpm/gpm-helper …` and translates the JSON reply back.
+`pkexec /usr/local/lib/archpm/archpm-helper …` and translates the JSON reply back.
 That keeps the separation strict: the GUI knows no passwords and runs no shell
 commands, polkit does the authentication and the helper script does the
 validation.
@@ -16,7 +16,7 @@ from pathlib import Path
 
 from ..actions import ActionError, UserBackend
 
-HELPER = Path("/usr/local/lib/gpm/gpm-helper")
+HELPER = Path("/usr/local/lib/archpm/archpm-helper")
 POLICY = Path("/usr/share/polkit-1/actions/io.github.outing69.archpm.policy")
 ACTION_ID = "io.github.outing69.archpm.helper.run"
 

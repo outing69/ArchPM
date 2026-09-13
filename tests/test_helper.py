@@ -1,4 +1,4 @@
-"""Tests for the validation in gpm-helper.
+"""Tests for the validation in archpm-helper.
 
 The helper is the security boundary of this project: it runs as root and takes
 arguments from an unprivileged caller. Every refusal here is a rule that must
@@ -15,7 +15,7 @@ import unittest
 from contextlib import redirect_stdout
 from types import SimpleNamespace
 
-from gpm.root import helper
+from archpm.root import helper
 
 
 def args(**kw) -> SimpleNamespace:
@@ -153,12 +153,12 @@ class HardeningInvariants(unittest.TestCase):
         self.assertNotIn("shell=True", src)
         self.assertNotIn("os.system", src)
 
-    def test_helper_imports_nothing_from_the_gpm_package(self):
+    def test_helper_imports_nothing_from_the_archpm_package(self):
         import inspect
         src = inspect.getsource(helper)
         self.assertNotIn("from .", src)
-        self.assertNotIn("from gpm", src)
-        self.assertNotIn("import gpm", src)
+        self.assertNotIn("from archpm", src)
+        self.assertNotIn("import archpm", src)
 
     def test_path_is_clean(self):
         self.assertTrue(all(p.startswith("/") for p in helper.PATH.split(":")))

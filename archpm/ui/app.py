@@ -43,7 +43,7 @@ def app_icon() -> QIcon:
 class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
-        self.settings = QSettings("gpm", "GlorifiedPM")
+        self.settings = QSettings("archpm", "ArchPM")
         self.backend = get_backend()
         self.root_client = RootClient()
         self.root_panel = None
@@ -196,8 +196,8 @@ def main() -> int:
     app = QApplication(sys.argv)
     app.setApplicationName(APP_NAME)
     app.setApplicationDisplayName(APP_NAME)
-    app.setOrganizationName("gpm")
-    app.setDesktopFileName("gpm")
+    app.setOrganizationName("archpm")
+    app.setDesktopFileName("archpm")
     theme.apply(app)
     win = MainWindow()
     app.aboutToQuit.connect(win.shutdown)

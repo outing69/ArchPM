@@ -1,12 +1,12 @@
-# Glorified PM
+# ArchPM
 
 Process management and monitoring for a Linux gaming PC. Three parts that share
 the same measurement core:
 
 | Component | What it is |
 |---|---|
-| **GUI** (`python3 -m gpm`) | PySide6 window with a dashboard and a full process list |
-| **Agent** (`gpm-agent`) | systemd --user service that samples every 2 s and writes `status.json` |
+| **GUI** (`python3 -m archpm`) | PySide6 window with a dashboard and a full process list |
+| **Agent** (`archpm-agent`) | systemd --user service that samples every 2 s and writes `status.json` |
 | **Widget** | Plasma 6 plasmoid on your desktop that reads that `status.json` |
 
 ## Status and support
@@ -32,7 +32,7 @@ sudo pacman -S --needed pyside6 python-psutil
 ./install.sh --root   # the pkexec helper and the polkit policy
 ```
 
-Then: right-click your desktop → *Add Widgets* → **Glorified PM Monitor**.
+Then: right-click your desktop → *Add Widgets* → **ArchPM Monitor**.
 
 ## What it measures
 
@@ -58,14 +58,14 @@ button: **Overview → Root tasks**.
 
 That separation is the core of the design:
 
-- `gpm/root/helper.py` is the **only** file that runs as root. It lives
-  root-owned in `/usr/local/lib/gpm/gpm-helper` (pkexec refuses a program that
+- `archpm/root/helper.py` is the **only** file that runs as root. It lives
+  root-owned in `/usr/local/lib/archpm/archpm-helper` (pkexec refuses a program that
   a regular user can modify), imports nothing from this project and never
   starts a shell.
 - `polkit/io.github.outing69.archpm.policy` decides who may authenticate. With
   `auth_admin_keep` polkit asks for your password once and remembers it for
   about five minutes.
-- `gpm/root/client.py` only builds the `pkexec` call and reads the JSON reply.
+- `archpm/root/client.py` only builds the `pkexec` call and reads the JSON reply.
   The GUI never sees a password.
 - The helper validates on its own: fixed subcommands, numeric bounds, a
   unit-name regex, and a list of services (dbus, logind, polkit, the display
@@ -92,12 +92,12 @@ Just not adjusted.
 ## Architecture
 
 ```
-gpm/sampler.py   psutil sampling; keeps Process objects between ticks
+archpm/sampler.py   psutil sampling; keeps Process objects between ticks
    ↑ gpu.py      two long-running nvidia-smi processes (stats + pmon)
    ↓
    ├─ ui/worker.py  QThread → signals → dashboard.py / procview.py
-   └─ agent.py      → publisher.py → $XDG_RUNTIME_DIR/gpm/status.json
-                                     ~/.cache/gpm/status.json (symlink)
+   └─ agent.py      → publisher.py → $XDG_RUNTIME_DIR/archpm/status.json
+                                     ~/.cache/archpm/status.json (symlink)
                                         ↑ plasmoid reads here
 ```
 
@@ -112,7 +112,7 @@ plasmashell.
 Root runs alongside the measurement chain, not through it:
 
 ```
-gpm/ui/rootpanel.py ─ pkexec ─→ /usr/local/lib/gpm/gpm-helper   (root)
+archpm/ui/rootpanel.py ─ pkexec ─→ /usr/local/lib/archpm/archpm-helper   (root)
         │                            ↑ polkit: io.github.outing69.archpm.helper.run
         └─ ElevatedBackend ──────────┘   (only on AccessDenied)
 ```
@@ -120,12 +120,12 @@ gpm/ui/rootpanel.py ─ pkexec ─→ /usr/local/lib/gpm/gpm-helper   (root)
 ## Useful commands
 
 ```bash
-systemctl --user status gpm-agent        # is the agent running?
-systemctl --user restart gpm-agent
-python3 -m gpm.agent --once              # one sample to stdout
-journalctl --user -u gpm-agent -f        # logs
+systemctl --user status archpm-agent        # is the agent running?
+systemctl --user restart archpm-agent
+python3 -m archpm.agent --once              # one sample to stdout
+journalctl --user -u archpm-agent -f        # logs
 kpackagetool6 -t Plasma/Applet -u plasmoid/package   # update the widget
-/usr/local/lib/gpm/gpm-helper status                 # test the helper (without root)
+/usr/local/lib/archpm/archpm-helper status                 # test the helper (without root)
 pkaction --action-id io.github.outing69.archpm.helper.run --verbose    # inspect the polkit rules
 ./install.sh --uninstall-root                        # remove the root part
 ```

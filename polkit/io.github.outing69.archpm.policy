@@ -3,11 +3,11 @@
  "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
  "http://www.freedesktop.org/standards/PolicyKit/1.0/policyconfig.dtd">
 <policyconfig>
-  <vendor>Glorified PM</vendor>
+  <vendor>ArchPM</vendor>
 
   <action id="io.github.outing69.archpm.helper.run">
-    <description>Change Glorified PM system settings</description>
-    <description xml:lang="nl">Systeeminstellingen van Glorified PM wijzigen</description>
+    <description>Change ArchPM system settings</description>
+    <description xml:lang="nl">Systeeminstellingen van ArchPM wijzigen</description>
     <message>Authentication is required to change process priority or system services.</message>
     <message xml:lang="nl">Authenticatie is vereist om procesprioriteit of systeemdiensten te wijzigen.</message>
     <icon_name>utilities-system-monitor</icon_name>
@@ -17,7 +17,7 @@
       <!-- keep: after entering it once the session stays valid for ~5 minutes -->
       <allow_active>auth_admin_keep</allow_active>
     </defaults>
-    <annotate key="org.freedesktop.policykit.exec.path">/usr/local/lib/gpm/gpm-helper</annotate>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/local/lib/archpm/archpm-helper</annotate>
     <annotate key="org.freedesktop.policykit.exec.allow_gui">true</annotate>
   </action>
 
