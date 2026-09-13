@@ -9,6 +9,21 @@ the same measurement core:
 | **Agent** (`gpm-agent`) | systemd --user service that samples every 2 s and writes `status.json` |
 | **Widget** | Plasma 6 plasmoid on your desktop that reads that `status.json` |
 
+## Status and support
+
+Built for and tested on one machine: CachyOS (Arch), KDE Plasma 6 on Wayland,
+an AMD Ryzen 7800X3D and an NVIDIA RTX 5070. It will probably work on any Arch
+derivative with Plasma 6 and an NVIDIA card. AMD and Intel GPUs use a sysfs
+fallback that has only been exercised on the Ryzen's integrated Radeon. Other
+desktops get the GUI but not the widget.
+
+This is a personal tool that I am sharing in case it is useful to you. There
+is **no support**: if it does not work on your PC, I probably cannot help. Bug
+reports and patches are welcome, but there is no promise that I will act on
+them. The license is MIT, so feel free to fork it and make it your own.
+
+See `SECURITY.md` for what the root helper does and does not protect against.
+
 ## Installing
 
 ```bash
