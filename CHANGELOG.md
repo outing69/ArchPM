@@ -7,7 +7,8 @@ All notable changes, newest first. Versions are git tags on
 
 - Overview reads in plain words: Download/Upload, GPU load, Disk read/write,
   Processor for the CPU temperature, "58% of 15 G"; labels start with a capital.
-  Help explains each of them.
+  Help explains each of them. The CPU tile names the processor ("7800X3D"),
+  the temperature tile has no subtitle, and sizes say GB and MB everywhere.
 - Tray icon menu: "Always keep on foreground" (off by default) keeps the window
   above everything, to watch a measurement while something else has the screen.
 - Overview: a red "End game" button on the game card asks the detected game and
