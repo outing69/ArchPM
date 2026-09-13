@@ -44,6 +44,38 @@ PlasmoidItem {
     readonly property color gpuColor: "#9b7dff"
     readonly property color memColor: "#f2a65a"
     readonly property color vramColor: "#e2749c"
+    readonly property color hotColor: "#ff5f6d"
+    readonly property int hotTemp: 85
+
+    // Panel strip settings (right-click -> Configure): 0 percentages, 1 temperatures, 2 both
+    readonly property int panelMode: Plasmoid.configuration.panelMode
+    readonly property bool showGame: Plasmoid.configuration.showGame
+    readonly property var game: root.stats.game || null
+
+    function pct(v) { return (v || 0).toFixed(0) + "%" }
+    function deg(v) { return (v || 0).toFixed(0) + "°" }
+    function cpuText() {
+        var c = root.stats.cpu, t = root.stats.cpu_temp
+        if (root.panelMode === 1) return deg(t)
+        if (root.panelMode === 2) return pct(c) + " " + deg(t)
+        return pct(c)
+    }
+    function gpuText() {
+        if (!root.stats.gpu) return ""
+        var g = root.stats.gpu
+        if (root.panelMode === 1) return deg(g.temp)
+        if (root.panelMode === 2) return pct(g.util) + " " + deg(g.temp)
+        return pct(g.util)
+    }
+    function shellQuote(s) { return "'" + String(s).replace(/'/g, "'\\''") + "'" }
+
+    // "Open ArchPM": the agent tells us how it is started (checkout or package);
+    // setsid detaches the window from the data engine, which would otherwise
+    // wait for it to exit. The single-instance socket raises an open window.
+    function openArchPM() {
+        if (!root.stats.launch) return
+        launcher.connectSource("setsid -f sh -c " + shellQuote(root.stats.launch) + " >/dev/null 2>&1")
+    }
 
     preferredRepresentation: fullRepresentation
     Plasmoid.backgroundHints: PlasmaCore.Types.DefaultBackground | PlasmaCore.Types.ConfigurableBackground
@@ -97,6 +129,13 @@ PlasmoidItem {
         }
     }
 
+    P5Support.DataSource {
+        id: launcher
+        engine: "executable"
+        connectedSources: []
+        onNewData: function (source, data) { disconnectSource(source) }
+    }
+
     Timer {
         interval: 2000
         running: true
@@ -129,6 +168,18 @@ PlasmoidItem {
                     level: 5
                     Layout.fillWidth: true
                 }
+                Text {
+                    // acts as a link: the app opens, or comes to the front
+                    text: "Open ArchPM"
+                    visible: !!root.stats.launch
+                    color: "#f5c542"
+                    font: Kirigami.Theme.smallFont
+                    MouseArea {
+                        anchors.fill: parent
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: root.openArchPM()
+                    }
+                }
                 Rectangle {
                     width: Kirigami.Units.gridUnit * 0.4
                     height: width
@@ -146,6 +197,32 @@ PlasmoidItem {
                 opacity: 0.7
                 font: Kirigami.Theme.smallFont
                 text: "No data. Start the agent:\nsystemctl --user start archpm-agent"
+            }
+
+            // -- the running game ------------------------------------------
+            ColumnLayout {
+                Layout.fillWidth: true
+                visible: root.game !== null
+                spacing: 1
+                Text {
+                    Layout.fillWidth: true
+                    elide: Text.ElideRight
+                    text: root.game ? root.game.name : ""
+                    color: "#f5c542"
+                    font.bold: true
+                    font.pointSize: Kirigami.Theme.smallFont.pointSize
+                }
+                Text {
+                    Layout.fillWidth: true
+                    color: Kirigami.Theme.textColor
+                    opacity: 0.7
+                    font.family: "monospace"
+                    font.pointSize: Kirigami.Theme.smallFont.pointSize - 1
+                    text: root.game
+                          ? "GPU " + root.pct(root.game.gpu) + "  ·  " + root.game.cores.toFixed(1) + " cores  ·  VRAM "
+                            + (root.game.vram / 1024).toFixed(1) + " G  ·  " + root.game.procs + " proc"
+                          : ""
+                }
             }
 
             // -- meters ---------------------------------------------------
@@ -287,19 +364,62 @@ PlasmoidItem {
         }
     }
 
-    // In the panel: compact text representation.
-    compactRepresentation: RowLayout {
-        spacing: Kirigami.Units.smallSpacing
-        Text {
-            text: "C " + (root.stats.cpu || 0).toFixed(0) + "%"
-            color: root.cpuColor
-            font.family: "monospace"
-        }
-        Text {
-            visible: root.stats.gpu !== undefined
-            text: "G " + (root.stats.gpu ? root.stats.gpu.util.toFixed(0) : 0) + "%"
-            color: root.gpuColor
-            font.family: "monospace"
+    // In the panel: one line in the app's colours. What it shows is a setting;
+    // a value goes red when its part runs hot. The full view opens on click.
+    compactRepresentation: MouseArea {
+        id: compact
+        Layout.minimumWidth: strip.implicitWidth + Kirigami.Units.smallSpacing * 2
+        Layout.preferredWidth: Layout.minimumWidth
+        onClicked: root.expanded = !root.expanded
+        hoverEnabled: true
+
+        RowLayout {
+            id: strip
+            anchors.centerIn: parent
+            spacing: Kirigami.Units.smallSpacing
+
+            Rectangle {
+                width: Kirigami.Units.gridUnit * 0.35
+                height: width
+                radius: width / 2
+                color: root.online ? "#59d98e" : root.hotColor
+                visible: !root.online
+            }
+            Text {
+                visible: root.showGame && root.game !== null
+                text: root.game ? root.game.name : ""
+                color: "#f5c542"
+                font.bold: true
+                font.pointSize: Kirigami.Theme.smallFont.pointSize
+                elide: Text.ElideRight
+                Layout.maximumWidth: Kirigami.Units.gridUnit * 12
+            }
+            Text {
+                visible: root.showGame && root.game !== null
+                text: "·"
+                opacity: 0.5
+                color: Kirigami.Theme.textColor
+            }
+            Text {
+                text: "CPU " + root.cpuText()
+                color: (root.stats.cpu_temp || 0) >= root.hotTemp ? root.hotColor : root.cpuColor
+                font.family: "monospace"
+                font.pointSize: Kirigami.Theme.smallFont.pointSize
+            }
+            Text {
+                visible: root.stats.gpu !== undefined
+                text: "GPU " + root.gpuText()
+                color: (root.stats.gpu && root.stats.gpu.temp >= root.hotTemp) ? root.hotColor : root.gpuColor
+                font.family: "monospace"
+                font.pointSize: Kirigami.Theme.smallFont.pointSize
+            }
+            Text {
+                visible: root.panelMode !== 1
+                text: "RAM " + root.pct(root.stats.mem_pct)
+                color: (root.stats.mem_pct || 0) >= 90 ? root.hotColor : root.memColor
+                font.family: "monospace"
+                font.pointSize: Kirigami.Theme.smallFont.pointSize
+            }
         }
     }
 }

@@ -17,46 +17,12 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ..game import game_tree, pick_game
 from ..model import ProcSample, Snapshot
 from . import theme
 from .history import ProcHistory
 from .proc_model import age_text
 from .widgets import Card, CoreGrid, Graph, StatTile, app_icon, human_bytes, mono
-
-
-def game_tree(game: ProcSample, procs: list[ProcSample]) -> list[ProcSample]:
-    """Everything that belongs to the game: all processes Steam launched for the
-    same app id, or, for a game started some other way, the process and its
-    descendants."""
-    if game.steam_appid:
-        return [p for p in procs if p.steam_appid == game.steam_appid]
-    children: dict[int, list[ProcSample]] = {}
-    for p in procs:
-        children.setdefault(p.ppid, []).append(p)
-    out, stack = [], [game]
-    while stack:
-        p = stack.pop()
-        out.append(p)
-        stack.extend(children.get(p.pid, []))
-    return out
-
-
-def pick_game(procs: list[ProcSample], current_pid: int) -> ProcSample | None:
-    """The game to show: a Game-category process using the GPU, preferring the
-    one shown last tick so the card does not hop between a game and its
-    launcher. Without a Game, any program doing real GPU work."""
-    # Steam's own client is category Game too (its menu entry says so) and
-    # always holds a little VRAM; a game is something Steam *launched* (it has
-    # an app id) or, outside Steam, a program doing real GPU work.
-    games = [p for p in procs if p.steam_appid and (p.gpu_sm > 0 or p.gpu_mem_mb > 0)]
-    if not games:
-        games = [p for p in procs if p.program and not p.steam_appid and p.gpu_sm >= 20]
-    if not games:
-        return None
-    for p in games:
-        if p.pid == current_pid:
-            return p
-    return max(games, key=lambda p: (p.gpu_sm, p.gpu_mem_mb, p.cpu_percent))
 
 
 class GameCard(Card):

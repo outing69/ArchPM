@@ -3,9 +3,12 @@ from __future__ import annotations
 
 import json
 import os
+import shlex
+import sys
 import tempfile
 from pathlib import Path
 
+from .game import game_summary, pick_game
 from .model import Snapshot
 
 _APP = "archpm"
@@ -46,6 +49,16 @@ def ensure_link() -> None:
         pass
 
 
+def launch_command() -> str:
+    """How the widget starts the GUI: the interpreter this agent runs under,
+    from the directory it runs in. Works for a checkout (the unit's working
+    directory) and for the installed package (site-packages, any directory)."""
+    return f"cd {shlex.quote(os.getcwd())} && exec {shlex.quote(sys.executable)} -m archpm"
+
+
+_state = {"game_pid": 0}   # the game shown last tick, so the widget does not hop
+
+
 def to_payload(snap: Snapshot, top_n: int = 5) -> dict:
     s = snap.system
     # Only processes that are actually doing something; a list of five 0% entries is noise.
@@ -72,7 +85,13 @@ def to_payload(snap: Snapshot, top_n: int = 5) -> dict:
                     for p in top_cpu],
         "top_mem": [{"name": p.display_name, "pid": p.pid, "v": round(p.mem_mb)}
                     for p in top_mem],
+        "launch": launch_command(),
     }
+    ncpu = len(s.per_core) or 1
+    game = pick_game(snap.procs, _state["game_pid"])
+    _state["game_pid"] = game.pid if game else 0
+    if game is not None:
+        payload["game"] = game_summary(game, snap.procs, ncpu)
     if s.gpu is not None:
         g = s.gpu
         payload["gpu"] = {
