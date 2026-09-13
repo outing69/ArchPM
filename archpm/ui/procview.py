@@ -225,6 +225,10 @@ class ProcessView(QWidget):
         # -- tree ----------------------------------------------------------
         self.model = ProcModel(ncpu, self)
         self.model.tree = self.cb_tree.isChecked()
+        # Connected before the proxy sees the model: Qt calls slots in
+        # connection order, and the proxy would otherwise move the view's
+        # current row (and re-pin the history) before we notice the removal.
+        self.model.rowsAboutToBeRemoved.connect(self._rows_going)
         self.proxy = ProcFilter(self)
         self.proxy.show_all = self.cb_all.isChecked()
         self.proxy.setSourceModel(self.model)
@@ -281,7 +285,6 @@ class ProcessView(QWidget):
         outer.addWidget(self.split, 1)
         self.table.selectionModel().currentRowChanged.connect(self._current_changed)
         self.table.pressed.connect(lambda _: self._unfreeze())
-        self.model.rowsAboutToBeRemoved.connect(self._rows_going)
 
         # Collapsed by default, or a browser's twenty renderers bury everything.
         # The one exception, applied once per process the first time it is
