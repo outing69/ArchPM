@@ -24,18 +24,40 @@ import sys
 PATH = "/usr/bin:/usr/sbin:/bin:/sbin"
 
 ALLOWED_SIGNALS = {"TERM", "KILL", "STOP", "CONT", "HUP", "INT", "USR1", "USR2"}
-# First character may not be "-": a name like "--no-block.service" would otherwise
-# reach systemctl looking like an option. The "--" below is the second line of defence.
-UNIT_RE = re.compile(r"^[A-Za-z0-9@_][A-Za-z0-9@._:-]{0,127}\.(service|socket|timer|target|path)$")
+# Unit names: an ordinary first character (a leading "-" would reach systemctl
+# looking like an option; "--" below is the second line of defence), and no
+# .target: targets are how you reboot, power off or isolate the system, and the
+# helper has no business with them. Matched with fullmatch so a trailing
+# newline cannot slip past the way it does with "$".
+UNIT_RE = re.compile(r"[A-Za-z0-9@_][A-Za-z0-9@._:-]{0,127}\.(service|socket|timer|path)")
+INT_RE = re.compile(r"-?[0-9]{1,10}")
 
-# Services whose stopping wrecks your graphical session or the system.
+# Units whose stopping wrecks your graphical session or the system. Compared
+# against every name systemctl knows the unit by (aliases included) and against
+# the units a socket or timer triggers, not just the string the caller typed.
 PROTECTED_UNITS = {
-    "dbus.service", "dbus-broker.service", "systemd-logind.service",
-    "systemd-journald.service", "systemd-udevd.service", "polkit.service",
-    "display-manager.service", "sddm.service", "gdm.service",
-    "systemd-oomd.service", "dbus.socket",
+    "dbus.service", "dbus-broker.service", "dbus.socket",
+    "systemd-logind.service", "systemd-logind-varlink.socket",
+    "systemd-journald.service", "systemd-journald.socket",
+    "systemd-journald-dev-log.socket", "systemd-journald-audit.socket",
+    "systemd-udevd.service", "systemd-udevd-control.socket", "systemd-udevd-kernel.socket",
+    "polkit.service", "systemd-oomd.service", "systemd-oomd.socket",
+    "display-manager.service", "sddm.service", "gdm.service", "lightdm.service",
+    "ly.service", "greetd.service", "lxdm.service", "xdm.service",
+}
+# Units that shut the system down, reboot it or drop it to single-user mode.
+# Refused for every action, including start.
+DENIED_UNITS = {
+    "systemd-poweroff.service", "systemd-reboot.service", "systemd-halt.service",
+    "systemd-kexec.service", "systemd-soft-reboot.service", "systemd-exit.service",
+    "systemd-suspend.service", "systemd-hibernate.service", "systemd-hybrid-sleep.service",
+    "systemd-suspend-then-hibernate.service", "emergency.service", "rescue.service",
 }
 SERVICE_ACTIONS = {"start", "stop", "restart"}
+# Processes of system accounts (root, polkitd, dbus, ...) are never signalled:
+# that is how you would kill logind or the display manager by pid and bypass the
+# unit protection above. Arch and most distributions start regular users at 1000.
+SYSTEM_UID_MAX = 999
 
 
 class HelperError(Exception):
@@ -60,10 +82,10 @@ def run(*cmd: str, timeout: int = 20) -> str:
 
 
 def as_int(value: str, lo: int, hi: int, what: str) -> int:
-    try:
-        n = int(value)
-    except ValueError:
-        raise HelperError(f"{what} must be an integer, not {value!r}") from None
+    # int() would also accept " 5 ", "+5", "1_0" and non-ASCII digits; we don't.
+    if not INT_RE.fullmatch(value):
+        raise HelperError(f"{what} must be an integer, not {value!r}")
+    n = int(value)
     if not lo <= n <= hi:
         raise HelperError(f"{what} must be between {lo} and {hi} (got {n})")
     return n
@@ -74,6 +96,41 @@ def check_pid(pid: int) -> None:
         raise HelperError("pid 1 and below are protected")
     if not os.path.isdir(f"/proc/{pid}"):
         raise HelperError(f"process {pid} does not exist")
+
+
+def proc_uid(pid: int) -> int:
+    """Real uid of a process, from /proc/<pid>/status."""
+    try:
+        with open(f"/proc/{pid}/status") as fh:
+            for line in fh:
+                if line.startswith("Uid:"):
+                    return int(line.split()[1])
+    except (OSError, ValueError, IndexError):
+        pass
+    raise HelperError(f"process {pid} does not exist")
+
+
+def proc_units(pid: int) -> set[str]:
+    """systemd units the process's cgroup path passes through, e.g. {'sddm.service'}."""
+    try:
+        with open(f"/proc/{pid}/cgroup") as fh:
+            path = fh.read().strip().rpartition(":")[2]
+    except OSError:
+        return set()
+    return {part for part in path.split("/") if "." in part}
+
+
+def check_signal_target(pid: int) -> None:
+    """Refuse pids the helper must never signal, whatever the caller says."""
+    uid = proc_uid(pid)
+    if uid <= SYSTEM_UID_MAX:
+        raise HelperError(
+            f"process {pid} runs as a system account (uid {uid}); "
+            "the helper only signals processes of regular users"
+        )
+    hit = proc_units(pid) & PROTECTED_UNITS
+    if hit:
+        raise HelperError(f"process {pid} belongs to {sorted(hit)[0]}, which is protected")
 
 
 # -- processes ----------------------------------------------------------------
@@ -90,8 +147,19 @@ def cmd_proc_signal(args) -> dict:
     name = args.signal.upper().removeprefix("SIG")
     if name not in ALLOWED_SIGNALS:
         raise HelperError(f"signal {name} not allowed")
-    check_pid(pid)
-    os.kill(pid, getattr(signal, f"SIG{name}"))
+    # A pidfd pins the process *before* we look at who it is, so a pid that is
+    # recycled between the check and the signal cannot receive it.
+    try:
+        fd = os.pidfd_open(pid)
+    except ProcessLookupError:
+        raise HelperError(f"process {pid} does not exist") from None
+    try:
+        check_signal_target(pid)
+        signal.pidfd_send_signal(fd, getattr(signal, f"SIG{name}"))
+    except ProcessLookupError:
+        raise HelperError(f"process {pid} does not exist") from None
+    finally:
+        os.close(fd)
     return {"pid": pid, "signal": name}
 
 
@@ -116,15 +184,38 @@ def cmd_proc_ionice(args) -> dict:
 
 
 # -- services and memory ------------------------------------------------------
+def unit_names(unit: str) -> set[str]:
+    """Every name systemctl resolves the unit to, plus what it triggers.
+
+    `systemd-logind.service` is also `dbus-org.freedesktop.login1.service`;
+    `display-manager.service` is whatever the distribution linked it to; a
+    `.socket` or `.timer` triggers a service. All of those must hit the
+    protected list, not just the spelling the caller used.
+    """
+    out = run("systemctl", "show", "-p", "Id", "-p", "Names", "-p", "Triggers", "--", unit)
+    names = {unit}
+    for line in out.splitlines():
+        key, _, value = line.partition("=")
+        if key in ("Id", "Names", "Triggers"):
+            names.update(value.split())
+    return names
+
+
 def cmd_service(args) -> dict:
     action = args.action
     if action not in SERVICE_ACTIONS:
         raise HelperError(f"action {action!r} not allowed")
     unit = args.unit if "." in args.unit else f"{args.unit}.service"
-    if not UNIT_RE.match(unit):
+    if not UNIT_RE.fullmatch(unit):
         raise HelperError(f"invalid unit name: {args.unit!r}")
-    if unit in PROTECTED_UNITS and action != "start":
-        raise HelperError(f"{unit} is protected: your session needs it")
+    if unit in DENIED_UNITS:
+        raise HelperError(f"{unit} shuts the system down or isolates it; refused")
+    names = unit_names(unit)
+    if names & DENIED_UNITS:
+        raise HelperError(f"{unit} resolves to {sorted(names & DENIED_UNITS)[0]}; refused")
+    if action != "start" and names & PROTECTED_UNITS:
+        hit = sorted(names & PROTECTED_UNITS)[0]
+        raise HelperError(f"{unit} is protected ({hit}): your session needs it")
     run("systemctl", action, "--", unit, timeout=30)
     state = run("systemctl", "is-active", "--", unit) if action != "stop" else "inactive"
     return {"unit": unit, "action": action, "state": state}

@@ -11,8 +11,9 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import unittest
-from contextlib import redirect_stdout
+from contextlib import contextmanager, redirect_stdout
 from types import SimpleNamespace
 
 from archpm.root import helper
@@ -20,6 +21,26 @@ from archpm.root import helper
 
 def args(**kw) -> SimpleNamespace:
     return SimpleNamespace(**kw)
+
+
+@contextmanager
+def fake_systemctl(show: dict[str, str]):
+    """Replace helper.run: `systemctl show` answers from `show` (unit -> output),
+    anything else records the call and returns "". Lets cmd_service be tested
+    end-to-end without touching systemd."""
+    calls: list[tuple[str, ...]] = []
+
+    def run(*cmd: str, timeout: int = 20) -> str:
+        calls.append(cmd)
+        if cmd[:2] == ("systemctl", "show"):
+            return show.get(cmd[-1], f"Id={cmd[-1]}\nNames={cmd[-1]}\nTriggers=")
+        return ""
+
+    original, helper.run = helper.run, run
+    try:
+        yield calls
+    finally:
+        helper.run = original
 
 
 class AsInt(unittest.TestCase):
@@ -37,6 +58,15 @@ class AsInt(unittest.TestCase):
         for bad in ("abc", "1.5", "", "1; rm -rf /", "0x10"):
             with self.subTest(bad=bad), self.assertRaises(helper.HelperError):
                 helper.as_int(bad, 0, 100, "x")
+
+    def test_rejects_everything_int_would_accept_but_we_do_not(self):
+        # int() takes all of these; a root helper should not.
+        for bad in ("+5", " 5 ", "5\n", "1_0", "\u0665", "\u0661\u0662", "5 "):
+            with self.subTest(bad=bad), self.assertRaises(helper.HelperError):
+                helper.as_int(bad, 0, 100, "x")
+
+    def test_negative_is_allowed_when_in_range(self):
+        self.assertEqual(helper.as_int("-10", -20, 19, "nice"), -10)
 
 
 class CheckPid(unittest.TestCase):
@@ -68,6 +98,30 @@ class ProcCommands(unittest.TestCase):
     def test_signal_rejects_pid_1_even_for_allowed_signal(self):
         with self.assertRaises(helper.HelperError):
             helper.cmd_proc_signal(args(pid="1", signal="TERM"))
+
+    def test_signal_refuses_system_account_processes(self):
+        # pid 2 (kthreadd) runs as root on every Linux system; it must be refused
+        # because of *who* it is, not because it is missing.
+        with self.assertRaises(helper.HelperError) as ctx:
+            helper.cmd_proc_signal(args(pid="2", signal="CONT"))
+        self.assertIn("system account", str(ctx.exception))
+
+    def test_signal_target_check_accepts_a_regular_user_process(self):
+        if os.getuid() <= helper.SYSTEM_UID_MAX:
+            self.skipTest("test itself runs as a system account")
+        helper.check_signal_target(os.getpid())  # must not raise
+
+    def test_signal_target_check_refuses_protected_cgroup(self):
+        original = helper.proc_units
+        helper.proc_units = lambda pid: {"sddm.service", "system.slice"}
+        try:
+            if os.getuid() <= helper.SYSTEM_UID_MAX:
+                self.skipTest("test itself runs as a system account")
+            with self.assertRaises(helper.HelperError) as ctx:
+                helper.check_signal_target(os.getpid())
+            self.assertIn("protected", str(ctx.exception))
+        finally:
+            helper.proc_units = original
 
     def test_affinity_rejects_empty_and_out_of_range_cores(self):
         with self.assertRaises(helper.HelperError):
@@ -104,15 +158,71 @@ class ServiceCommand(unittest.TestCase):
                 self.assertIsNotNone(helper.UNIT_RE.match(full))
 
     def test_refuses_to_stop_or_restart_protected_units(self):
-        for unit in sorted(helper.PROTECTED_UNITS):
-            for action in ("stop", "restart"):
-                with self.subTest(unit=unit, action=action), \
-                        self.assertRaises(helper.HelperError):
-                    helper.cmd_service(args(action=action, unit=unit))
+        with fake_systemctl({}):
+            for unit in sorted(helper.PROTECTED_UNITS):
+                for action in ("stop", "restart"):
+                    with self.subTest(unit=unit, action=action), \
+                            self.assertRaises(helper.HelperError):
+                        helper.cmd_service(args(action=action, unit=unit))
 
     def test_protected_units_also_match_without_suffix(self):
-        with self.assertRaises(helper.HelperError):
+        with fake_systemctl({}), self.assertRaises(helper.HelperError):
             helper.cmd_service(args(action="stop", unit="polkit"))
+
+    def test_rejects_targets_including_reboot_and_emergency(self):
+        for unit in ("reboot.target", "poweroff.target", "emergency.target", "rescue.target",
+                     "halt.target", "kexec.target", "exit.target", "multi-user.target"):
+            for action in ("start", "stop", "restart"):
+                with self.subTest(unit=unit, action=action), \
+                        self.assertRaises(helper.HelperError) as ctx:
+                    helper.cmd_service(args(action=action, unit=unit))
+                self.assertIn("invalid unit name", str(ctx.exception))
+
+    def test_refuses_shutdown_services_even_for_start(self):
+        with fake_systemctl({}) as calls:
+            for unit in sorted(helper.DENIED_UNITS):
+                with self.subTest(unit=unit), self.assertRaises(helper.HelperError):
+                    helper.cmd_service(args(action="start", unit=unit))
+        self.assertEqual(calls, [], "must be refused before systemctl is ever called")
+
+    def test_refuses_protected_unit_via_alias(self):
+        alias = "dbus-org.freedesktop.login1.service"
+        show = {alias: f"Id=systemd-logind.service\nNames={alias} systemd-logind.service\nTriggers="}
+        with fake_systemctl(show) as calls, self.assertRaises(helper.HelperError) as ctx:
+            helper.cmd_service(args(action="stop", unit=alias))
+        self.assertIn("systemd-logind.service", str(ctx.exception))
+        self.assertTrue(all(c[:2] == ("systemctl", "show") for c in calls),
+                        "only the lookup may run, never the stop")
+
+    def test_refuses_display_manager_through_its_link(self):
+        show = {"display-manager.service":
+                "Id=ly.service\nNames=display-manager.service ly.service\nTriggers="}
+        with fake_systemctl(show), self.assertRaises(helper.HelperError):
+            helper.cmd_service(args(action="restart", unit="display-manager.service"))
+
+    def test_refuses_socket_that_triggers_a_protected_service(self):
+        sock = "systemd-udevd-kernel.socket"
+        show = {sock: f"Id={sock}\nNames={sock}\nTriggers=systemd-udevd.service"}
+        with fake_systemctl(show), self.assertRaises(helper.HelperError):
+            helper.cmd_service(args(action="stop", unit=sock))
+
+    def test_refuses_alias_of_a_denied_unit_even_for_start(self):
+        show = {"harmless.service": "Id=systemd-reboot.service\nNames=harmless.service systemd-reboot.service\nTriggers="}
+        with fake_systemctl(show), self.assertRaises(helper.HelperError):
+            helper.cmd_service(args(action="start", unit="harmless.service"))
+
+    def test_allows_an_ordinary_service_and_passes_double_dash(self):
+        with fake_systemctl({}) as calls:
+            result = helper.cmd_service(args(action="restart", unit="bluetooth"))
+        self.assertEqual(result["unit"], "bluetooth.service")
+        actions = [c for c in calls if c[1] == "restart"]
+        self.assertEqual(actions, [("systemctl", "restart", "--", "bluetooth.service")])
+
+    def test_trailing_newline_does_not_pass_the_regex(self):
+        for unit in ("systemd-logind.service\n", "sshd.service\n", "sshd.service\r"):
+            with self.subTest(unit=repr(unit)), self.assertRaises(helper.HelperError) as ctx:
+                helper.cmd_service(args(action="stop", unit=unit))
+            self.assertIn("invalid unit name", str(ctx.exception))
 
 
 class MemoryCommands(unittest.TestCase):
@@ -151,6 +261,13 @@ class MainProtocol(unittest.TestCase):
     def test_unknown_subcommand_is_rejected_by_argparse(self):
         with self.assertRaises(SystemExit), redirect_stdout(io.StringIO()):
             helper.main(["reboot"])
+
+    def test_abbreviated_subcommands_are_rejected(self):
+        import contextlib
+        for argv in (["proc", "2", "0"], ["serv", "stop", "x"], ["drop"]):
+            with self.subTest(argv=argv), self.assertRaises(SystemExit), \
+                    redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                helper.main(argv)
 
 
 class HardeningInvariants(unittest.TestCase):

@@ -17,9 +17,22 @@ session** and treats every argument as hostile. It defends against:
 - **Arbitrary actions.** Only a fixed set of subcommands exists. Signals are
   limited to an allow-list, service actions to start/stop/restart, and every
   numeric value has explicit bounds.
-- **Breaking your session.** A list of protected units (dbus, logind,
-  journald, udev, polkit, the display manager) cannot be stopped or restarted.
-  PID 1 and below are always refused.
+- **Breaking your session.** Three rules, each closing a hole the previous
+  one leaves open:
+  - Signals go only to processes of regular users (uid 1000 and up) that are
+    not inside a protected unit's cgroup. Root daemons, polkitd, dbus, the
+    display manager and their children cannot be signalled by pid at all. The
+    check runs on a pidfd, so a pid recycled mid-call cannot receive the signal.
+  - `service stop`/`restart` is refused for a protected list (dbus, logind,
+    journald, udev, polkit, oomd, the common display managers) and for their
+    sockets. The list is compared against every name systemctl resolves the
+    unit to, so aliases such as `dbus-org.freedesktop.login1.service` and links
+    such as `display-manager.service` are caught, and against what a socket or
+    timer triggers.
+  - `.target` units are never accepted, and the services behind reboot,
+    poweroff, halt, kexec, suspend, hibernate, emergency and rescue are refused
+    for every action including start.
+  - PID 1 and below are always refused for everything.
 - **Loading attacker-controlled code.** The helper is stdlib-only, imports
   nothing from this repository, and lives in a directory a normal user cannot
   write to. `pkexec` itself refuses to run a binary that is not root-owned.
@@ -33,6 +46,18 @@ The helper does **not** defend against:
   `polkit/io.github.outing69.archpm.policy` and reinstall with
   `./install.sh --root`. You will then be asked for your password on every action.
 - Malicious software already running as root. That is game over regardless.
+- Stopping a service that is *not* on the protected list but that you
+  personally depend on (NetworkManager, bluetooth, sshd). That is the feature.
+- Renice, affinity and ionice have no owner check and are subject to the usual
+  pid-reuse race. The worst case is a wrong process getting a different
+  priority, which is why these three are not gated the way signals are.
+- The last line of systemctl's or ionice's stderr is passed back to the caller
+  in the JSON error. That can name units and paths; it cannot leak secrets.
+
+This helper was reviewed once by an independent automated adversarial pass on
+13 September 2026, which found the signal-by-pid bypass, the reboot target and
+the alias gap described above; all three are fixed and pinned by tests. It has
+not yet been reviewed by a second person.
 
 ## What the tests cover
 

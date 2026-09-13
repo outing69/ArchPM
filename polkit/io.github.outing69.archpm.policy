@@ -8,8 +8,8 @@
   <action id="io.github.outing69.archpm.helper.run">
     <description>Change ArchPM system settings</description>
     <description xml:lang="nl">Systeeminstellingen van ArchPM wijzigen</description>
-    <message>Authentication is required to change process priority or system services.</message>
-    <message xml:lang="nl">Authenticatie is vereist om procesprioriteit of systeemdiensten te wijzigen.</message>
+    <message>Authentication is required to change process priorities, signal other users' processes, start or stop system services, and adjust memory settings. It stays valid for about five minutes.</message>
+    <message xml:lang="nl">Authenticatie is vereist om procesprioriteiten te wijzigen, processen van andere gebruikers te signaleren, systeemdiensten te starten of te stoppen en geheugeninstellingen aan te passen. Blijft ongeveer vijf minuten geldig.</message>
     <icon_name>utilities-system-monitor</icon_name>
     <defaults>
       <allow_any>auth_admin</allow_any>
