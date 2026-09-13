@@ -107,6 +107,33 @@ GLOSSARY: tuple[Section, ...] = (
              "Overview, widget"),
     )),
     Section("Network and disk", (
+        Term("Connection",
+             "A conversation between a program on your PC and one somewhere else (or on this "
+             "PC). A browser tab opens a few; a game opens one or two and keeps them. The "
+             "Network tab lists them per program with the address and port on the other end.",
+             "Network tab"),
+        Term("Port",
+             "The number behind the colon in an address: it says which service is meant. 443 "
+             "is https, 22 is ssh, 27036 is Steam. ArchPM names the common ones from your own "
+             "system's list; it never asks the internet.",
+             "Network tab, Details column"),
+        Term("Listening / open door",
+             "A program waiting for others to connect to it. Listening on \"this PC only\" is "
+             "harmless. Listening on every address means other devices on your network can "
+             "reach it: normal for KDE Connect or Steam, worth a look for something you do "
+             "not recognise.",
+             "Network tab, Open doors card"),
+        Term("TCP and UDP",
+             "Two ways to send data. TCP checks that everything arrives, and the kernel counts "
+             "its bytes, so ArchPM can show a speed per program. UDP just sends, which games "
+             "prefer for low latency, and has no counters: a game shows connections, not a "
+             "speed. The total speed on the Overview includes both.",
+             "Network tab"),
+        Term("Interface and VPN",
+             "The wire the traffic goes over: wlan0 is Wi-Fi, enp… is a cable, and a name like "
+             "proton0 or wg0 is a VPN tunnel. If the VPN interface carries the traffic and the "
+             "Wi-Fi only a little, your VPN is doing its job.",
+             "Network tab, Interfaces card"),
         Term("Download and upload",
              "Download is what comes in from the network, upload what goes out, for the "
              "whole machine. A game update downloads; a video call uploads too. The graph's "

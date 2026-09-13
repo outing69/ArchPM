@@ -29,6 +29,7 @@ from .cleanup import CleanupView
 from .dashboard import Dashboard
 from .help import HelpView
 from .history import ProcHistory
+from .network import NetworkView
 from .procview import ProcessView
 from .startup import StartupView
 from .sysinfo import SystemView
@@ -103,6 +104,8 @@ class MainWindow(QMainWindow):
         ncpu = psutil.cpu_count(logical=True) or 1
 
         self.tabs = QTabWidget()
+        self.worker_services = lambda port: (self.worker._sampler.net.service(port)
+                                             if self.worker._sampler else "")
         self.history = ProcHistory()
         self.dashboard = Dashboard(ncpu, self.history)
         self.procs = ProcessView(ncpu, self.backend, self.history)
@@ -110,6 +113,8 @@ class MainWindow(QMainWindow):
         self.system = SystemView()
         self.tabs.addTab(self.dashboard, "Overview")
         self.tabs.addTab(self.procs, "Processes")
+        self.network = NetworkView(self.worker_services)
+        self.tabs.addTab(self.network, "Network")
         self.tabs.addTab(self.startup, "Startup")
         self.tabs.addTab(self.system, "System")
         self.cleanup = CleanupView(self.root_client)
@@ -263,6 +268,7 @@ class MainWindow(QMainWindow):
         self.history.update(snap.procs)
         self.dashboard.update_view(snap)
         self.procs.update_view(snap)
+        self.network.update_view(snap)
         self.startup.update_view(snap)
         self.cleanup.update_view(snap)
         render_ms = (time.perf_counter() - t0) * 1000
