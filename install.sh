@@ -59,11 +59,18 @@ install_user() {
 }
 
 install_root() {
+    if [ -f /usr/lib/archpm/archpm-helper ]; then
+        echo "ArchPM is installed as a package (/usr/lib/archpm/archpm-helper exists);"
+        echo "the root part comes from the package, not from install.sh. Nothing to do."
+        return
+    fi
     echo "→ root helper and polkit policy (asks for your password)"
     # pkexec refuses a program that is not root-owned or that others can
     # write to -- hence the copy to /usr/local/lib.
     sudo install -Dm755 -o root -g root archpm/root/helper.py "$HELPER_DST"
-    sudo install -Dm644 -o root -g root polkit/io.github.outing69.archpm.policy "$POLICY_DST"
+    sed "s|@HELPER@|$HELPER_DST|" polkit/io.github.outing69.archpm.policy > "$ROOT/.policy.tmp"
+    sudo install -Dm644 -o root -g root "$ROOT/.policy.tmp" "$POLICY_DST"
+    rm -f "$ROOT/.policy.tmp"
     echo "   $HELPER_DST"
     echo "   $POLICY_DST"
     echo -n "→ check: "

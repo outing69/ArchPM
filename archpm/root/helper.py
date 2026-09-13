@@ -4,7 +4,8 @@
 Invoked via pkexec, one action per call, and replies with JSON on stdout.
 Limited to process management, system services and memory; GPU tuning belongs
 in a different tool. Deliberately stdlib-only and without imports from the archpm
-package: this file lives root-owned in /usr/local/lib/archpm/ and must not be able
+package: this file lives root-owned in /usr/lib/archpm/ (or /usr/local/lib/archpm/
+when installed from a checkout) and must not be able
 to load anything from a directory a regular user can write to.
 
 Everything that comes in is validated: fixed subcommands, numeric bounds, a

@@ -184,16 +184,35 @@ class Graph(QWidget):
 
 
 class CoreGrid(QWidget):
-    """One bar per logical core -- shows immediately whether a game only grabs 2 threads."""
+    """One bar per logical core -- shows immediately whether a game only grabs 2 threads.
+
+    Above MAX_BARS cores the bars would be too narrow to read, so cores are
+    grouped into equal runs and each bar shows the group's average; the label
+    then reads "0-1" instead of "0".
+    """
+
+    MAX_BARS = 64
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.values: list[float] = []
+        self.group = 1
         self.setMinimumHeight(74)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
 
     def set_values(self, values: list[float]) -> None:
-        self.values = values
+        n = len(values)
+        if n > self.MAX_BARS:
+            per = -(-n // self.MAX_BARS)  # ceil
+            chunks = [values[i:i + per] for i in range(0, n, per)]
+            self.values = [sum(c) / len(c) for c in chunks]
+            if self.group != per:
+                self.setToolTip(f"{n} logical cores shown as {len(self.values)} bars, "
+                                f"each the average of {per}")
+            self.group = per
+        else:
+            self.values = values
+            self.group = 1
         self.update()
 
     def paintEvent(self, _event) -> None:
@@ -217,12 +236,11 @@ class CoreGrid(QWidget):
             col = theme.heat(v)
             p.setBrush(col)
             p.drawRoundedRect(QRectF(x, h - fh, w, fh), 3, 3)
+            if w < 14:
+                continue  # label would overlap its neighbours; the bar alone still reads
             p.setPen(QColor(theme.MUTED))
-            p.drawText(
-                QRectF(x, h, w, label_h),
-                Qt.AlignmentFlag.AlignCenter,
-                str(i),
-            )
+            label = str(i) if self.group == 1 else f"{i * self.group}-{(i + 1) * self.group - 1}"
+            p.drawText(QRectF(x, h, w, label_h), Qt.AlignmentFlag.AlignCenter, label)
         p.end()
 
 

@@ -73,7 +73,9 @@ Requirements: Python 3.10+, PySide6 6.5+, psutil 5.9+. Tested with newer version
 
 ## What it measures
 
-- **CPU** — total, per logical core, frequency, load and Tctl temperature
+- **CPU** — total, per logical core, frequency, load and Tctl temperature. The
+  per-core strip shows at most 64 bars in the GUI and 32 in the widget; bigger
+  CPUs are shown as group averages (labelled "0-1", "2-3", …).
 - **GPU** — SM utilisation, VRAM, temperature, power draw and clock speed, plus
   **per-process GPU usage** via `nvidia-smi pmon` (works for games too, not
   just CUDA). AMD/Intel fall back to sysfs, without per-process data.
@@ -96,7 +98,8 @@ button: **Overview → Root tasks**.
 That separation is the core of the design:
 
 - `archpm/root/helper.py` is the **only** file that runs as root. It lives
-  root-owned in `/usr/local/lib/archpm/archpm-helper` (pkexec refuses a program that
+  root-owned in `/usr/lib/archpm/archpm-helper` (`/usr/local/lib/…` when installed
+  from a checkout; pkexec refuses a program that
   a regular user can modify), imports nothing from this project and never
   starts a shell.
 - `polkit/io.github.outing69.archpm.policy` decides who may authenticate. With
@@ -149,7 +152,7 @@ plasmashell.
 Root runs alongside the measurement chain, not through it:
 
 ```
-archpm/ui/rootpanel.py ─ pkexec ─→ /usr/local/lib/archpm/archpm-helper   (root)
+archpm/ui/rootpanel.py ─ pkexec ─→ /usr/lib/archpm/archpm-helper   (root)
         │                            ↑ polkit: io.github.outing69.archpm.helper.run
         └─ ElevatedBackend ──────────┘   (only on AccessDenied)
 ```
@@ -162,7 +165,7 @@ systemctl --user restart archpm-agent
 python3 -m archpm.agent --once              # one sample to stdout
 journalctl --user -u archpm-agent -f        # logs
 kpackagetool6 -t Plasma/Applet -u plasmoid/package   # update the widget
-/usr/local/lib/archpm/archpm-helper status                 # test the helper (without root)
+/usr/local/lib/archpm/archpm-helper status           # test the helper (without root)
 pkaction --action-id io.github.outing69.archpm.helper.run --verbose    # inspect the polkit rules
 ./install.sh --uninstall-root                        # remove the root part
 ```

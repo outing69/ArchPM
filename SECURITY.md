@@ -3,7 +3,8 @@
 ## What runs as root
 
 Exactly one file: `archpm/root/helper.py`, installed root-owned as
-`/usr/local/lib/archpm/archpm-helper` and invoked through `pkexec`. Nothing else in
+`/usr/lib/archpm/archpm-helper` (package) or `/usr/local/lib/archpm/archpm-helper`
+(install.sh) and invoked through `pkexec`. Nothing else in
 this project ever runs with elevated privileges. The GUI never sees a password;
 polkit handles authentication.
 

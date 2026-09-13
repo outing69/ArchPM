@@ -24,6 +24,22 @@ PlasmoidItem {
     property bool online: false
     property int misses: 0
 
+    // At most 32 bars in the core strip; bigger CPUs are shown as group averages.
+    readonly property var coreBars: root.groupCores(root.stats.cores || [], 32)
+
+    function groupCores(cores, maxBars) {
+        if (cores.length <= maxBars)
+            return cores
+        var per = Math.ceil(cores.length / maxBars)
+        var out = []
+        for (var i = 0; i < cores.length; i += per) {
+            var sum = 0, n = 0
+            for (var j = i; j < Math.min(i + per, cores.length); j++) { sum += cores[j]; n++ }
+            out.push(sum / n)
+        }
+        return out
+    }
+
     readonly property color cpuColor: "#4c8dff"
     readonly property color gpuColor: "#9b7dff"
     readonly property color memColor: "#f2a65a"
@@ -146,12 +162,12 @@ PlasmoidItem {
             Row {
                 Layout.fillWidth: true
                 spacing: 2
-                visible: (root.stats.cores || []).length > 0
+                visible: root.coreBars.length > 0
                 Repeater {
-                    model: root.stats.cores || []
+                    model: root.coreBars
                     Rectangle {
-                        width: (parent.width - (parent.spacing * ((root.stats.cores || []).length - 1)))
-                               / Math.max(1, (root.stats.cores || []).length)
+                        width: (parent.width - (parent.spacing * (root.coreBars.length - 1)))
+                               / Math.max(1, root.coreBars.length)
                         height: Kirigami.Units.gridUnit
                         radius: 2
                         color: Kirigami.Theme.textColor

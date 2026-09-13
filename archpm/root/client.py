@@ -1,7 +1,7 @@
 """The user side of the root layer.
 
 Nothing in this file runs as root; it only builds calls to
-`pkexec /usr/local/lib/archpm/archpm-helper …` and translates the JSON reply back.
+`pkexec /usr/lib/archpm/archpm-helper …` and translates the JSON reply back.
 That keeps the separation strict: the GUI knows no passwords and runs no shell
 commands, polkit does the authentication and the helper script does the
 validation.
@@ -16,7 +16,13 @@ from pathlib import Path
 
 from ..actions import ActionError, UserBackend
 
-HELPER = Path("/usr/local/lib/archpm/archpm-helper")
+# The distribution package installs the helper under /usr/lib, install.sh under
+# /usr/local/lib. Prefer the package if both exist; report the manual path when neither does.
+_HELPER_CANDIDATES = (
+    Path("/usr/lib/archpm/archpm-helper"),
+    Path("/usr/local/lib/archpm/archpm-helper"),
+)
+HELPER = next((p for p in _HELPER_CANDIDATES if p.is_file()), _HELPER_CANDIDATES[1])
 POLICY = Path("/usr/share/polkit-1/actions/io.github.outing69.archpm.policy")
 ACTION_ID = "io.github.outing69.archpm.helper.run"
 

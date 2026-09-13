@@ -17,7 +17,9 @@
       <!-- keep: after entering it once the session stays valid for ~5 minutes -->
       <allow_active>auth_admin_keep</allow_active>
     </defaults>
-    <annotate key="org.freedesktop.policykit.exec.path">/usr/local/lib/archpm/archpm-helper</annotate>
+    <!-- @HELPER@ is filled in at install time: /usr/lib/archpm/archpm-helper by the package,
+         /usr/local/lib/archpm/archpm-helper by install.sh -->
+    <annotate key="org.freedesktop.policykit.exec.path">@HELPER@</annotate>
     <annotate key="org.freedesktop.policykit.exec.allow_gui">true</annotate>
   </action>
 
