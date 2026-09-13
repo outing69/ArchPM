@@ -26,6 +26,8 @@ from ..root.client import ElevatedBackend, RootClient
 from . import theme
 from .dashboard import Dashboard
 from .procview import ProcessView
+from .startup import StartupView
+from .sysinfo import SystemView
 from .widgets import mono
 from .worker import SampleWorker, run_in_thread
 
@@ -99,11 +101,17 @@ class MainWindow(QMainWindow):
         self.tabs = QTabWidget()
         self.dashboard = Dashboard(ncpu)
         self.procs = ProcessView(ncpu, self.backend)
+        self.startup = StartupView()
+        self.system = SystemView()
         self.tabs.addTab(self.dashboard, "Overview")
         self.tabs.addTab(self.procs, "Processes")
+        self.tabs.addTab(self.startup, "Startup")
+        self.tabs.addTab(self.system, "System")
         self.setCentralWidget(self.tabs)
 
         self.procs.status.connect(self._flash)
+        self.startup.status.connect(self._flash)
+        self.system.status.connect(self._flash)
         self.dashboard.root_requested.connect(self._open_root)
         self._build_statusbar()
         self._build_tray()
@@ -195,6 +203,7 @@ class MainWindow(QMainWindow):
         t0 = time.perf_counter()
         self.dashboard.update_view(snap)
         self.procs.update_view(snap)
+        self.startup.update_view(snap)
         render_ms = (time.perf_counter() - t0) * 1000
         gpu = snap.system.gpu
         bits = [f"{snap.system.proc_count} processes", f"render {render_ms:.0f} ms"]

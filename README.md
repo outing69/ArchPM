@@ -13,7 +13,7 @@ the same measurement core:
 
 | Component | What it is |
 |---|---|
-| **GUI** (`python3 -m archpm`) | PySide6 window with a dashboard and a full process list |
+| **GUI** (`python3 -m archpm`) | PySide6 window: Overview, Processes, Startup and System tabs |
 | **Agent** (`archpm-agent`) | systemd --user service that samples every 2 s and writes `status.json` |
 | **Widget** | Plasma 6 plasmoid on your desktop that reads that `status.json` |
 
@@ -102,10 +102,18 @@ the package, or the polkit policy file will conflict.
 - **GPU** — SM utilisation, VRAM, temperature, power draw and clock speed, plus
   **per-process GPU usage** via `nvidia-smi pmon` (works for games too, not
   just CUDA). AMD/Intel fall back to sysfs, without per-process data.
-- **Processes** — CPU, RSS, threads, nice, disk I/O, VRAM, affinity. Shown as a
-  tree by parent (Steam → reaper → Proton → game) or flat. Programs with a
-  `.desktop` entry get their proper name and icon; Steam games get the game's
-  name and Steam's icon for it. No icon is shown for anything that has none.
+- **Processes** — CPU, RSS, threads, nice, disk I/O, VRAM, affinity, start time.
+  Shown as a tree by parent (Steam → reaper → Proton → game) or flat. Programs
+  with a `.desktop` entry get their proper name, icon and category; Steam games
+  get the game's name and Steam's icon for it. No icon is shown for anything
+  that has none. By default you see your programs plus whatever is busy; "Show
+  all processes" shows everything. A collapsed program shows the totals of its
+  whole tree, so a browser reads as one row with its real memory use.
+- **Startup** — what starts when you log in (XDG autostart), with a switch per
+  entry and whether it is running now. Switching off writes an override in your
+  own `~/.config/autostart`; nothing outside your home is touched.
+- **System** — the machine's specs on one card: CPU, memory, GPUs and drivers,
+  motherboard, kernel, desktop, disks, network. "Copy as text" for forum posts.
 - **System** — network and disk throughput, swap, sensors
 
 ## What you can do with it

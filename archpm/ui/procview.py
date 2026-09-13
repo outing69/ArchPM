@@ -39,6 +39,7 @@ from .proc_model import (
     COL_NAME,
     COL_NICE,
     COL_PID,
+    COL_STARTED,
     COL_STATUS,
     COL_THREADS,
     COL_USER,
@@ -207,7 +208,8 @@ class ProcessView(QWidget):
         for col, w in (
             (COL_PID, 64), (COL_NAME, 280), (COL_CPU, 74), (COL_MEM, 86),
             (COL_GPU, 58), (COL_VRAM, 74), (COL_THREADS, 46), (COL_NICE, 48),
-            (COL_IO, 84), (COL_USER, 78), (COL_STATUS, 74), (COL_CATEGORY, 104),
+            (COL_IO, 84), (COL_USER, 78), (COL_STATUS, 74), (COL_STARTED, 76),
+            (COL_CATEGORY, 104),
         ):
             self.table.setColumnWidth(col, w)
         outer.addWidget(self.table, 1)

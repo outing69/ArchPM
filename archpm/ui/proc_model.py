@@ -23,12 +23,27 @@ SORT_ROLE = Qt.ItemDataRole.UserRole + 1
 PID_ROLE = Qt.ItemDataRole.UserRole + 2
 
 COL_PID, COL_NAME, COL_CPU, COL_MEM, COL_GPU, COL_VRAM, COL_THREADS, \
-    COL_NICE, COL_IO, COL_USER, COL_STATUS, COL_CATEGORY, COL_CMD = range(13)
+    COL_NICE, COL_IO, COL_USER, COL_STATUS, COL_STARTED, COL_CATEGORY, COL_CMD = range(14)
 
 HEADERS = [
     "PID", "Name", "CPU %", "Memory", "GPU %", "VRAM", "Thr",
-    "Nice", "Disk I/O", "User", "Status", "Category", "Command",
+    "Nice", "Disk I/O", "User", "Status", "Started", "Category", "Command",
 ]
+
+
+def age_text(seconds: float) -> str:
+    """How long ago something started: "just now", "45 s", "12 min", "3 h 05", "2 d 14 h"."""
+    if seconds < 10:
+        return "just now"
+    if seconds < 60:
+        return f"{seconds:.0f} s"
+    minutes = seconds / 60
+    if minutes < 60:
+        return f"{minutes:.0f} min"
+    hours = minutes / 60
+    if hours < 24:
+        return f"{int(hours)} h {int(minutes % 60):02d}"
+    return f"{int(hours // 24)} d {int(hours % 24)} h"
 
 _RIGHT = int(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
 _CENTER = int(Qt.AlignmentFlag.AlignCenter)
@@ -37,7 +52,7 @@ _LEFT = int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
 ALIGN = {
     COL_PID: _RIGHT, COL_CPU: _RIGHT, COL_MEM: _RIGHT, COL_GPU: _RIGHT,
     COL_VRAM: _RIGHT, COL_THREADS: _RIGHT, COL_NICE: _CENTER, COL_IO: _RIGHT,
-    COL_STATUS: _CENTER,
+    COL_STATUS: _CENTER, COL_STARTED: _RIGHT,
 }
 _SUMMED = {COL_CPU, COL_MEM, COL_GPU, COL_VRAM, COL_THREADS, COL_IO}
 
@@ -206,6 +221,8 @@ class ProcModel(QAbstractItemModel):
             return p.username
         if col == COL_STATUS:
             return p.status
+        if col == COL_STARTED:
+            return age_text(time.time() - p.create_time) if p.create_time else ""
         if col == COL_CATEGORY:
             return p.category
         if col == COL_CMD:
@@ -221,7 +238,8 @@ class ProcModel(QAbstractItemModel):
             COL_VRAM: t.gpu_mem if t else p.gpu_mem_mb,
             COL_THREADS: t.threads if t else p.num_threads, COL_NICE: p.nice,
             COL_IO: t.io if t else p.io_read_bps + p.io_write_bps, COL_USER: p.username,
-            COL_STATUS: p.status, COL_CATEGORY: p.category, COL_CMD: p.cmdline.lower(),
+            COL_STATUS: p.status, COL_STARTED: -p.create_time, COL_CATEGORY: p.category,
+            COL_CMD: p.cmdline.lower(),
         }.get(col, "")
 
     def _color(self, p: ProcSample, col: int, t: Totals | None = None):
@@ -237,6 +255,11 @@ class ProcModel(QAbstractItemModel):
             return QColor(theme.GPU)
         elif col in (COL_VRAM, COL_CMD, COL_USER, COL_STATUS, COL_CATEGORY):
             return QColor(theme.MUTED)
+        elif col == COL_STARTED:
+            # something that started in the last minute stands out: that is
+            # usually what you opened the list for
+            recent = p.create_time and time.time() - p.create_time < 60
+            return QColor(theme.ACCENT if recent else theme.MUTED)
         elif col == COL_NICE and p.nice != 0:
             # yellow = stands out (higher priority), green = neatly tucked away
             return QColor(theme.OK if p.nice > 0 else theme.ACCENT)
