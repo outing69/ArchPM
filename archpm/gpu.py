@@ -5,7 +5,8 @@ spawning a new process every tick. That saves ~30ms CPU per sample and, via
 `pmon`, also gives per-process SM%/VRAM -- something the one-off queries don't
 offer.
 
-AMD/Intel: fall back to sysfs (`gpu_busy_percent`), without per-process data.
+AMD (and anything else exposing `gpu_busy_percent`): fall back to sysfs, without
+per-process data.
 """
 from __future__ import annotations
 
@@ -165,26 +166,92 @@ class GpuMonitor:
         dev = self._sysfs_card()
         if dev is None:
             return
-        name = (dev / "product_name")
-        label = name.read_text().strip() if name.exists() else "GPU"
-        hwmon = next(iter((dev / "hwmon").glob("hwmon*")), None)
+        label = sysfs_name(dev)
         while not self._stop.is_set():
-            s = GpuSample(name=label)
-            s.util = _f(self._read(dev / "gpu_busy_percent"))
-            used = _f(self._read(dev / "mem_info_vram_used"))
-            total = _f(self._read(dev / "mem_info_vram_total"))
-            s.mem_used_mb, s.mem_total_mb = used / 1048576.0, total / 1048576.0
-            if hwmon:
-                s.temp_c = _f(self._read(hwmon / "temp1_input")) / 1000.0
-                s.power_w = _f(self._read(hwmon / "power1_average")) / 1e6
-                s.clock_mhz = _f(self._read(hwmon / "freq1_input")) / 1e6
+            s = sysfs_sample(dev, label)
             with self._lock:
                 self._sample = s
             self._stop.wait(1.0)
 
-    @staticmethod
-    def _read(path: Path) -> str:
+
+# -- sysfs helpers (module-level so they can be tested against a fixture tree) --
+_PCI_IDS = ("/usr/share/hwdata/pci.ids", "/usr/share/misc/pci.ids")
+_VENDOR_SHORT = {"1002": "AMD", "8086": "Intel", "10de": "NVIDIA"}
+
+
+def _read(path: Path) -> str:
+    try:
+        return path.read_text().strip()
+    except OSError:
+        return ""
+
+
+def _hex_id(text: str) -> str:
+    return text.strip().lower().removeprefix("0x")
+
+
+def _scan_pci_ids(fh, vendor: str, device: str) -> str:
+    in_vendor = False
+    vendor_name = ""
+    for line in fh:
+        if not line.strip() or line.startswith("#"):
+            continue
+        if not line.startswith("\t"):
+            in_vendor = line[:4].lower() == vendor
+            if in_vendor:
+                vendor_name = line[4:].strip()
+            elif vendor_name:
+                break  # past our vendor block
+            continue
+        if in_vendor and not line.startswith("\t\t") and line[1:5].lower() == device:
+            short = _VENDOR_SHORT.get(vendor, vendor_name.split(" ")[0])
+            return f"{short} {line[5:].strip()}"
+    return ""
+
+
+def pci_ids_lookup(vendor: str, device: str, paths: tuple[str, ...] | None = None) -> str:
+    """Device name from pci.ids, e.g. ("1002", "164e") -> "AMD Raphael". Empty if unknown.
+
+    The file is a vendor line ("1002  Advanced Micro Devices...") followed by
+    tab-indented device lines ("\t164e  Raphael"); deeper indents are subsystems.
+    """
+    vendor, device = _hex_id(vendor), _hex_id(device)
+    for path in paths if paths is not None else _PCI_IDS:
         try:
-            return path.read_text().strip()
+            with open(path, encoding="utf-8", errors="replace") as fh:
+                found = _scan_pci_ids(fh, vendor, device)
         except OSError:
-            return ""
+            continue
+        if found:
+            return found
+    return ""
+
+
+def sysfs_name(dev: Path, pci_ids: tuple[str, ...] | None = None) -> str:
+    """Human-readable card name. amdgpu rarely provides product_name, so fall
+    back to the PCI id and the system's pci.ids database."""
+    name = _read(dev / "product_name")
+    if name:
+        return name
+    vendor, device = _hex_id(_read(dev / "vendor")), _hex_id(_read(dev / "device"))
+    if not vendor:
+        return "GPU"
+    return pci_ids_lookup(vendor, device, pci_ids) or f"GPU {vendor}:{device}"
+
+
+def sysfs_sample(dev: Path, label: str = "GPU") -> GpuSample:
+    """One reading from a /sys/class/drm/cardN/device tree."""
+    s = GpuSample(name=label)
+    s.util = _f(_read(dev / "gpu_busy_percent"))
+    used = _f(_read(dev / "mem_info_vram_used"))
+    total = _f(_read(dev / "mem_info_vram_total"))
+    s.mem_used_mb, s.mem_total_mb = used / 1048576.0, total / 1048576.0
+    hwmon = next(iter((dev / "hwmon").glob("hwmon*")), None)
+    if hwmon:
+        s.temp_c = _f(_read(hwmon / "temp1_input")) / 1000.0
+        # Discrete cards report power1_average; APUs (and some others) only
+        # power1_input. Both are microwatts.
+        power = _read(hwmon / "power1_average") or _read(hwmon / "power1_input")
+        s.power_w = _f(power) / 1e6
+        s.clock_mhz = _f(_read(hwmon / "freq1_input")) / 1e6
+    return s
