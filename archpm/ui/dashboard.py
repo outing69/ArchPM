@@ -162,7 +162,8 @@ class GameCard(Card):
         self.t_cores.set(f"{cores or '?'} of {self.ncpu}", "Allowed")
         if history is not None:
             track = history.tree([p.pid for p in tree])
-            self.graph.set_history(track.cpu, track.gpu)
+            # same notation as the tile next to it: share of the whole machine
+            self.graph.set_history([c / self.ncpu for c in track.cpu], track.gpu)
         del icon  # the name label is text; the icon lives in the process list
 
 
