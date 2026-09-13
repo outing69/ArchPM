@@ -77,7 +77,11 @@ PlasmoidItem {
         launcher.connectSource("setsid -f sh -c " + shellQuote(root.stats.launch) + " >/dev/null 2>&1")
     }
 
-    preferredRepresentation: fullRepresentation
+    // In a panel (horizontal or vertical form factor) show the strip and open
+    // the full view as a popup; on the desktop show the full view itself.
+    readonly property bool inPanel: Plasmoid.formFactor === PlasmaCore.Types.Horizontal
+                                    || Plasmoid.formFactor === PlasmaCore.Types.Vertical
+    preferredRepresentation: inPanel ? compactRepresentation : fullRepresentation
     Plasmoid.backgroundHints: PlasmaCore.Types.DefaultBackground | PlasmaCore.Types.ConfigurableBackground
 
     Layout.minimumWidth: Kirigami.Units.gridUnit * 13
