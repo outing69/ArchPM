@@ -18,8 +18,22 @@ class Store(unittest.TestCase):
         h.update(snap(p1=10, p2=20))
         h.update(snap(p1=30))
         self.assertEqual(list(h.get(1).cpu), [10, 30])
-        self.assertIsNone(h.get(2), "a process that vanished is dropped")
-        self.assertEqual(len(h), 1)
+        self.assertEqual(len(h), 1, "only live processes count")
+        self.assertEqual(list(h.get(2).cpu), [20], "a vanished process stays readable for a while")
+        self.assertIsNotNone(h.ended_at(2))
+        self.assertIsNone(h.ended_at(1))
+
+    def test_ended_tracks_expire_and_pid_reuse_starts_fresh(self):
+        h = ProcHistory(length=4)
+        h.update(snap(p1=10, p2=20))
+        h.update(snap(p1=10))
+        h.RETAIN_S = -1  # everything gone is immediately too old
+        h.update(snap(p1=10))
+        self.assertIsNone(h.get(2))
+        h.RETAIN_S = 300
+        h.update(snap(p1=10, p3=1)); h.update(snap(p1=10))   # p3 ends
+        h.update(snap(p1=10, p3=99))                          # pid 3 reused
+        self.assertEqual(list(h.get(3).cpu), [99])
 
     def test_bounded_length(self):
         h = ProcHistory(length=3)

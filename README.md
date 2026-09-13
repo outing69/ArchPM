@@ -63,9 +63,27 @@ are Arch's; on another distribution find the equivalents.
 
 ## Installing
 
+First the packages. Pick the one line for the package manager you use; the
+commands are the same in fish, bash and zsh.
+
+```bash
+# pacman (plain Arch, CachyOS)
+sudo pacman -S --needed python pyside6 python-psutil polkit git
+
+# paru
+paru -S --needed python pyside6 python-psutil polkit git
+
+# yay
+yay -S --needed python pyside6 python-psutil polkit git
+```
+
+Optional, for the full experience: `plasma-desktop` (the widget),
+`nvidia-utils` (NVIDIA telemetry), `hwdata` (proper AMD GPU names).
+
+Then ArchPM itself:
+
 ```bash
 git clone https://github.com/outing69/ArchPM.git && cd ArchPM
-sudo pacman -S --needed pyside6 python-psutil
 ./install.sh          # agent, widget, menu entry  (no root needed)
 ./install.sh --root   # the pkexec helper and the polkit policy
 ```

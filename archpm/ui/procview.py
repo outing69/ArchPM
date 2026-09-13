@@ -2,9 +2,10 @@
 from __future__ import annotations
 
 import signal
+import time
 
 import psutil
-from PySide6.QtCore import QModelIndex, QSettings, QSize, Qt, Signal
+from PySide6.QtCore import QModelIndex, QSettings, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QAction, QGuiApplication, QKeySequence, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -49,6 +50,7 @@ from .proc_model import (
     PID_ROLE,
     ProcFilter,
     ProcModel,
+    age_text,
 )
 from .widgets import Graph, app_icon, human_bytes, mono
 
@@ -141,8 +143,12 @@ class HistoryPanel(QWidget):
             graphs.addWidget(g, 1)
         lay.addLayout(graphs)
 
-    def show_track(self, p: ProcSample, track, tree_size: int) -> None:
+    def show_track(self, p: ProcSample, track, tree_size: int,
+                   ended_ago: float | None = None) -> None:
         scope = f"whole tree, {tree_size} processes" if tree_size > 1 else f"pid {p.pid}"
+        if ended_ago is not None:
+            when = "just now" if ended_ago < 10 else f"{age_text(ended_ago)} ago"
+            scope += f"&nbsp;&nbsp;·&nbsp;&nbsp;<span style='color:{theme.WARN}'>ended {when}</span>"
         sep = "&nbsp;&nbsp;·&nbsp;&nbsp;"
         self.lbl.setText(f"<span style='color:{theme.ACCENT}'>{p.display_name}</span>"
                          f"<span style='color:{theme.FAINT}'>{sep}{scope}</span>")
@@ -161,6 +167,11 @@ class ProcessView(QWidget):
         self.ncpu = ncpu
         self.backend = backend
         self.history = history
+        # The process whose history is shown, kept when its row disappears:
+        # after a kill you want to see what it was doing, not whatever row Qt
+        # happens to make current next.
+        self._pinned: tuple[ProcSample, list[int]] | None = None
+        self._frozen = False
         self.settings = QSettings("archpm", "ArchPM")
 
         outer = QVBoxLayout(self)
@@ -267,7 +278,9 @@ class ProcessView(QWidget):
         self.split.setStretchFactor(1, 1)
         self.panel.setMinimumHeight(190)
         outer.addWidget(self.split, 1)
-        self.table.selectionModel().currentRowChanged.connect(lambda *_: self._show_history())
+        self.table.selectionModel().currentRowChanged.connect(self._current_changed)
+        self.table.pressed.connect(lambda _: self._unfreeze())
+        self.model.rowsAboutToBeRemoved.connect(self._rows_going)
 
         # Collapsed by default, or a browser's twenty renderers bury everything.
         # The one exception, applied once per process the first time it is
@@ -319,18 +332,47 @@ class ProcessView(QWidget):
         if self.panel.isVisible():
             self._show_history()
 
+    def _current_changed(self, *_) -> None:
+        if self._frozen:
+            # Qt moved "current" because the pinned row vanished; keep the panel
+            # on the killed process and leave nothing looking selected.
+            QTimer.singleShot(0, self.table.clearSelection)
+            return
+        self._show_history()
+
+    def _unfreeze(self) -> None:
+        self._frozen = False
+
+    def _rows_going(self, parent: QModelIndex, first: int, last: int) -> None:
+        if self._pinned is None or self._frozen:
+            return
+        pinned_pid = self._pinned[0].pid
+        for row in range(first, last + 1):
+            idx = self.model.index(row, 0, parent)
+            if pinned_pid in self.model.subtree_pids(idx.data(PID_ROLE)):
+                self._frozen = True
+                return
+
     def _show_history(self) -> None:
         if self.history is None:
+            return
+        if self._frozen and self._pinned is not None:
+            p, pids = self._pinned
+            ended = self.history.ended_at(p.pid)
+            ago = (time.monotonic() - ended) if ended is not None else None
+            self.panel.show_track(p, self.history.tree(pids), len(pids), ago)
             return
         idx = self.table.selectionModel().currentIndex()
         p = self.model.proc_at(self.proxy.mapToSource(idx)) if idx.isValid() else None
         if p is None:
+            self._pinned = None
             self.panel.setVisible(False)
             return
         # A collapsed program row stands for its tree; so does its history.
         pids = [p.pid]
         if self.model.tree and self.model.has_children(p.pid) and not self.model.is_expanded(p.pid):
             pids = self.model.subtree_pids(p.pid)
+        self._pinned = (p, pids)
         self.panel.show_track(p, self.history.tree(pids), len(pids))
         if not self.panel.isVisible():
             self.panel.setVisible(True)
