@@ -43,7 +43,7 @@ class SampleWorker(QObject):
             return
         try:
             snap: Snapshot = self._sampler.sample()
-        except Exception as exc:  # sampling must never take the app down
+        except Exception as exc:  # noqa: BLE001 - sampling must never take the app down
             self.failed.emit(str(exc))
             return
         if self.publish_status:

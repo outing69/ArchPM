@@ -6,7 +6,14 @@ from dataclasses import dataclass, field
 
 from PySide6.QtCore import QPointF, QRectF, Qt
 from PySide6.QtGui import (
-    QBrush, QColor, QFont, QFontDatabase, QLinearGradient, QPainter, QPainterPath, QPen,
+    QBrush,
+    QColor,
+    QFont,
+    QFontDatabase,
+    QLinearGradient,
+    QPainter,
+    QPainterPath,
+    QPen,
 )
 from PySide6.QtWidgets import QFrame, QLabel, QSizePolicy, QVBoxLayout, QWidget
 
@@ -85,7 +92,7 @@ class Graph(QWidget):
         self._formatter = fn
 
     def push(self, *values: float) -> None:
-        for s, v in zip(self.series, values):
+        for s, v in zip(self.series, values, strict=False):
             if not s.values:
                 # First sample: fill the history, otherwise there is a tiny
                 # dash in the right corner for minutes.

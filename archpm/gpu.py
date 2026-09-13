@@ -138,10 +138,10 @@ class GpuMonitor:
                 return
             try:
                 assert proc.stdout is not None
-                for line in proc.stdout:
+                for raw in proc.stdout:
                     if self._stop.is_set():
                         break
-                    line = line.strip()
+                    line = raw.strip()
                     if line:
                         yield line
             finally:

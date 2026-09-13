@@ -7,7 +7,13 @@ import time
 from PySide6.QtCore import QSettings, Qt, QTimer
 from PySide6.QtGui import QAction, QColor, QIcon, QPainter, QPixmap
 from PySide6.QtWidgets import (
-    QApplication, QComboBox, QLabel, QMainWindow, QMenu, QSystemTrayIcon, QTabWidget,
+    QApplication,
+    QComboBox,
+    QLabel,
+    QMainWindow,
+    QMenu,
+    QSystemTrayIcon,
+    QTabWidget,
 )
 
 from .. import APP_NAME, __version__

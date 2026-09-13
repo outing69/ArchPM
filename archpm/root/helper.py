@@ -44,7 +44,7 @@ def run(*cmd: str, timeout: int = 20) -> str:
     """Execute without a shell, with a clean PATH."""
     try:
         proc = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=timeout,
+            cmd, capture_output=True, text=True, timeout=timeout, check=False,
             env={"PATH": PATH, "LC_ALL": "C"},
         )
     except FileNotFoundError:
@@ -147,7 +147,8 @@ def cmd_drop_caches(args) -> dict:
 def cmd_status(_args) -> dict:
     out: dict = {"uid": os.getuid()}
     try:
-        out["swappiness"] = int(open("/proc/sys/vm/swappiness").read().strip())
+        with open("/proc/sys/vm/swappiness") as fh:
+            out["swappiness"] = int(fh.read().strip())
     except OSError:
         pass
     return out

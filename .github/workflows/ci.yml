@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    name: Tests · Python ${{ matrix.python }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.10", "3.12", "3.14"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install runtime dependency
+        run: pip install psutil
+      - name: Byte-compile
+        run: python -m compileall -q archpm main.py
+      - name: Unit tests (root helper validation)
+        run: python -m unittest discover -v tests
+      - name: Agent smoke test (one sample, no GPU)
+        run: python -m archpm.agent --once
+      - name: Helper refuses without root
+        run: |
+          python archpm/root/helper.py status
+          ! python archpm/root/helper.py proc-nice 1 0
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: ruff
+        run: pip install ruff && ruff check archpm tests main.py
+      - name: shellcheck
+        run: shellcheck install.sh
+      - name: desktop-file-validate
+        run: |
+          sudo apt-get install -y -qq desktop-file-utils
+          sed 's|@ROOT@|/opt/archpm|' archpm.desktop > /tmp/archpm.desktop
+          desktop-file-validate /tmp/archpm.desktop
+      - name: polkit policy and plasmoid metadata are well-formed
+        run: |
+          python -c "import xml.dom.minidom as m; m.parse('polkit/io.github.outing69.archpm.policy')"
+          python -c "import json; json.load(open('plasmoid/package/metadata.json'))"

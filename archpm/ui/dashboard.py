@@ -8,7 +8,13 @@ import psutil
 from PySide6.QtCore import QRectF, Qt, Signal
 from PySide6.QtGui import QColor, QPainter
 from PySide6.QtWidgets import (
-    QGridLayout, QHBoxLayout, QLabel, QPushButton, QSizePolicy, QVBoxLayout, QWidget,
+    QGridLayout,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QSizePolicy,
+    QVBoxLayout,
+    QWidget,
 )
 
 from ..model import Snapshot
@@ -40,7 +46,7 @@ class TopProcList(QWidget):
         h = self.height() / max(self.rows, 1)
         p.setFont(mono(9))
         val_w = 74.0
-        for i, (name, pid, value) in enumerate(self.items):
+        for i, (name, _pid, value) in enumerate(self.items):
             y = i * h
             frac = min(value / self.scale, 1.0) if self.scale else 0.0
             col = QColor(self.color)

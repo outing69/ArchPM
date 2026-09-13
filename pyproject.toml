@@ -1,0 +1,23 @@
+# Packaging metadata is added in a later step; for now this only configures tooling.
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "PL"]
+ignore = [
+    "PLR2004",  # magic-value comparisons: thresholds like 85 and 60 are the point here
+    "PLR0913",  # many arguments: Qt widget constructors legitimately take several
+    "PLR0912", "PLR0915", "PLR0911",  # branch/statement counts: paintEvent and data() are long by nature
+    "E701", "E702",  # helper.py builds its argparse tree on compact lines on purpose
+    "SIM105",   # an explicit try/except-pass reads clearer than contextlib.suppress here
+    "PLC0415",  # lazy imports are deliberate: the root panel and helper load on demand
+    "PLR0917",  # Graph() takes its options positionally by design
+]
+
+[tool.ruff.lint.per-file-ignores]
+"archpm/ui/proc_model.py" = ["B008"]  # parent=QModelIndex() is the Qt convention
+
+[tool.ruff.lint.isort]
+known-first-party = ["archpm"]

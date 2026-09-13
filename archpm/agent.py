@@ -11,14 +11,15 @@ import sys
 import time
 
 from .gpu import GpuMonitor
-from .publisher import publish, status_path
+from .publisher import publish
 from .sampler import Sampler
 
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="archpm-agent", description="ArchPM background sampler")
     ap.add_argument("-i", "--interval", type=float, default=2.0, help="seconds between samples")
-    ap.add_argument("-n", "--top", type=int, default=5, help="number of top processes in status.json")
+    ap.add_argument("-n", "--top", type=int, default=5,
+                    help="number of top processes in status.json")
     ap.add_argument("--once", action="store_true", help="take one sample, then exit")
     args = ap.parse_args(argv)
 

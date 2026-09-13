@@ -190,7 +190,8 @@ class Sampler:
         return _rate(prev, c.read_bytes, c.write_bytes, now)
 
 
-def _rate(prev: tuple[float, float, float] | None, a: float, b: float, now: float) -> tuple[float, float]:
+def _rate(prev: tuple[float, float, float] | None, a: float, b: float,
+          now: float) -> tuple[float, float]:
     if prev is None:
         return 0.0, 0.0
     dt = now - prev[2]

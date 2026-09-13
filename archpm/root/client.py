@@ -74,7 +74,7 @@ class RootClient:
         try:
             proc = subprocess.run(
                 self.argv(*args, elevated=elevated),
-                capture_output=True, text=True, timeout=timeout,
+                capture_output=True, text=True, timeout=timeout, check=False,
             )
         except subprocess.TimeoutExpired:
             raise ActionError("The helper did not respond in time.") from None

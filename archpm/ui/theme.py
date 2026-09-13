@@ -129,7 +129,9 @@ QPushButton#accent {{
     background: {ACCENT}; color: #1a1405; border-color: {ACCENT};
 }}
 QPushButton#accent:hover {{ background: #ffd45e; border-color: #ffd45e; }}
-QPushButton#accent:disabled {{ background: {ACCENT_DIM}; color: #2a2308; border-color: {ACCENT_DIM}; }}
+QPushButton#accent:disabled {{
+    background: {ACCENT_DIM}; color: #2a2308; border-color: {ACCENT_DIM};
+}}
 QPushButton#danger:hover {{ background: {CRIT}; border-color: {CRIT}; color: #1f0708; }}
 
 QCheckBox, QRadioButton {{ spacing: 8px; color: {MUTED}; }}

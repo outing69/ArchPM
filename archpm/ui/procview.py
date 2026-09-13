@@ -7,17 +7,41 @@ import psutil
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QAction, QGuiApplication, QKeySequence
 from PySide6.QtWidgets import (
-    QAbstractItemView, QCheckBox, QDialog, QDialogButtonBox, QGridLayout, QHBoxLayout,
-    QHeaderView, QLabel, QLineEdit, QMenu, QMessageBox, QPushButton, QTableView,
-    QVBoxLayout, QWidget,
+    QAbstractItemView,
+    QCheckBox,
+    QDialog,
+    QDialogButtonBox,
+    QGridLayout,
+    QHBoxLayout,
+    QHeaderView,
+    QLabel,
+    QLineEdit,
+    QMenu,
+    QMessageBox,
+    QPushButton,
+    QTableView,
+    QVBoxLayout,
+    QWidget,
 )
 
 from ..actions import ActionError, UserBackend
 from ..model import ProcSample
 from . import theme
 from .proc_model import (
-    COL_CMD, COL_CPU, COL_GPU, COL_IO, COL_MEM, COL_NAME, COL_NICE, COL_PID,
-    COL_STATUS, COL_THREADS, COL_USER, COL_VRAM, ProcFilter, ProcModel,
+    COL_CMD,
+    COL_CPU,
+    COL_GPU,
+    COL_IO,
+    COL_MEM,
+    COL_NAME,
+    COL_NICE,
+    COL_PID,
+    COL_STATUS,
+    COL_THREADS,
+    COL_USER,
+    COL_VRAM,
+    ProcFilter,
+    ProcModel,
 )
 
 NICE_PRESETS = [
