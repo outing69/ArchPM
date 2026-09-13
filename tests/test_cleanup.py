@@ -112,11 +112,15 @@ class Scanning(unittest.TestCase):
 class RunningOwner(unittest.TestCase):
     def test_matches_caches_and_shader_caches_to_running_programs(self):
         from archpm.model import ProcSample
-        procs = [ProcSample(pid=1, name="brave", app_name="Brave"),
-                 ProcSample(pid=2, name="pycharm", app_name="PyCharm Community Edition"),
+        procs = [ProcSample(pid=1, name="brave", app_name="Brave", cmdline="brave"),
+                 ProcSample(pid=2, name="pycharm", app_name="PyCharm Community Edition",
+                            cmdline="pycharm"),
                  ProcSample(pid=3, name="Titan", app_name="DOOM: The Dark Ages",
-                            steam_appid=3017860),
-                 ProcSample(pid=4, name="spotify")]
+                            steam_appid=3017860, cmdline="Titan"),
+                 ProcSample(pid=4, name="spotify", cmdline="spotify"),
+                 ProcSample(pid=5, name="irq/84-nvidia"),                       # kernel thread
+                 ProcSample(pid=6, name="protonvpn-app", app_name="Proton VPN",
+                            cmdline="protonvpn-app")]
         brave = cleanup.CleanupItem("cache:BraveSoftware", "Brave cache", "", 1)
         jet = cleanup.CleanupItem("cache:JetBrains", "JetBrains cache", "", 1)
         doom = cleanup.CleanupItem("shader:/lib:3017860", "Shader cache: DOOM", "", 1)
@@ -131,6 +135,10 @@ class RunningOwner(unittest.TestCase):
         self.assertEqual(cleanup.running_owner(spot, procs), "spotify")
         self.assertEqual(cleanup.running_owner(thumbs, procs), "")
         self.assertEqual(cleanup.running_owner(small, procs), "")
+        nvidia = cleanup.CleanupItem("cache:nvidia", "NVIDIA shader cache", "", 1)
+        proton = cleanup.CleanupItem("cache:Proton", "Proton cache", "", 1)
+        self.assertEqual(cleanup.running_owner(nvidia, procs), "", "kernel thread is no owner")
+        self.assertEqual(cleanup.running_owner(proton, procs), "", "Proton VPN is not Proton")
 
 
 class Deleting(Scanning):

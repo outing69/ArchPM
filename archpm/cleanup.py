@@ -71,6 +71,9 @@ CACHE_OWNERS: dict[str, tuple[str, ...]] = {
     "JetBrains": ("pycharm", "idea", "clion", "webstorm", "goland", "rider", "phpstorm",
                   "datagrip", "rubymine"),
     "paru": ("paru",), "yay": ("yay",), "winetricks": ("winetricks",), "wine": ("wine",),
+    # driver-level caches have no single owning program
+    "nvidia": (), "mesa_shader_cache": (), "mesa_shader_cache_db": (), "fontconfig": (),
+    "thumbnails": (),
 }
 
 
@@ -85,10 +88,16 @@ def running_owner(item: CleanupItem, procs) -> str:
         return ""
     if item.id.startswith("cache:") and item.id != "cache:small":
         folder = item.id.split(":", 1)[1]
-        needles = CACHE_OWNERS.get(folder, (folder.lower(),) if len(folder) >= 4 else ())
+        known = CACHE_OWNERS.get(folder)
         for p in procs:
+            if not p.cmdline:
+                continue  # kernel threads such as irq/84-nvidia own no cache
             name = p.name.lower()
-            if any(n == name or (len(n) >= 4 and n in name) for n in needles):
+            if known is not None:
+                hit = any(n == name or (len(n) >= 4 and n in name) for n in known)
+            else:
+                hit = name == folder.lower()   # unknown folder: exact name only
+            if hit:
                 return p.app_name or p.name
     return ""
 
