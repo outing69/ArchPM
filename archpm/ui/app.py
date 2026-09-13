@@ -1,11 +1,13 @@
 """Main window: dashboard + processes, fed by a single sampler thread."""
 from __future__ import annotations
 
+import os
 import sys
 import time
 
 from PySide6.QtCore import QSettings, Qt, QTimer
 from PySide6.QtGui import QAction, QColor, QIcon, QPainter, QPixmap
+from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
@@ -28,6 +30,40 @@ from .widgets import mono
 from .worker import SampleWorker, run_in_thread
 
 INTERVALS = [("0.5 s", 0.5), ("1 s", 1.0), ("2 s", 2.0), ("5 s", 5.0)]
+
+# One instance per user. A second launch connects to this socket, asks the
+# running instance to raise its window, and exits.
+INSTANCE_SOCKET = f"archpm-{os.getuid()}"
+
+
+def raise_running_instance() -> bool:
+    """True if another ArchPM is running for this user (and has been told to show itself)."""
+    sock = QLocalSocket()
+    sock.connectToServer(INSTANCE_SOCKET)
+    if not sock.waitForConnected(300):
+        return False
+    sock.write(b"show\n")
+    sock.waitForBytesWritten(300)
+    sock.disconnectFromServer()
+    return True
+
+
+def listen_for_launches(on_launch) -> QLocalServer:
+    """Own the instance socket; call `on_launch` whenever a second launch knocks."""
+    QLocalServer.removeServer(INSTANCE_SOCKET)  # stale file from a crash
+    server = QLocalServer()
+    server.setSocketOptions(QLocalServer.SocketOption.UserAccessOption)
+    server.newConnection.connect(lambda: _drain(server, on_launch))
+    server.listen(INSTANCE_SOCKET)
+    return server
+
+
+def _drain(server: QLocalServer, on_launch) -> None:
+    while server.hasPendingConnections():
+        conn = server.nextPendingConnection()
+        conn.disconnected.connect(conn.deleteLater)
+        conn.close()
+    on_launch()
 
 
 def app_icon() -> QIcon:
@@ -129,9 +165,13 @@ class MainWindow(QMainWindow):
         if self.isVisible():
             self.hide()
         else:
-            self.showNormal()
-            self.raise_()
-            self.activateWindow()
+            self.present()
+
+    def present(self) -> None:
+        """Bring the window to the front, un-minimising or un-hiding as needed."""
+        self.showNormal()
+        self.raise_()
+        self.activateWindow()
 
     # -- root ---------------------------------------------------------------
     def _open_root(self) -> None:
@@ -196,6 +236,10 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event) -> None:
         self.shutdown()
         super().closeEvent(event)
+        # With a tray icon present Qt does not treat this as the last window,
+        # so the process would linger with a dead icon in the tray. Closing the
+        # window means quitting; the tray icon is for show/hide while it runs.
+        QApplication.quit()
 
 
 def main() -> int:
@@ -205,8 +249,12 @@ def main() -> int:
     app.setOrganizationName("archpm")
     app.setDesktopFileName("archpm")
     theme.apply(app)
+    if raise_running_instance():
+        return 0
     win = MainWindow()
+    server = listen_for_launches(win.present)  # keep a reference for the app's lifetime
     app.aboutToQuit.connect(win.shutdown)
+    app.aboutToQuit.connect(server.close)
     win.show()
     win.statusBar().showMessage(f"Status for the widget: {status_path()}", 6000)
     return app.exec()
