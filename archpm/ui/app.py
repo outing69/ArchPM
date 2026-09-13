@@ -212,6 +212,7 @@ class MainWindow(QMainWindow):
         self.dashboard.update_view(snap)
         self.procs.update_view(snap)
         self.startup.update_view(snap)
+        self.cleanup.update_view(snap)
         render_ms = (time.perf_counter() - t0) * 1000
         gpu = snap.system.gpu
         bits = [f"{snap.system.proc_count} processes", f"render {render_ms:.0f} ms"]

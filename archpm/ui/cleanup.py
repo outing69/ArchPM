@@ -24,13 +24,13 @@ from PySide6.QtWidgets import (
 )
 
 from ..actions import ActionError
-from ..cleanup import Cleaner, CleanupItem, human
+from ..cleanup import Cleaner, CleanupItem, human, running_owner
 from ..root.client import RootClient, check
 from . import theme
 from .widgets import mono
 
 COL_ON, COL_NAME, COL_DESC, COL_SIZE, COL_ROOT = range(5)
-HEADERS = ["", "What", "Why it is safe to remove", "Size", "Needs root"]
+HEADERS = ["", "What", "Why it is safe to remove", "Size", "Note"]
 
 
 class _Scan(QThread):
@@ -78,6 +78,8 @@ class CleanupView(QWidget):
         self._thread: QThread | None = None
         self._proc: QProcess | None = None
         self._queue: list[CleanupItem] = []
+        self._procs: list = []          # latest process samples, for "running now"
+        self._rescan_pending = False
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(12, 10, 12, 12)
@@ -132,7 +134,7 @@ class CleanupView(QWidget):
         header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         header.setSectionResizeMode(COL_DESC, QHeaderView.ResizeMode.Stretch)
         header.setHighlightSections(False)
-        for col, w in ((COL_ON, 36), (COL_NAME, 300), (COL_SIZE, 100), (COL_ROOT, 110)):
+        for col, w in ((COL_ON, 36), (COL_NAME, 300), (COL_SIZE, 100), (COL_ROOT, 190)):
             self.table.setColumnWidth(col, w)
         self.table.itemChanged.connect(self._recount)
         outer.addWidget(self.table, 1)
@@ -143,7 +145,7 @@ class CleanupView(QWidget):
         self.log.setFont(mono(8))
         self.log.setStyleSheet(
             f"QPlainTextEdit {{ background: {theme.SURFACE}; border: 1px solid {theme.BORDER};"
-            f" border-radius: 8px; color: {theme.MUTED}; padding: 6px; }}"
+            f" border-radius: 8px; color: {theme.ACCENT}; padding: 6px; }}"
         )
         outer.addWidget(self.log)
 
@@ -226,6 +228,39 @@ class CleanupView(QWidget):
             self._thread.deleteLater()
             self._thread = None
         self.btn_scan.setEnabled(True)
+        if self._rescan_pending:
+            # After removing: fresh sizes and cleared ticks, so the same cache
+            # cannot be "removed" twice by accident.
+            self._rescan_pending = False
+            self.scan()
+
+    def update_view(self, snap) -> None:
+        """Every sample: remember what runs, refresh the 'running now' notes."""
+        self._procs = snap.procs
+        if self.isVisible() and self.items:
+            self._refresh_notes()
+
+    def _note_for(self, it: CleanupItem, root_ok: bool) -> tuple[str, str]:
+        """(text, colour) for the Note column."""
+        if it.needs_root:
+            if root_ok:
+                return "root · unlocked", theme.OK
+            return "root · " + (it.note or "locked"), theme.WARN
+        owner = running_owner(it, self._procs)
+        if owner:
+            return f"running now: {owner}", theme.WARN
+        return "", theme.MUTED
+
+    def _refresh_notes(self) -> None:
+        root_ok = check().ready and self.client.authenticated
+        for row, it in enumerate(self.items):
+            cell = self.table.item(row, COL_ROOT)
+            if cell is None:
+                continue
+            text, colour = self._note_for(it, root_ok)
+            if cell.text() != text:
+                cell.setText(text)
+                cell.setForeground(QColor(colour))
 
     @Slot(object)
     def _scanned(self, items) -> None:
@@ -257,12 +292,12 @@ class CleanupView(QWidget):
             size.setFont(mono(9))
             size.setTextAlignment(int(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter))
             self.table.setItem(row, COL_SIZE, size)
-            if it.needs_root:
-                text = "root · unlocked" if root_ok else ("root · " + (it.note or "locked"))
-            else:
-                text = ""
+            text, colour = self._note_for(it, root_ok)
             root = QTableWidgetItem(text)
-            root.setForeground(QColor(theme.OK if root_ok else theme.WARN))
+            root.setForeground(QColor(colour))
+            root.setToolTip("Can be emptied while the program runs; it recreates what it needs, "
+                            "but may stumble for a moment. Closing it first is cleaner."
+                            if text.startswith("running") else "")
             self.table.setItem(row, COL_ROOT, root)
             if not usable:
                 for col in range(len(HEADERS)):
@@ -290,13 +325,28 @@ class CleanupView(QWidget):
         if not sel:
             return
         total = sum(i.size for i in sel)
-        names = "<br>".join(f"• {i.name} ({human(i.size)})" for i in sel[:12])
+        lines = []
+        running = []
+        for i in sel[:12]:
+            owner = running_owner(i, self._procs)
+            mark = (f" <span style='color:{theme.WARN}'>· running now: {owner}</span>"
+                    if owner else "")
+            lines.append(f"• {i.name} ({human(i.size)}){mark}")
+            if owner:
+                running.append(i.name)
+        names = "<br>".join(lines)
         if len(sel) > 12:
             names += f"<br>• … and {len(sel) - 12} more"
+        caution = ""
+        if running:
+            caution = (f"<br><br><span style='color:{theme.WARN}'>Some of these belong to a "
+                       "program that is running. That is not dangerous, but the program may "
+                       "stumble for a moment and starts refilling the cache right away. "
+                       "Closing it first is cleaner.</span>")
         answer = QMessageBox.question(
             self, "Remove these?",
-            f"This frees about <b>{human(total)}</b> by emptying:<br><br>{names}<br><br>"
-            "Programs rebuild these when needed. Continue?",
+            f"This frees about <b>{human(total)}</b> by emptying:<br><br>{names}{caution}"
+            "<br><br>Programs rebuild these when needed. Continue?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
         )
@@ -324,7 +374,10 @@ class CleanupView(QWidget):
     def _next_root(self) -> None:
         if not self._queue:
             self._say("Done.")
-            self.scan()
+            if self._thread is not None:
+                self._rescan_pending = True   # the worker is still winding down
+            else:
+                self.scan()
             return
         item = self._queue.pop(0)
         self._say(f"  → {item.name} (root)")

@@ -109,6 +109,30 @@ class Scanning(unittest.TestCase):
                             for u in ids if u.startswith("cache:")))
 
 
+class RunningOwner(unittest.TestCase):
+    def test_matches_caches_and_shader_caches_to_running_programs(self):
+        from archpm.model import ProcSample
+        procs = [ProcSample(pid=1, name="brave", app_name="Brave"),
+                 ProcSample(pid=2, name="pycharm", app_name="PyCharm Community Edition"),
+                 ProcSample(pid=3, name="Titan", app_name="DOOM: The Dark Ages",
+                            steam_appid=3017860),
+                 ProcSample(pid=4, name="spotify")]
+        brave = cleanup.CleanupItem("cache:BraveSoftware", "Brave cache", "", 1)
+        jet = cleanup.CleanupItem("cache:JetBrains", "JetBrains cache", "", 1)
+        doom = cleanup.CleanupItem("shader:/lib:3017860", "Shader cache: DOOM", "", 1)
+        other = cleanup.CleanupItem("shader:/lib:1", "Shader cache: X", "", 1)
+        spot = cleanup.CleanupItem("cache:spotify", "Spotify cache", "", 1)
+        thumbs = cleanup.CleanupItem("cache:thumbnails", "Thumbnails", "", 1)
+        small = cleanup.CleanupItem("cache:small", "Other", "", 1)
+        self.assertEqual(cleanup.running_owner(brave, procs), "Brave")
+        self.assertEqual(cleanup.running_owner(jet, procs), "PyCharm Community Edition")
+        self.assertEqual(cleanup.running_owner(doom, procs), "DOOM: The Dark Ages")
+        self.assertEqual(cleanup.running_owner(other, procs), "")
+        self.assertEqual(cleanup.running_owner(spot, procs), "spotify")
+        self.assertEqual(cleanup.running_owner(thumbs, procs), "")
+        self.assertEqual(cleanup.running_owner(small, procs), "")
+
+
 class Deleting(Scanning):
     def test_empties_the_folder_but_keeps_it(self):
         item = self.by_id()["cache:BraveSoftware"]

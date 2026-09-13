@@ -61,6 +61,37 @@ KNOWN_CACHES: dict[str, tuple[str, str]] = {
 }
 MIN_CACHE_BYTES = 1 << 20  # ~/.cache entries smaller than this are lumped together
 
+# Which running program a ~/.cache folder belongs to, by process name. A cache
+# can be emptied while its program runs (Linux keeps open files alive and the
+# program recreates what it misses), but the program may stumble for a moment
+# and will start refilling it at once, so the tab says so before you confirm.
+CACHE_OWNERS: dict[str, tuple[str, ...]] = {
+    "BraveSoftware": ("brave",), "mozilla": ("firefox",), "google-chrome": ("chrome",),
+    "chromium": ("chromium",), "spotify": ("spotify",), "vivaldi": ("vivaldi",),
+    "JetBrains": ("pycharm", "idea", "clion", "webstorm", "goland", "rider", "phpstorm",
+                  "datagrip", "rubymine"),
+    "paru": ("paru",), "yay": ("yay",), "winetricks": ("winetricks",), "wine": ("wine",),
+}
+
+
+def running_owner(item: CleanupItem, procs) -> str:
+    """Display name of a running program this item belongs to, "" if none.
+    `procs` are ProcSamples (name, app_name, steam_appid)."""
+    if item.id.startswith("shader:"):
+        appid = int(item.id.rsplit(":", 1)[1])
+        for p in procs:
+            if p.steam_appid == appid:
+                return p.app_name or p.name
+        return ""
+    if item.id.startswith("cache:") and item.id != "cache:small":
+        folder = item.id.split(":", 1)[1]
+        needles = CACHE_OWNERS.get(folder, (folder.lower(),) if len(folder) >= 4 else ())
+        for p in procs:
+            name = p.name.lower()
+            if any(n == name or (len(n) >= 4 and n in name) for n in needles):
+                return p.app_name or p.name
+    return ""
+
 
 @dataclass
 class CleanupItem:

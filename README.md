@@ -98,6 +98,22 @@ systemd unit or the root helper; those still come from `install.sh`.
 
 Requirements: Python 3.10+, PySide6 6.5+, psutil 5.9+. Tested with newer versions of all three.
 
+### Updating
+
+From a checkout: pull, then run the install script again. The GUI picks up new
+code the next time it starts; the agent, widget and root helper are copies and
+need the script.
+
+```bash
+cd ArchPM && git pull
+./install.sh            # agent, widget, menu entry
+./install.sh --root     # the root helper and polkit policy (asks for your password)
+systemctl --user restart archpm-agent
+```
+
+If you installed the package instead, rebuild it: `cd packaging/aur && makepkg -si`
+(once it is on the AUR, your AUR helper updates it like any other package).
+
 ### As a package
 
 `packaging/aur/` holds a PKGBUILD that installs everything in its proper place:
