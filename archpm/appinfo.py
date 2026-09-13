@@ -128,9 +128,16 @@ DESKTOP_PARTS = frozenset({
 })
 
 
-def describe(executable: str) -> str:
-    """Description for an executable path or name; "" when we have none."""
-    return DESCRIPTIONS.get(_basename(executable), "")
+# By program name, for programs that run under a generic executable (python3).
+DESCRIPTIONS_BY_APP: dict[str, str] = {
+    "ArchPM": "This program. The window you are looking at, or the background agent that "
+              "feeds the widget; it runs under Python, which is why the process is python3.",
+}
+
+
+def describe(executable: str, app_name: str = "") -> str:
+    """Description for an executable path or name, or for a program name; "" when we have none."""
+    return DESCRIPTIONS.get(_basename(executable), "") or DESCRIPTIONS_BY_APP.get(app_name, "")
 
 
 @dataclass(frozen=True)

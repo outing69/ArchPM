@@ -115,6 +115,8 @@ class Descriptions(unittest.TestCase):
         self.assertIn("window manager", appinfo.describe("/usr/bin/kwin_wayland"))
         self.assertIn("Night Light", appinfo.describe("knighttimed"))
         self.assertEqual(appinfo.describe("/usr/bin/nothing-known"), "")
+        self.assertIn("This program", appinfo.describe("/usr/bin/python3", "ArchPM"))
+        self.assertEqual(appinfo.describe("/usr/bin/python3", "Something"), "")
 
 
 class Categories(unittest.TestCase):

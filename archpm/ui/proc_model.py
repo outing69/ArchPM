@@ -185,14 +185,17 @@ class ProcModel(QAbstractItemModel):
             if totals and col in _SUMMED:
                 return f"Total of {totals.count} processes in this tree"
             if col == COL_NAME:
-                exe = p.cmdline.split(" ", 1)[0] if p.cmdline else p.name
-                about = describe(exe) or describe(p.name)
+                # Says what each line is: a beginner reading "python3" under
+                # "ArchPM" should see that one is the program, the other the process.
+                exe = p.argv[0] if p.argv else p.name
+                about = describe(exe, p.app_name) or describe(p.name)
                 lines = [about] if about else []
                 if p.app_name:
-                    lines.append(p.name)
+                    lines.append(f"Program: {p.app_name}")
+                lines.append(f"Process name: {p.name}")
                 if p.cmdline:
-                    lines.append(p.cmdline)
-                return "\n".join(lines) or p.name
+                    lines.append(f"Command: {p.cmdline}")
+                return "\n".join(lines)
             return p.cmdline or p.name
         if role != Qt.ItemDataRole.DisplayRole:
             return None
