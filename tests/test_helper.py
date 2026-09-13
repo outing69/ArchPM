@@ -90,9 +90,18 @@ class ServiceCommand(unittest.TestCase):
 
     def test_rejects_invalid_unit_names(self):
         for unit in ("../etc", "a b", "unit;reboot", "$(id)", "x" * 200 + ".service",
-                     "foo.conf", "-flag.service"):
-            with self.subTest(unit=unit), self.assertRaises(helper.HelperError):
+                     "foo.conf", "-flag.service", "--no-block.service", "-.service"):
+            with self.subTest(unit=unit), self.assertRaises(helper.HelperError) as ctx:
                 helper.cmd_service(args(action="restart", unit=unit))
+            # The helper itself must refuse; a failure from systemctl does not count.
+            self.assertIn("invalid unit name", str(ctx.exception))
+
+    def test_accepts_ordinary_unit_names(self):
+        for unit in ("sshd.service", "bluetooth", "user@1000.service", "systemd-timesyncd",
+                     "dbus-:1.2-org.example@0.service"):
+            with self.subTest(unit=unit):
+                full = unit if "." in unit else f"{unit}.service"
+                self.assertIsNotNone(helper.UNIT_RE.match(full))
 
     def test_refuses_to_stop_or_restart_protected_units(self):
         for unit in sorted(helper.PROTECTED_UNITS):

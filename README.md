@@ -39,9 +39,24 @@ them. The license is MIT, so feel free to fork it and make it your own.
 
 See `SECURITY.md` for what the root helper does and does not protect against.
 
+## Requirements
+
+Arch Linux or a derivative (CachyOS, EndeavourOS, Manjaro). Package names below
+are Arch's; on another distribution find the equivalents.
+
+| For | Packages | Notes |
+|---|---|---|
+| GUI and agent | `python` (3.10+), `pyside6` (6.5+), `python-psutil` (5.9+), `git` | the only hard requirements |
+| Widget | KDE Plasma 6 (`plasma-desktop`, `kpackage`) | other desktops get the GUI but no widget |
+| Root tasks | `polkit` | provides `pkexec`; your user must be allowed to authenticate as admin (in Arch that is the `wheel` group) |
+| NVIDIA telemetry | `nvidia-utils` | provides `nvidia-smi`; without it the GPU falls back to sysfs |
+| AMD telemetry | nothing extra | read from sysfs; `hwdata` gives the card a proper name |
+| Agent as a service | a systemd user session | standard on any systemd desktop |
+
 ## Installing
 
 ```bash
+git clone https://github.com/outing69/ArchPM.git && cd ArchPM
 sudo pacman -S --needed pyside6 python-psutil
 ./install.sh          # agent, widget, menu entry  (no root needed)
 ./install.sh --root   # the pkexec helper and the polkit policy

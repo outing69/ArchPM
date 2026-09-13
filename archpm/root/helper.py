@@ -24,7 +24,9 @@ import sys
 PATH = "/usr/bin:/usr/sbin:/bin:/sbin"
 
 ALLOWED_SIGNALS = {"TERM", "KILL", "STOP", "CONT", "HUP", "INT", "USR1", "USR2"}
-UNIT_RE = re.compile(r"^[A-Za-z0-9@._:-]{1,128}\.(service|socket|timer|target|path)$")
+# First character may not be "-": a name like "--no-block.service" would otherwise
+# reach systemctl looking like an option. The "--" below is the second line of defence.
+UNIT_RE = re.compile(r"^[A-Za-z0-9@_][A-Za-z0-9@._:-]{0,127}\.(service|socket|timer|target|path)$")
 
 # Services whose stopping wrecks your graphical session or the system.
 PROTECTED_UNITS = {
@@ -123,8 +125,8 @@ def cmd_service(args) -> dict:
         raise HelperError(f"invalid unit name: {args.unit!r}")
     if unit in PROTECTED_UNITS and action != "start":
         raise HelperError(f"{unit} is protected: your session needs it")
-    run("systemctl", action, unit, timeout=30)
-    state = run("systemctl", "is-active", unit) if action != "stop" else "inactive"
+    run("systemctl", action, "--", unit, timeout=30)
+    state = run("systemctl", "is-active", "--", unit) if action != "stop" else "inactive"
     return {"unit": unit, "action": action, "state": state}
 
 
