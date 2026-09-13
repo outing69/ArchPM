@@ -278,6 +278,12 @@ class MainWindow(QMainWindow):
         self.worker.stop()
         self.thread.quit()
         self.thread.wait(3000)
+        # A scan or a spec gather may still run; a QThread destroyed while
+        # running takes the process down with it.
+        for view in (self.cleanup, self.system):
+            t = getattr(view, "_thread", None)
+            if t is not None and t.isRunning():
+                t.wait(5000)
 
     def closeEvent(self, event) -> None:
         if self.tray is not None and self.act_keep.isChecked():

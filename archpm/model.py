@@ -28,6 +28,7 @@ class ProcSample:
     name: str = ""
     username: str = ""
     cmdline: str = ""
+    argv: tuple[str, ...] = ()   # the real argument list; cmdline is its display form
     cpu_percent: float = 0.0     # 0..100*ncpu, like top
     mem_rss: int = 0             # bytes
     mem_percent: float = 0.0

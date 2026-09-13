@@ -157,7 +157,7 @@ class StartupView(QWidget):
 
     def update_view(self, snap) -> None:
         """Called every sample; only the Status column changes."""
-        self._argvs = {p.pid: p.cmdline.split() for p in snap.procs if p.cmdline}
+        self._argvs = {p.pid: list(p.argv) for p in snap.procs if p.argv}
         if self.isVisible():
             self._refresh_state()
 

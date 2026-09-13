@@ -160,6 +160,11 @@ class Running(unittest.TestCase):
                  12: ["/usr/bin/python3", "-m", "archpm"], 13: []}
         self.assertEqual(autostart.running_pids([kde, arch], argvs),
                          {"k.desktop": 10, "a.desktop": 12})
+        spaced = autostart.StartupEntry("s.desktop", "Spaced", "", '"/opt/My App/app" --x',
+                                        Path("/x"), None, None, True, True,
+                                        tokens=autostart.exec_tokens('"/opt/My App/app" --x'))
+        self.assertEqual(autostart.running_pids([spaced], {20: ["/opt/My App/app", "--x"]}),
+                         {"s.desktop": 20}, "a path with a space must match as one argument")
         del a
 
 

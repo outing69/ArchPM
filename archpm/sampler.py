@@ -21,10 +21,14 @@ from .model import ProcSample, Snapshot, SystemSample
 
 _DEAD = (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess)
 
+# Per tick. cmdline and username are fetched separately and cached: the
+# command line only changes on exec (which also changes the name), and a uid's
+# name never does. Together that was a quarter of every tick.
 _PROC_ATTRS = [
-    "pid", "ppid", "name", "username", "cmdline", "memory_info", "memory_percent",
+    "pid", "ppid", "name", "memory_info", "memory_percent",
     "num_threads", "nice", "status", "create_time", "uids",
 ]
+TEMPS_EVERY = 5   # ticks; sensors are slow to read and slow to change
 
 
 class Sampler:
@@ -39,6 +43,10 @@ class Sampler:
         self._disk: tuple[float, float, float] | None = None
         self._boot = psutil.boot_time()
         self.apps = AppResolver()
+        self._tick = 0
+        self._temps_cache: tuple[dict[str, float], float] = ({}, 0.0)
+        self._cmdlines: dict[int, tuple[str, list[str]]] = {}   # pid -> (name, argv)
+        self._users: dict[int, str] = {}                        # uid -> username
         psutil.cpu_percent(percpu=True)  # baseline for the first tick
 
     # ------------------------------------------------------------------
@@ -69,6 +77,7 @@ class Sampler:
             del self._procs[pid]
             self._starts.pop(pid, None)
             self._io.pop(pid, None)
+            self._cmdlines.pop(pid, None)
             self.apps.forget(pid)
 
     # ------------------------------------------------------------------
@@ -91,7 +100,7 @@ class Sampler:
 
             mem = info.get("memory_info")
             uids = info.get("uids")
-            cmd = info.get("cmdline") or []
+            cmd = self._cmdline(pid, p, info.get("name") or "")
             gsm, gmb = gpu_procs.get(pid, (0.0, 0.0))
             n_thr = info.get("num_threads") or 0
             threads += n_thr
@@ -102,8 +111,9 @@ class Sampler:
                 pid=pid,
                 ppid=info.get("ppid") or 0,
                 name=name,
-                username=info.get("username") or "",
+                username=self._username(uids.real) if uids else "",
                 cmdline=" ".join(cmd),
+                argv=tuple(cmd),
                 cpu_percent=cpu,
                 mem_rss=getattr(mem, "rss", 0),
                 mem_percent=info.get("memory_percent") or 0.0,
@@ -135,6 +145,28 @@ class Sampler:
         for p in procs:
             if p.steam_appid and not p.app_name and appid_of.get(p.ppid) != p.steam_appid:
                 p.app_name = self.apps.steam.name(p.steam_appid)
+
+    def _cmdline(self, pid: int, p: psutil.Process, name: str) -> list[str]:
+        cached = self._cmdlines.get(pid)
+        if cached is not None and cached[0] == name:
+            return cached[1]
+        try:
+            cmd = p.cmdline()
+        except _DEAD:
+            cmd = []
+        self._cmdlines[pid] = (name, cmd)
+        return cmd
+
+    def _username(self, uid: int) -> str:
+        user = self._users.get(uid)
+        if user is None:
+            try:
+                import pwd
+                user = pwd.getpwuid(uid).pw_name
+            except (KeyError, ImportError):
+                user = str(uid)
+            self._users[uid] = user
+        return user
 
     # ------------------------------------------------------------------
     def _io_rates(self, pid: int, p: psutil.Process, now: float) -> tuple[float, float]:
@@ -174,7 +206,10 @@ class Sampler:
             s.freq_mhz = f.current if f else 0.0
         except (OSError, AttributeError):
             pass
-        s.temps, s.cpu_temp_c = self._temps()
+        self._tick += 1
+        if self._tick % TEMPS_EVERY == 1 or not self._temps_cache[0]:
+            self._temps_cache = self._temps()
+        s.temps, s.cpu_temp_c = self._temps_cache
         s.net_rx_bps, s.net_tx_bps = self._net_rates(now)
         s.disk_r_bps, s.disk_w_bps = self._disk_rates(now)
         return s
