@@ -3,3 +3,6 @@ __pycache__/
 .venv/
 .idea/
 *.tmp
+build/
+dist/
+*.egg-info/

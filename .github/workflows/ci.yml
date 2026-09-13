@@ -26,6 +26,11 @@ jobs:
         run: python -m unittest discover -v tests
       - name: Agent smoke test (one sample, no GPU)
         run: python -m archpm.agent --once
+      - name: Package installs and console scripts run
+        run: |
+          pip install --no-deps .
+          archpm-agent --help
+          archpm-agent --once
       - name: Helper refuses without root
         run: |
           python archpm/root/helper.py status

@@ -49,6 +49,13 @@ sudo pacman -S --needed pyside6 python-psutil
 
 Then: right-click your desktop → *Add Widgets* → **ArchPM Monitor**.
 
+The GUI and agent are also a regular Python package (`pyproject.toml`, console
+scripts `archpm` and `archpm-agent`), so `pipx install git+https://github.com/outing69/ArchPM`
+works too. That gives you the window and the sampler, but not the widget, the
+systemd unit or the root helper; those still come from `install.sh`.
+
+Requirements: Python 3.10+, PySide6 6.5+, psutil 5.9+. Tested with newer versions of all three.
+
 ## What it measures
 
 - **CPU** — total, per logical core, frequency, load and Tctl temperature

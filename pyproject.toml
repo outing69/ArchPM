@@ -1,4 +1,46 @@
-# Packaging metadata is added in a later step; for now this only configures tooling.
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "archpm"
+description = "Process manager and monitor for a Linux gaming PC: PySide6 GUI, sampler agent and Plasma 6 widget"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Alex" }]
+requires-python = ">=3.10"
+# Floors, not what the author happens to run (3.14 / 6.11 / 7.2):
+#   Python 3.10  - dataclass(slots=True)
+#   PySide6 6.5  - scoped enums (Qt.ItemDataRole.*, QPalette.ColorRole.*) as used throughout
+#   psutil 5.9   - IOPRIO_CLASS_* constants and Process.oneshot()
+dependencies = [
+    "PySide6>=6.5",
+    "psutil>=5.9",
+]
+dynamic = ["version"]
+keywords = ["process-manager", "system-monitor", "gpu", "plasma", "arch-linux"]
+classifiers = [
+    "Environment :: X11 Applications :: Qt",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Topic :: System :: Monitoring",
+]
+
+[project.urls]
+Homepage = "https://github.com/outing69/ArchPM"
+Issues = "https://github.com/outing69/ArchPM/issues"
+
+[project.scripts]
+archpm = "archpm.ui.app:main"
+archpm-agent = "archpm.agent:main"
+
+[tool.setuptools]
+packages = ["archpm", "archpm.root", "archpm.ui"]
+
+[tool.setuptools.dynamic]
+version = { attr = "archpm.__version__" }
+
 
 [tool.ruff]
 line-length = 100
