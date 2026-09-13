@@ -134,6 +134,10 @@ QPushButton#accent:disabled {{
     background: {ACCENT_DIM}; color: #2a2308; border-color: {ACCENT_DIM};
 }}
 QPushButton#danger:hover {{ background: {CRIT}; border-color: {CRIT}; color: #1f0708; }}
+/* the one button that ends something: red at rest, solid red on hover */
+QPushButton#kill {{ color: {CRIT}; border-color: {CRIT}; background: {SURFACE}; }}
+QPushButton#kill:hover {{ background: {CRIT}; border-color: {CRIT}; color: #1f0708; }}
+QPushButton#kill:disabled {{ color: {FAINT}; border-color: {BORDER}; }}
 
 QCheckBox, QRadioButton {{ spacing: 8px; color: {MUTED}; }}
 QCheckBox:hover, QRadioButton:hover {{ color: {TEXT}; }}

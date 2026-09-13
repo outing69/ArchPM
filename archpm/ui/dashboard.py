@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
     QGridLayout,
     QHBoxLayout,
     QLabel,
+    QMessageBox,
     QPushButton,
     QSizePolicy,
     QVBoxLayout,
@@ -28,11 +29,14 @@ from .widgets import Card, CoreGrid, Graph, StatTile, app_icon, human_bytes, mon
 class GameCard(Card):
     """What is my game doing right now: one process, its tree, its last minutes."""
 
+    terminate_requested = Signal(list, str)   # pids (children first), game name
+
     def __init__(self, ncpu: int, parent=None) -> None:
         super().__init__("game", parent, color=theme.ACCENT)
         self.ncpu = ncpu
         self.pid = 0
         self.name = ""
+        self._tree_pids: list[int] = []
         self._affinity: tuple[int, int, int] = (0, 0, 0)  # pid, cores, tick
         self._tick = 0
         row = QHBoxLayout()
@@ -40,13 +44,22 @@ class GameCard(Card):
 
         left = QVBoxLayout()
         left.setSpacing(4)
+        name_row = QHBoxLayout()
+        name_row.setSpacing(12)
         self.lbl_name = QLabel("No game running")
         self.lbl_name.setFont(mono(12, bold=True))
         self.lbl_name.setTextFormat(Qt.TextFormat.RichText)
         # Expanding: with the tiles hidden nothing else in this column wants
         # width, and the layout would shrink it to the label's minimum.
         self.lbl_name.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
-        left.addWidget(self.lbl_name)
+        name_row.addWidget(self.lbl_name, 1)
+        self.btn_kill = QPushButton("End game")
+        self.btn_kill.setObjectName("kill")
+        self.btn_kill.setToolTip("Ask the game and everything it started to quit (SIGTERM). "
+                                 "For a game that does not react, use Force kill in Processes.")
+        self.btn_kill.clicked.connect(self._confirm_terminate)
+        name_row.addWidget(self.btn_kill)
+        left.addLayout(name_row)
         self.lbl_sub = QLabel("A Steam game, or any program doing real GPU work, shows up here "
                               "the moment it starts.")
         self.lbl_sub.setWordWrap(True)
@@ -78,6 +91,21 @@ class GameCard(Card):
         for t in (self.t_cpu, self.t_gpu, self.t_vram, self.t_mem, self.t_thr, self.t_cores):
             t.setVisible(on)
         self.graph.setVisible(on)
+        self.btn_kill.setVisible(on)
+
+    def _confirm_terminate(self) -> None:
+        if not self.pid:
+            return
+        answer = QMessageBox.question(
+            self, "End the game?",
+            f"Ask <b>{self.name}</b> and the {len(self._tree_pids)} processes that belong to "
+            "it to quit?<br><br>Unsaved progress is lost. The game gets the chance to close "
+            "cleanly; if it hangs and stays, use Force kill in the Processes tab.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if answer == QMessageBox.StandardButton.Yes:
+            self.terminate_requested.emit(list(self._tree_pids), self.name)
 
     def _cores_allowed(self, pid: int) -> int:
         """One syscall, for one process, every fifth tick: cheap enough."""
@@ -107,6 +135,8 @@ class GameCard(Card):
         self.pid = game.pid
         self.name = game.display_name
         tree = game_tree(game, procs)
+        # children first, so nothing is orphaned and re-spawned while we work
+        self._tree_pids = [p.pid for p in tree if p.pid != game.pid] + [game.pid]
         cpu = sum(p.cpu_percent for p in tree)
         rss = sum(p.mem_rss for p in tree)
         gpu = max(p.gpu_sm for p in tree)

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import signal
 import sys
 import time
 
@@ -19,7 +20,7 @@ from PySide6.QtWidgets import (
 )
 
 from .. import APP_NAME, __version__
-from ..actions import get_backend
+from ..actions import ActionError, get_backend
 from ..model import Snapshot
 from ..publisher import status_path
 from ..root.client import ElevatedBackend, RootClient
@@ -122,9 +123,12 @@ class MainWindow(QMainWindow):
         self.startup.status.connect(self._flash)
         self.system.status.connect(self._flash)
         self.dashboard.root_requested.connect(self._open_root)
+        self.dashboard.game.terminate_requested.connect(self._terminate_game)
         self._build_statusbar()
         self._build_tray()
         self._restore()
+        if self.tray is not None and self.act_top.isChecked():
+            self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)
 
         interval = float(self.settings.value("interval", 2.0))
         self.worker = SampleWorker(interval=interval)
@@ -182,6 +186,13 @@ class MainWindow(QMainWindow):
         self.act_keep.setChecked(self.settings.value("keep_running", False, type=bool))
         self.act_keep.toggled.connect(lambda on: self.settings.setValue("keep_running", on))
         menu.addAction(self.act_keep)
+        # Off by default. On: the window floats above everything, so you can
+        # watch a measurement while a game or another program has the screen.
+        self.act_top = QAction("Always keep on foreground", self)
+        self.act_top.setCheckable(True)
+        self.act_top.setChecked(self.settings.value("always_on_top", False, type=bool))
+        self.act_top.toggled.connect(self._set_on_top)
+        menu.addAction(self.act_top)
         act_quit = QAction("Quit", self)
         act_quit.triggered.connect(QApplication.quit)
         menu.addSeparator()
@@ -192,6 +203,14 @@ class MainWindow(QMainWindow):
             if reason == QSystemTrayIcon.ActivationReason.Trigger else None
         )
         self.tray.show()
+
+    def _set_on_top(self, on: bool) -> None:
+        self.settings.setValue("always_on_top", on)
+        visible = self.isVisible()
+        self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, on)
+        if visible:
+            self.show()   # changing a window flag hides the window; bring it back
+            self.raise_()
 
     def _toggle_window(self) -> None:
         if self.isVisible():
@@ -221,6 +240,18 @@ class MainWindow(QMainWindow):
         self.procs.set_backend(backend)
         self.dashboard.set_root_state(on)
         self._flash("Root actions enabled" if on else "Back to user privileges")
+
+    def _terminate_game(self, pids: list, name: str) -> None:
+        """SIGTERM to the whole game tree, through whichever backend is active."""
+        done, failed = 0, 0
+        for pid in pids:
+            try:
+                self.procs.backend.send_signal(pid, signal.SIGTERM)
+                done += 1
+            except ActionError:
+                failed += 1
+        self._flash(f"{name}: asked {done} process(es) to quit"
+                    + (f", {failed} refused" if failed else ""))
 
     # -- data -------------------------------------------------------------
     def _on_sample(self, snap: Snapshot) -> None:
