@@ -5,6 +5,10 @@ All notable changes, newest first. Versions are git tags on
 
 ## Unreleased
 
+- Tray icon menu: "Always keep on foreground" (off by default) keeps the window
+  above everything, to watch a measurement while something else has the screen.
+- Overview: a red "End game" button on the game card asks the detected game and
+  its whole process tree to quit, after a confirmation.
 - Sampling costs less than half of what it did: sensors are read every fifth
   tick, command lines and user names are cached. The agent is back to about 1%
   of one core.
