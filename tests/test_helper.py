@@ -187,7 +187,8 @@ class ServiceCommand(unittest.TestCase):
 
     def test_refuses_protected_unit_via_alias(self):
         alias = "dbus-org.freedesktop.login1.service"
-        show = {alias: f"Id=systemd-logind.service\nNames={alias} systemd-logind.service\nTriggers="}
+        show = {alias: f"Id=systemd-logind.service\nNames={alias} systemd-logind.service\n"
+                       f"Triggers="}
         with fake_systemctl(show) as calls, self.assertRaises(helper.HelperError) as ctx:
             helper.cmd_service(args(action="stop", unit=alias))
         self.assertIn("systemd-logind.service", str(ctx.exception))
@@ -207,7 +208,8 @@ class ServiceCommand(unittest.TestCase):
             helper.cmd_service(args(action="stop", unit=sock))
 
     def test_refuses_alias_of_a_denied_unit_even_for_start(self):
-        show = {"harmless.service": "Id=systemd-reboot.service\nNames=harmless.service systemd-reboot.service\nTriggers="}
+        show = {"harmless.service": "Id=systemd-reboot.service\n"
+                                    "Names=harmless.service systemd-reboot.service\nTriggers="}
         with fake_systemctl(show), self.assertRaises(helper.HelperError):
             helper.cmd_service(args(action="start", unit="harmless.service"))
 
