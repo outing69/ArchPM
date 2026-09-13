@@ -2,13 +2,13 @@
 pkgname=archpm
 pkgver=0.1.7
 pkgrel=1
-pkgdesc="Process manager and monitor for a Linux gaming PC: PySide6 GUI, sampler agent and Plasma 6 widget"
+pkgdesc="Process manager and monitor for a Linux gaming PC: PySide6 GUI, sampler agent and two Plasma 6 widgets"
 arch=('any')
 url="https://github.com/outing69/ArchPM"
 license=('MIT')
 install=archpm.install
-depends=('python' 'pyside6' 'python-psutil' 'polkit')
-optdepends=('plasma-desktop: desktop widget'
+depends=('python' 'pyside6' 'python-psutil' 'polkit' 'iproute2')
+optdepends=('plasma-desktop: the Monitor and Network widgets'
             'pacman-contrib: clean the package cache from the Cleanup tab'
             'nvidia-utils: NVIDIA GPU telemetry via nvidia-smi'
             'hwdata: proper names for AMD GPUs')

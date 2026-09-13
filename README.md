@@ -8,14 +8,15 @@
 > on Linux, almost a year on CachyOS. Not an expert in Linux or Arch, but not a
 > beginner either. Read the code, and `SECURITY.md`, with that in mind.
 
-Process management and monitoring for a Linux gaming PC. Three parts that share
-the same measurement core:
+A task manager for a Linux gaming PC that explains itself: what is running,
+what it costs, who is using the network, what starts at login, and what can be
+cleaned up, in plain words. Three parts that share the same measurement core:
 
 | Component | What it is |
 |---|---|
-| **GUI** (`python3 -m archpm`) | PySide6 window: Overview, Processes, Startup and System tabs |
-| **Agent** (`archpm-agent`) | systemd --user service that samples every 2 s and writes `status.json` |
-| **Widget** | Plasma 6 plasmoid on your desktop that reads that `status.json` |
+| **GUI** ("ArchPM" in your application menu) | the window: Overview, Processes, Network, Startup, System, Cleanup and Help tabs |
+| **Agent** (`archpm-agent`) | a small background service that samples every 2 s and writes `status.json` |
+| **Widgets** | two Plasma 6 plasmoids (Monitor, Network) that read that `status.json`, so they work with the window closed |
 
 ## Screenshots
 
@@ -67,7 +68,7 @@ an AMD Ryzen 7800X3D and an NVIDIA RTX 5070. It will probably work on any Arch
 derivative with Plasma 6 and an NVIDIA card. AMD GPUs use a sysfs
 fallback that has only been exercised on the Ryzen's integrated Radeon (which it
 reports as "AMD Raphael", with temperature, power and clock). Other
-desktops get the GUI but not the widget.
+desktops get the GUI but not the widgets.
 
 This is a personal tool that I am sharing in case it is useful to you. There
 is **no support**: if it does not work on your PC, I probably cannot help. Bug
@@ -84,7 +85,8 @@ are Arch's; on another distribution find the equivalents.
 | For | Packages | Notes |
 |---|---|---|
 | GUI and agent | `python` (3.10+), `pyside6` (6.5+), `python-psutil` (5.9+), `git` | the only hard requirements |
-| Widget | KDE Plasma 6 (`plasma-desktop`, `kpackage`) | other desktops get the GUI but no widget |
+| Widgets | KDE Plasma 6 (`plasma-desktop`, `kpackage`) | other desktops get the GUI but no widgets |
+| Network tab | `iproute2` | provides `ss`; part of every Arch install |
 | Root tasks, Cleanup | `polkit` | provides `pkexec`; your user must be allowed to authenticate as admin (in Arch that is the `wheel` group) |
 | Cleanup of the package cache | `pacman-contrib` | provides `paccache` |
 | NVIDIA telemetry | `nvidia-utils` | provides `nvidia-smi`; without it the GPU falls back to sysfs |
@@ -93,7 +95,9 @@ are Arch's; on another distribution find the equivalents.
 
 ## Installing
 
-First the packages. Pick the one line for the package manager you use; the
+Three steps: install the packages, install ArchPM, add the widgets.
+
+**1. The packages.** Pick the one line for the package manager you use; the
 commands are the same in fish, bash and zsh.
 
 ```bash
@@ -107,41 +111,48 @@ paru -S --needed python pyside6 python-psutil polkit git
 yay -S --needed python pyside6 python-psutil polkit git
 ```
 
-Optional, for the full experience: `plasma-desktop` (the widget),
-`nvidia-utils` (NVIDIA telemetry), `hwdata` (proper AMD GPU names).
+Optional, for the full experience: `plasma-desktop` (the widgets),
+`nvidia-utils` (NVIDIA telemetry), `hwdata` (proper AMD GPU names),
+`pacman-contrib` (cleaning the package cache).
 
-Then ArchPM itself:
+**2. ArchPM itself.** The first script needs no password and puts everything
+in your home folder. The second asks for your password once: it installs the
+small root helper that the Root tasks and Cleanup features use. You can skip
+it and add it later.
 
 ```bash
 git clone https://github.com/outing69/ArchPM.git && cd ArchPM
-./install.sh          # agent, widget, menu entry  (no root needed)
-./install.sh --root   # the pkexec helper and the polkit policy
+./install.sh          # agent, widgets, menu entry  (no root needed)
+./install.sh --root   # the pkexec helper and the polkit policy (optional)
 ```
 
-Then: right-click your desktop → *Add Widgets* → **ArchPM Monitor** and, if
-you want it, **ArchPM Network**. Both can go in a panel too: right-click the
-panel → *Add Widgets*. There they show a one-line strip ("CPU 12% · GPU 83% ·
-RAM 51%", "↓ 1.2 MB/s ↑ 88 KB/s VPN") and open the full view on click.
+Now open **ArchPM** from your application menu. The agent is already running
+in the background, so the widgets keep showing numbers when the window is closed.
+
+**3. The widgets.** Right-click your desktop → *Add Widgets* → **ArchPM
+Monitor** and, if you want it, **ArchPM Network**. Both can go in a panel too:
+right-click the panel → *Add Widgets*. There they show a one-line strip
+("CPU 12% · GPU 83% · RAM 51%", "↓ 1.2 MB/s ↑ 88 KB/s VPN") and open the full
+view on click.
 
 For frame rates and usage *inside* a full-screen game, use MangoHud; ArchPM is
 for before and after: what the game did to the machine, and what else runs.
 
-The GUI and agent are also a regular Python package (`pyproject.toml`, console
-scripts `archpm` and `archpm-agent`), so `pipx install git+https://github.com/outing69/ArchPM`
-works too. That gives you the window and the sampler, but not the widget, the
-systemd unit or the root helper; those still come from `install.sh`.
-
-Requirements: Python 3.10+, PySide6 6.5+, psutil 5.9+. Tested with newer versions of all three.
+For the curious: the GUI and agent are also a regular Python package
+(`pyproject.toml`, console scripts `archpm` and `archpm-agent`), so
+`pipx install git+https://github.com/outing69/ArchPM` works too. That gives you
+the window and the sampler, but not the widgets, the systemd unit or the root
+helper; those still come from `install.sh`.
 
 ### Updating
 
 From a checkout: pull, then run the install script again. The GUI picks up new
-code the next time it starts; the agent, widget and root helper are copies and
+code the next time it starts; the agent, widgets and root helper are copies and
 need the script.
 
 ```bash
 cd ArchPM && git pull
-./install.sh            # agent, widget, menu entry
+./install.sh            # agent, widgets, menu entry
 ./install.sh --root     # the root helper and polkit policy (asks for your password)
 systemctl --user restart archpm-agent
 ```
@@ -153,7 +164,7 @@ If you installed the package instead, rebuild it: `cd packaging/aur && makepkg -
 
 `packaging/aur/` holds a PKGBUILD that installs everything in its proper place:
 console scripts in `/usr/bin`, the root helper in `/usr/lib/archpm`, the polkit
-policy, a systemd user unit and the widget. Until it is on the AUR, build it
+policy, a systemd user unit and both widgets. Until it is on the AUR, build it
 yourself:
 
 ```bash
@@ -173,7 +184,7 @@ the package, or the polkit policy file will conflict.
   **per-process GPU usage** via `nvidia-smi pmon` (works for games too, not
   just CUDA). AMD/Intel fall back to sysfs, without per-process data.
 - **Processes** — CPU, RSS, threads, nice, disk I/O, VRAM, affinity, start time.
-  Shown as a tree by parent (Steam → reaper → Proton → game) or flat. Programs
+  Shown as a tree by parent (Steam → reaper → Proton → game). Programs
   with a `.desktop` entry get their proper name, icon and category; Steam games
   get the game's name and Steam's icon for it. No icon is shown for anything
   that has none. By default you see your programs plus whatever is busy; "Show
@@ -185,15 +196,6 @@ the package, or the polkit policy file will conflict.
   doing real GPU work qualifies too.
 - **History** — select a process and the last minutes of its CPU, GPU and memory
   appear under the list; a collapsed program shows its whole tree.
-- **Help** — a searchable glossary in plain language (what nice -5 means, what a
-  PID is, SIGTERM versus SIGKILL, why root is asked), what the colours mean, and
-  About with version, links and the changelog.
-- **Cleanup** — free up space: per-program caches, Steam shader caches,
-  thumbnails, old package versions (the last two of each are kept) and old
-  logs, each with its size and a plain reason why it is safe. The tab explains
-  itself on first open and asks for your password once for the two items that
-  need root. Nothing is removed until you tick, press and confirm. Your files,
-  saves and settings are never touched.
 - **Network** — every five seconds, one `ss` call lists the sockets of your
   own processes: which program has which connections open, to which address
   and port (named from `/etc/services`, never looked up online), download and
@@ -207,7 +209,15 @@ the package, or the polkit policy file will conflict.
   own `~/.config/autostart`; nothing outside your home is touched.
 - **System** — the machine's specs on one card: CPU, memory, GPUs and drivers,
   motherboard, kernel, desktop, disks, network. "Copy as text" for forum posts.
-- **System** — network and disk throughput, swap, sensors
+- **Cleanup** — free up space: per-program caches, Steam shader caches,
+  thumbnails, old package versions (the last two of each are kept) and old
+  logs, each with its size and a plain reason why it is safe. The tab explains
+  itself on first open and asks for your password once for the two items that
+  need root. Nothing is removed until you tick, press and confirm. Your files,
+  saves and settings are never touched.
+- **Help** — a searchable glossary in plain language (what nice -5 means, what a
+  PID is, SIGTERM versus SIGKILL, why root is asked), what the colours mean, and
+  About with version, links and the changelog.
 
 ## What you can do with it
 
@@ -293,12 +303,13 @@ systemctl --user status archpm-agent        # is the agent running?
 systemctl --user restart archpm-agent
 python3 -m archpm.agent --once              # one sample to stdout
 journalctl --user -u archpm-agent -f        # logs
-kpackagetool6 -t Plasma/Applet -u plasmoid/package   # update the widget
+kpackagetool6 -t Plasma/Applet -u plasmoid/package   # update the Monitor widget
+kpackagetool6 -t Plasma/Applet -u plasmoid/network   # update the Network widget
 /usr/local/lib/archpm/archpm-helper status           # test the helper (without root)
 pkaction --action-id io.github.outing69.archpm.helper.run --verbose    # inspect the polkit rules
 ./install.sh --uninstall-root                        # remove the root part
 ```
 
-After changing the widget: `kpackagetool6 ... -u` and then
+After changing a widget: `kpackagetool6 ... -u` and then
 `systemctl --user restart plasma-plasmashell` (or `kquitapp6 plasmashell &&
 plasmashell &`) to reload it.
