@@ -1,4 +1,10 @@
-"""Item model for the process list: a tree by parent pid, or flat.
+"""Item model for the process list: grouped by application, a tree by parent
+pid, or flat.
+
+Grouped: a row per application that owns two or more processes (see
+grouping.py), expandable to the processes. The group row is a synthetic
+ProcSample with a negative pid whose numbers are the sums; an application
+with a single process sits at the root as itself.
 
 Rows are updated in place every tick instead of rebuilt: a rebuild would drop
 the selection and the expanded/collapsed state and make the view flicker.
@@ -9,6 +15,7 @@ init or a subreaper adopted it) is removed and re-inserted under the new one.
 """
 from __future__ import annotations
 
+import textwrap
 import time
 from dataclasses import dataclass
 
@@ -16,6 +23,7 @@ from PySide6.QtCore import QAbstractItemModel, QModelIndex, QSortFilterProxyMode
 from PySide6.QtGui import QColor
 
 from ..appinfo import describe
+from ..grouping import build_groups, summarize
 from ..model import ProcSample
 from . import theme
 from .hints import tooltip_html
@@ -61,6 +69,31 @@ ALIGN = {
     COL_STATUS: _CENTER, COL_STARTED: _RIGHT,
 }
 _SUMMED = {COL_CPU, COL_MEM, COL_GPU, COL_VRAM, COL_THREADS, COL_IO}
+MODES = ("grouped", "tree", "flat")
+
+# Tooltips: about 600 px of the tooltip font per line, and a command line
+# cut short; the Command column still has the whole thing.
+TIP_WIDTH = 90
+TIP_CMD_MAX = 240
+
+
+def short_cmd(cmd: str) -> str:
+    return cmd if len(cmd) <= TIP_CMD_MAX else cmd[:TIP_CMD_MAX - 1] + "…"
+
+
+def wrap_tip(lines: list[str]) -> str:
+    out: list[str] = []
+    for line in lines:
+        out.extend(textwrap.wrap(line, TIP_WIDTH, break_long_words=True,
+                                 break_on_hyphens=False) or [""])
+    return "\n".join(out)
+
+
+def group_source(key: str) -> str:
+    """"cgroup:app-steam@1.service" -> "the cgroup app-steam@1.service"."""
+    kind, _, value = key.partition(":")
+    return {"cgroup": f"the cgroup {value}", "exe": f"the program file {value}",
+            "name": f"the process name {value}", "steam": f"Steam app {value}"}.get(kind, key)
 
 
 @dataclass(slots=True)
@@ -117,7 +150,9 @@ class ProcModel(QAbstractItemModel):
         self.ncpu = ncpu
         self.normalize_cpu = False   # True = CPU% divided by number of cores
         self.frozen = False
-        self.tree = True
+        self.mode = "tree"
+        self._group_ids: dict[str, int] = {}     # group key -> stable negative pid
+        self._group_of: dict[int, int] = {}      # pid -> group pid, this tick
         self._root = Node(None, None)
         self._nodes: dict[int, Node] = {}
         self._last: list[ProcSample] = []
@@ -125,6 +160,14 @@ class ProcModel(QAbstractItemModel):
         self._expanded: set[int] = set()         # pids whose row the view shows expanded
         self.steam_pid = 0                       # the Steam client, if it runs
         self.hoisted: set[int] = set()           # pid 1 and the systemd user managers
+
+    @property
+    def tree(self) -> bool:
+        return self.mode == "tree"
+
+    @property
+    def hierarchical(self) -> bool:
+        return self.mode != "flat"
 
     # -- Qt structure -------------------------------------------------------
     def _node(self, index: QModelIndex) -> Node:
@@ -192,19 +235,31 @@ class ProcModel(QAbstractItemModel):
         if role == Qt.ItemDataRole.ToolTipRole:
             if totals and col in _SUMMED:
                 return f"Total of {totals.count} processes in this tree"
+            if p.members and col == COL_MEM:
+                lines = [f"Memory of {p.members} processes, with pages they share counted "
+                         "once (PSS). Measured every ten seconds, so up to ten seconds old."]
+                if p.mem_approx:
+                    lines.append("One or more of them could not be measured yet and count "
+                                 "their RSS instead, which overstates a little.")
+                return wrap_tip(lines)
+            if p.members and col in _SUMMED:
+                return f"Total of {p.members} processes in this group"
             if col == COL_NAME:
                 # Says what each line is: a beginner reading "python3" under
                 # "ArchPM" should see that one is the program, the other the process.
                 exe = p.argv[0] if p.argv else p.name
                 about = describe(exe, p.app_name) or describe(p.name)
                 lines = [about] if about else []
+                if p.members:
+                    lines.append(f"{p.members} processes of one application, grouped by "
+                                 f"{group_source(p.cgroup)}.")
                 if p.app_name:
                     lines.append(f"Program: {p.app_name}")
                 lines.append(f"Process name: {p.name}")
                 if p.cmdline:
-                    lines.append(f"Command: {p.cmdline}")
-                return "\n".join(lines)
-            return p.cmdline or p.name
+                    lines.append(f"Command: {short_cmd(p.cmdline)}")
+                return wrap_tip(lines)
+            return wrap_tip([short_cmd(p.cmdline) or p.name])
         if role != Qt.ItemDataRole.DisplayRole:
             return None
         return self._text(p, col, totals)
@@ -221,7 +276,7 @@ class ProcModel(QAbstractItemModel):
         threads = t.threads if t else p.num_threads
         io = t.io if t else p.io_read_bps + p.io_write_bps
         if col == COL_PID:
-            return str(p.pid)
+            return "" if p.members else str(p.pid)
         if col == COL_NAME:
             return p.display_name
         if col == COL_CPU:
@@ -327,14 +382,20 @@ class ProcModel(QAbstractItemModel):
         return self.createIndex(node.row, 0, node) if node else QModelIndex()
 
     def subtree_pids(self, pid: int) -> list[int]:
-        """The process and all its descendants, deepest first (children before parents)."""
+        """The process and all its descendants, deepest first (children before
+        parents). Real pids only: a group row stands for its members."""
         node = self._nodes.get(pid)
         if node is None:
-            return [pid]
-        out = [d.proc.pid for d in node.descendants()]
+            return [pid] if pid > 0 else []
+        out = [d.proc.pid for d in node.descendants() if d.proc.pid > 0]
         out.reverse()
-        out.append(pid)
+        if pid > 0:
+            out.append(pid)
         return out
+
+    def procs_under(self, pid: int) -> list[ProcSample]:
+        """The samples behind subtree_pids(pid), in the same order."""
+        return [self._nodes[q].proc for q in self.subtree_pids(pid) if q in self._nodes]
 
     def pids(self):
         return self._nodes.keys()
@@ -351,8 +412,10 @@ class ProcModel(QAbstractItemModel):
 
     # -- updates --------------------------------------------------------------
     def _desired_parent_pid(self, p: ProcSample, incoming: dict[int, ProcSample]) -> int:
-        if not self.tree:
+        if self.mode == "flat":
             return 0
+        if self.mode == "grouped":
+            return self._group_of.get(p.pid, 0)
         # A Steam game's tree hangs directly under the Steam client, whatever
         # its real parent: Steam nests games under reaper and the runtime, and
         # once reaper is gone the tree even ends up beside Steam.
@@ -389,6 +452,24 @@ class ProcModel(QAbstractItemModel):
             return []
         return [c.proc.pid for c in node.children if c.proc.steam_appid]
 
+    def _with_groups(self, incoming: dict[int, ProcSample]) -> dict[int, ProcSample]:
+        """Add a synthetic sample per application with two or more processes
+        and remember which group each process belongs to this tick. Group
+        pids are negative and stay the same for the same key."""
+        self._group_of = {}
+        out = dict(incoming)
+        for key, members in build_groups(list(incoming.values())).items():
+            if len(members) < 2:
+                continue
+            gid = self._group_ids.get(key)
+            if gid is None:
+                gid = -(len(self._group_ids) + 1)
+                self._group_ids[key] = gid
+            out[gid] = summarize(gid, key, members)
+            for m in members:
+                self._group_of[m.pid] = gid
+        return out
+
     def _index_of(self, node: Node) -> QModelIndex:
         return QModelIndex() if node is self._root else self.createIndex(node.row, 0, node)
 
@@ -420,6 +501,8 @@ class ProcModel(QAbstractItemModel):
         incoming = {p.pid: p for p in procs}
         self.steam_pid = self.find_steam(incoming)
         self.hoisted = self.find_managers(incoming)
+        if self.mode == "grouped":
+            incoming = self._with_groups(incoming)
 
         # 1. Remove what is gone, and what must move (its parent changed). A
         #    removed subtree may contain processes that still exist: they are
@@ -470,7 +553,7 @@ class ProcModel(QAbstractItemModel):
         # 4. Busy deadlines (for the programs-only filter) and subtree totals,
         #    then tell the views. Totals must exist before dataChanged fires.
         now = time.monotonic()
-        for p in procs:
+        for p in incoming.values():
             if is_busy(p):
                 self.busy_until[p.pid] = now + BUSY_HOLD_S
         for pid in [pid for pid in self.busy_until if pid not in incoming]:
@@ -490,12 +573,14 @@ class ProcModel(QAbstractItemModel):
             for c in node.children:
                 self._emit_changed(c)
 
-    def set_tree(self, on: bool) -> None:
-        """Flat <-> tree is a structural change, so rebuild; selection is lost once."""
-        if on == self.tree:
+    def set_mode(self, mode: str) -> None:
+        """Grouped, tree or flat: a structural change, so rebuild; selection is lost once."""
+        if mode not in MODES:
+            raise ValueError(mode)
+        if mode == self.mode:
             return
         self.beginResetModel()
-        self.tree = on
+        self.mode = mode
         self._root = Node(None, None)
         self._nodes = {}
         self._expanded = set()
@@ -557,9 +642,15 @@ class ProcFilter(QSortFilterProxyModel):
         if p is None:
             return False
         if not self.show_all:
-            if not p.owned or not p.cmdline:
+            # A member of a group inherits the group row's verdict: opening
+            # "Brave" must show all of Brave, helpers included, while a group
+            # that is not yours stays hidden with all its members.
+            subject = p
+            if parent.isValid() and model.proc_at(parent).members:
+                subject = model.proc_at(parent)
+            if not subject.owned or not subject.cmdline:
                 return False
-            if not p.program and model.busy_until.get(p.pid, 0.0) < time.monotonic():
+            if not subject.program and model.busy_until.get(subject.pid, 0.0) < time.monotonic():
                 return False
         if self.only_gpu and not (p.gpu_sm or p.gpu_mem_mb):
             return False

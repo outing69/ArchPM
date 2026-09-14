@@ -108,9 +108,12 @@ def describe(p: ProcSample) -> str:
 
 
 def check(procs: list[ProcSample], sig_name: str, tree: bool = False,
-          always_ask: bool = False, self_pid: int | None = None,
+          always_ask: bool = False, list_all: bool = False, self_pid: int | None = None,
           above: set[int] | None = None, leaders: set[int] | None = None) -> Verdict:
-    """Decide for one signal to these processes. For a tree, pass the whole tree."""
+    """Decide for one signal to these processes. For a tree, pass the whole tree.
+
+    list_all names every process, one short line each, for a group row that
+    stands for all of them; otherwise the first few are described in full."""
     self_pid = os.getpid() if self_pid is None else self_pid
     above = ancestors(self_pid) if above is None else above
     leaders = session_leaders() if leaders is None else leaders
@@ -139,14 +142,23 @@ def check(procs: list[ProcSample], sig_name: str, tree: bool = False,
     if not v.confirm:
         return v
 
+    # For a group the members come children first (that is the signalling
+    # order); the one carrying the program's name leads the dialog.
+    lead = next((p for p in procs if p.app_name), procs[0])
     question, v.button = VERBS.get(sig_name, (f"Send {sig_name} to {{}}?", "Send"))
     subject = (f"{procs[0].display_name}" if len(procs) == 1
+               else f"{lead.display_name} and {len(procs) - 1} more" if list_all
                else f"{len(procs)} processes")
     v.title = question.format(subject)
 
-    parts = [describe(p) for p in procs[:MAX_LISTED]]
-    if len(procs) > MAX_LISTED:
-        parts.append(f"and {len(procs) - MAX_LISTED} more.")
+    if list_all and len(procs) > 1:
+        parts = [describe(lead),
+                 "Every process this reaches:\n" + "\n".join(
+                     f"  {p.display_name} ({p.pid})" for p in procs)]
+    else:
+        parts = [describe(p) for p in procs[:MAX_LISTED]]
+        if len(procs) > MAX_LISTED:
+            parts.append(f"and {len(procs) - MAX_LISTED} more.")
     notes = []
     if sig_name == "KILL":
         notes.append("It gets no chance to save anything. Unsaved work is lost.")

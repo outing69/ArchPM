@@ -200,9 +200,16 @@ class ProcessView(QWidget):
                                        "Steam games are Game.")
         bar.addWidget(self.combo_category)
 
-        self.cb_tree = QCheckBox("Tree")
-        self.cb_tree.setChecked(self.settings.value("tree", True, type=bool))
-        self.cb_tree.setToolTip("Nest processes under their parent (Steam → reaper → game).")
+        self.combo_mode = QComboBox()
+        for label, mode in (("Grouped", "grouped"), ("Tree", "tree"), ("Flat", "flat")):
+            self.combo_mode.addItem(label, mode)
+        self.combo_mode.setToolTip(
+            "Grouped: one row per application, open it for its processes.\n"
+            "Tree: every process under its parent (Steam → reaper → game).\n"
+            "Flat: one row per process."
+        )
+        saved = self.settings.value("view_mode", "grouped", type=str)
+        self.combo_mode.setCurrentIndex(max(self.combo_mode.findData(saved), 0))
         self.cb_all = QCheckBox("Show all processes")
         self.cb_all.setChecked(self.settings.value("show_all", False, type=bool))
         self.cb_all.setToolTip(
@@ -216,7 +223,8 @@ class ProcessView(QWidget):
         )
         self.cb_freeze = QCheckBox("Pause list")
         self.cb_freeze.setToolTip("Freezes the list so rows stop jumping around.")
-        for cb in (self.cb_tree, self.cb_all, self.cb_gpu, self.cb_norm, self.cb_freeze):
+        bar.addWidget(self.combo_mode)
+        for cb in (self.cb_all, self.cb_gpu, self.cb_norm, self.cb_freeze):
             bar.addWidget(cb)
         bar.addStretch(1)
 
@@ -228,7 +236,7 @@ class ProcessView(QWidget):
 
         # -- tree ----------------------------------------------------------
         self.model = ProcModel(ncpu, self)
-        self.model.tree = self.cb_tree.isChecked()
+        self.model.mode = self.combo_mode.currentData()
         # Connected before the proxy sees the model: Qt calls slots in
         # connection order, and the proxy would otherwise move the view's
         # current row (and re-pin the history) before we notice the removal.
@@ -242,6 +250,7 @@ class ProcessView(QWidget):
             f"QTreeView {{ border: 1px solid {theme.BORDER}; border-radius: 10px; }}"
         )
         self.table.setModel(self.proxy)
+        self.table.setRootIsDecorated(self.model.hierarchical)
         self.table.setSortingEnabled(True)
         # Sorted by name by default: sorting on a live value (CPU%) makes rows
         # trade places every tick, which is unbearable in a tree. The last
@@ -310,7 +319,7 @@ class ProcessView(QWidget):
         # -- behaviour -----------------------------------------------------
         header.sortIndicatorChanged.connect(self._remember_sort)
         self.search.textChanged.connect(self._search_changed)
-        self.cb_tree.toggled.connect(self._set_tree)
+        self.combo_mode.currentIndexChanged.connect(self._set_mode)
         self.cb_all.toggled.connect(self._set_show_all)
         self.combo_category.currentIndexChanged.connect(
             lambda i: self.proxy.set_flag("category", self.combo_category.itemData(i))
@@ -343,8 +352,9 @@ class ProcessView(QWidget):
 
     def update_view(self, snap) -> None:
         self.model.update(snap.procs)
-        if self.model.tree and not self.model.frozen:
-            self._auto_expand()
+        if self.model.hierarchical and not self.model.frozen:
+            if self.model.tree:
+                self._auto_expand()
             if self.proxy.text:
                 self._expand_matches()
         if self.panel.isVisible():
@@ -386,9 +396,11 @@ class ProcessView(QWidget):
             self._pinned = None
             self.panel.setVisible(False)
             return
-        # A collapsed program row stands for its tree; so does its history.
+        # A collapsed program row stands for its tree, a group row for its
+        # members; so does their history.
         pids = [p.pid]
-        if self.model.tree and self.model.has_children(p.pid) and not self.model.is_expanded(p.pid):
+        if p.members or (self.model.tree and self.model.has_children(p.pid)
+                         and not self.model.is_expanded(p.pid)):
             pids = self.model.subtree_pids(p.pid)
         self._pinned = (p, pids)
         self.panel.show_track(p, self.history.tree(pids), len(pids))
@@ -407,11 +419,15 @@ class ProcessView(QWidget):
         self.settings.setValue("sort_column", column)
         self.settings.setValue("sort_order", order.value)
 
-    def _set_tree(self, on: bool) -> None:
-        self.settings.setValue("tree", on)
-        self.model.set_tree(on)
-        self.table.setRootIsDecorated(on)
-        if on and self.proxy.text:
+    def set_mode(self, mode: str) -> None:
+        self.combo_mode.setCurrentIndex(self.combo_mode.findData(mode))
+
+    def _set_mode(self, index: int) -> None:
+        mode = self.combo_mode.itemData(index)
+        self.settings.setValue("view_mode", mode)
+        self.model.set_mode(mode)
+        self.table.setRootIsDecorated(mode != "flat")
+        if self.model.hierarchical and self.proxy.text:
             self._expand_matches()
 
     # -- search -----------------------------------------------------------
@@ -421,7 +437,7 @@ class ProcessView(QWidget):
         open; clearing the box puts the tree back the way it was."""
         had_text = bool(self.proxy.text)
         self.proxy.set_text(text)
-        if not self.model.tree:
+        if not self.model.hierarchical:
             return
         if self.proxy.text:
             if not had_text:
@@ -481,15 +497,15 @@ class ProcessView(QWidget):
         return out
 
     def _selected_trees(self) -> list[ProcSample]:
-        """Selected processes plus every descendant, children first, no duplicates."""
-        by_pid = {p.pid: p for p in self.model._last}
+        """Selected processes plus every descendant (or group member), children
+        first, no duplicates, real processes only."""
         seen: set[int] = set()
         out: list[ProcSample] = []
         for p in self._selected():
-            for pid in self.model.subtree_pids(p.pid):
-                if pid not in seen and pid in by_pid:
-                    seen.add(pid)
-                    out.append(by_pid[pid])
+            for q in self.model.procs_under(p.pid):
+                if q.pid not in seen:
+                    seen.add(q.pid)
+                    out.append(q)
         return out
 
     # -- context menu -----------------------------------------------------
@@ -500,7 +516,9 @@ class ProcessView(QWidget):
         one = procs[0] if len(procs) == 1 else None
         title = one.display_name if one else f"{len(procs)} processes"
         menu = QMenu(self)
-        header = menu.addAction(f"{title}" + (f"  ·  pid {one.pid}" if one else ""))
+        detail = "" if one is None else (f"  ·  {one.members} processes" if one.members
+                                         else f"  ·  pid {one.pid}")
+        header = menu.addAction(f"{title}{detail}")
         header.setEnabled(False)
         menu.addSeparator()
 
@@ -568,7 +586,14 @@ class ProcessView(QWidget):
         procs = self._selected_trees() if tree else self._selected()
         if not procs:
             return
-        verdict = signalguard.check(procs, sig.name, tree=tree, always_ask=confirm)
+        if any(p.members for p in procs):
+            # A group row stands for all its processes: signal every one of
+            # them, and always ask first, naming each.
+            procs = self._selected_trees()
+            verdict = signalguard.check(procs, sig.name, tree=True, always_ask=True,
+                                        list_all=True)
+        else:
+            verdict = signalguard.check(procs, sig.name, tree=tree, always_ask=confirm)
         if verdict.refused:
             self._notice("Not done", verdict.refused)
             return

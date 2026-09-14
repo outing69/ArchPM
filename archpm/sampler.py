@@ -13,6 +13,7 @@ import psutil
 
 from .appinfo import AppResolver
 from .gpu import GpuMonitor
+from .grouping import build_groups, read_pss
 from .model import ProcSample, Snapshot, SystemSample
 from .net import NetSampler
 
@@ -30,14 +31,17 @@ _PROC_ATTRS = [
     "num_threads", "nice", "status", "create_time", "uids",
 ]
 TEMPS_EVERY = 5   # ticks; sensors are slow to read and slow to change
+PSS_EVERY = 5     # ticks; smaps_rollup costs ~50 ms for the members of multi-process groups
 NET_EVERY_S = 5.0  # seconds between socket scans (one ss call, ~50 ms)
 
 
 class Sampler:
-    def __init__(self, gpu: GpuMonitor | None = None) -> None:
+    def __init__(self, gpu: GpuMonitor | None = None, group_memory: bool = True) -> None:
         self.ncpu = psutil.cpu_count(logical=True) or 1
         self.uid = os.getuid()
         self.gpu = gpu
+        self.group_memory = group_memory     # PSS for the Grouped view; the agent has no use for it
+        self._pss: dict[int, int] = {}       # pid -> bytes, refreshed every PSS_EVERY ticks
         self._procs: dict[int, psutil.Process] = {}
         self._starts: dict[int, float] = {}
         self._io: dict[int, tuple[float, float, float]] = {}  # pid -> (read, write, ts)
@@ -52,6 +56,7 @@ class Sampler:
         self._net_last = None
         self._net_ts = 0.0
         self._users: dict[int, str] = {}                        # uid -> username
+        self._cgroups: dict[int, tuple[str, float]] = {}        # pid -> (path, read at)
         psutil.cpu_percent(percpu=True)  # baseline for the first tick
 
     # ------------------------------------------------------------------
@@ -83,6 +88,8 @@ class Sampler:
             self._starts.pop(pid, None)
             self._io.pop(pid, None)
             self._cmdlines.pop(pid, None)
+            self._cgroups.pop(pid, None)
+            self._pss.pop(pid, None)
             self.apps.forget(pid)
 
     # ------------------------------------------------------------------
@@ -136,9 +143,12 @@ class Sampler:
                 category=app.category,
                 program=app.program,
                 steam_appid=app.steam_appid,
+                cgroup=self._cgroup(pid, info.get("create_time") or 0.0, now),
             ))
 
         self._name_game_roots(procs)
+        if self.group_memory:
+            self._refresh_pss(procs)
         sys_sample = self._system(now, len(procs), threads)
         if now - self._net_ts >= NET_EVERY_S:
             self._net_ts = now
@@ -164,6 +174,33 @@ class Sampler:
             cmd = []
         self._cmdlines[pid] = (name, cmd)
         return cmd
+
+    def _refresh_pss(self, procs: list[ProcSample]) -> None:
+        """Group memory that counts shared pages once. Read every PSS_EVERY
+        ticks and only for processes that share a group, then reused: a
+        newcomer counts its RSS until the next read, at most ten seconds."""
+        if self._tick % PSS_EVERY == 0:      # _tick counts finished samples: 0, 5, 10, ...
+            for members in build_groups(procs).values():
+                if len(members) >= 2:
+                    for p in members:
+                        self._pss[p.pid] = read_pss(p.pid)
+        for p in procs:
+            p.mem_pss = self._pss.get(p.pid, 0)
+
+    def _cgroup(self, pid: int, create_time: float, now: float) -> str:
+        """The process's cgroup path. Read once, and again every 30 s while the
+        process is young: a browser moves itself into its own scope right
+        after starting. About 10 us per read."""
+        cached = self._cgroups.get(pid)
+        if cached is not None and (now - create_time > 300 or now - cached[1] < 30):
+            return cached[0]
+        try:
+            with open(f"/proc/{pid}/cgroup") as fh:
+                path = fh.read().strip().rpartition(":")[2]
+        except OSError:
+            path = cached[0] if cached else ""
+        self._cgroups[pid] = (path, now)
+        return path
 
     def _username(self, uid: int) -> str:
         user = self._users.get(uid)

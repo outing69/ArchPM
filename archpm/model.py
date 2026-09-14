@@ -47,6 +47,10 @@ class ProcSample:
     category: str = ""           # "Game", "Browser", ... for a program; "" otherwise
     program: bool = False        # a visible menu entry or a Steam game, i.e. a user-facing app
     steam_appid: int = 0         # set on every process launched by Steam for that game
+    cgroup: str = ""             # /proc/<pid>/cgroup path; names the app's systemd unit
+    members: int = 0             # 0 = a process; n = a group row standing for n processes
+    mem_pss: int = 0             # proportional set size, bytes; 0 = not measured
+    mem_approx: bool = False     # group memory: at least one member counted by RSS, not PSS
 
     @property
     def mem_mb(self) -> float:

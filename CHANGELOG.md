@@ -3,6 +3,24 @@
 All notable changes, newest first. Versions are git tags on
 [github.com/outing69/ArchPM](https://github.com/outing69/ArchPM).
 
+## 0.2.4 (2026-09-14)
+
+- Processes: a Grouped view, now the default, next to Tree and Flat. One row
+  per application, opened for its processes, with CPU, memory, threads, disk
+  and GPU added up and the number of processes. Grouped by the systemd unit
+  the desktop assigns at launch, then the program file, then the name; a
+  browser that registers its main process in a scope of its own is folded
+  back together with its helpers. Sorting orders the applications by their
+  totals; a search finds a process and keeps its application row. Ending an
+  application row asks first and names every process it reaches.
+- Group memory counts shared pages once: the proportional share (PSS) of the
+  processes in a group, read every ten seconds, so the figure can be up to ten
+  seconds old. A process not measured yet counts its RSS and the tooltip says so.
+- Hover tooltips in the process list wrap at about 600 pixels and cut a long
+  command line short; the Command column keeps the whole thing.
+- Help: "Swap and zram" is now "Swap in RAM", and zram is explained as a piece
+  of RAM the kernel uses as compressed swap.
+
 ## 0.2.3 (2026-09-14)
 
 - Per-process GPU usage on AMD and Intel: read from the kernel's DRM fdinfo

@@ -51,7 +51,7 @@ class TreeSearch(unittest.TestCase):
         from archpm.actions import UserBackend
         from archpm.ui.procview import ProcessView
         self.view = ProcessView(8, UserBackend())
-        self.view.cb_tree.setChecked(True)
+        self.view.set_mode("tree")
         self.view.cb_all.setChecked(True)
         self.view.update_view(Snapshot(system=SystemSample(), procs=PROCS))
 
@@ -126,10 +126,147 @@ class TreeSearch(unittest.TestCase):
     def test_no_settings_written_outside_the_temporary_directory(self):
         real = os.path.expanduser("~/.config/archpm")
         before = os.path.getmtime(real) if os.path.exists(real) else None
-        self.view.cb_tree.setChecked(False)
-        self.view.cb_tree.setChecked(True)
+        self.view.set_mode("flat")
+        self.view.set_mode("tree")
         after = os.path.getmtime(real) if os.path.exists(real) else None
         self.assertEqual(before, after)
+
+
+SLICE = "/user.slice/user-1000.slice/user@1000.service/app.slice/"
+
+
+def app(pid, ppid, name, unit, cpu=0.0, rss=0, app_name="", cmdline=""):
+    return ProcSample(pid=pid, ppid=ppid, name=name, username="alex", owned=True, program=True,
+                      cmdline=cmdline or f"/usr/bin/{name}", cgroup=SLICE + unit,
+                      cpu_percent=cpu, mem_rss=rss, num_threads=1, app_name=app_name)
+
+
+GROUPED = [
+    app(100, 1, "brave", "app-brave@1.service", cpu=5, rss=300, app_name="Brave"),
+    app(101, 100, "brave", "app-brave@1.service", cpu=1, rss=100),
+    app(102, 101, "brave", "app-brave@1.service", cpu=20, rss=600, cmdline="/opt/brave/brave --type=renderer"),
+    app(200, 1, "steam", "app-steam@2.service", cpu=2, rss=200, app_name="Steam"),
+    app(201, 200, "steamwebhelper", "app-steam@2.service", cpu=9, rss=400),
+    app(300, 1, "konsole", "app-org.kde.konsole-300.scope", cpu=50, rss=50, app_name="Konsole"),
+]
+
+
+@unittest.skipUnless(QApplication, "PySide6 not installed")
+class Grouped(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        TreeSearch.setUpClass()
+
+    def setUp(self):
+        from archpm.actions import UserBackend
+        from archpm.ui.procview import ProcessView
+        self.view = ProcessView(8, UserBackend())
+        self.view.set_mode("grouped")
+        self.view.update_view(Snapshot(system=SystemSample(), procs=GROUPED))
+        self.model, self.proxy = self.view.model, self.view.proxy
+
+    def roots(self):
+        from archpm.ui.proc_model import PID_ROLE
+        return [self.proxy.index(r, 0).data(PID_ROLE) for r in range(self.proxy.rowCount())]
+
+    def test_grouped_is_the_default_and_is_remembered(self):
+        self.assertEqual(self.view.combo_mode.currentData(), "grouped")
+        self.view.set_mode("flat")
+        self.assertEqual(self.view.settings.value("view_mode"), "flat")
+
+    def test_one_row_per_application_and_singletons_stay_themselves(self):
+        roots = self.roots()
+        self.assertEqual(len(roots), 3, roots)
+        self.assertIn(300, roots, "konsole alone is its own row")
+        groups = [pid for pid in roots if pid < 0]
+        self.assertEqual(len(groups), 2, "brave and steam")
+
+    def test_group_row_carries_the_sums_and_the_count(self):
+        from archpm.ui.proc_model import COL_CPU, COL_MEM, COL_PID
+        brave = next(n for n in self.model._nodes.values() if n.proc.members and n.proc.name == "brave").proc
+        self.assertEqual((brave.members, brave.cpu_percent, brave.mem_rss), (3, 26.0, 1000))
+        idx = self.model.index_for_pid(brave.pid)
+        self.assertEqual(self.model.data(idx.siblingAtColumn(COL_PID)), "", "no pid on a group row")
+        self.assertEqual(self.model.data(idx.siblingAtColumn(COL_CPU)), "26.0")
+        from PySide6.QtCore import Qt
+        tip = self.model.data(idx.siblingAtColumn(COL_MEM), Qt.ItemDataRole.ToolTipRole)
+        self.assertIn("ten seconds old", tip)
+        self.assertIn("RSS instead", tip, "no member has PSS in this fixture")
+
+    def test_sorting_orders_groups_by_their_aggregate(self):
+        from archpm.ui.proc_model import COL_CPU, PID_ROLE
+        from PySide6.QtCore import Qt
+        from archpm.ui.proc_model import COL_NAME
+        self.view.table.sortByColumn(COL_CPU, Qt.SortOrder.DescendingOrder)
+        names = [self.proxy.index(r, COL_NAME).data() for r in range(self.proxy.rowCount())]
+        self.assertEqual(names, ["Konsole", "Brave", "Steam"], "50 > 26 > 11")
+        brave = self.proxy.index(1, 0)
+        members = [self.proxy.index(r, 0, brave).data(PID_ROLE) for r in range(self.proxy.rowCount(brave))]
+        self.assertEqual(members, [102, 100, 101], "within the group, by their own CPU")
+
+    def test_search_matches_a_member_and_keeps_its_group_visible(self):
+        self.view.search.setText("renderer")
+        roots = self.roots()
+        self.assertEqual(len(roots), 1)
+        brave = self.proxy.index(0, 0)
+        self.assertEqual(self.proxy.rowCount(brave), 1)
+        self.assertTrue(self.view.table.isExpanded(brave), "opened so the match shows")
+
+    def test_a_group_row_stands_for_every_member_when_signalled(self):
+        from archpm import signalguard
+        from archpm.ui.proc_model import COL_NAME
+        gid = next(pid for pid in self.roots() if pid < 0
+                   and self.model.index_for_pid(pid).siblingAtColumn(COL_NAME).data() == "Brave")
+        procs = self.model.procs_under(gid)
+        self.assertEqual(sorted(p.pid for p in procs), [100, 101, 102])
+        v = signalguard.check(procs, "TERM", tree=True, always_ask=True, list_all=True,
+                              self_pid=4242, above={4242}, leaders=set())
+        self.assertTrue(v.confirm)
+        for pid in (100, 101, 102):
+            self.assertIn(f"({pid})", v.text)
+        self.assertEqual(v.title, "Ask Brave and 2 more to quit?")
+
+    def test_every_member_shows_under_its_group_even_a_quiet_helper(self):
+        helper = app(103, 100, "brave-helper", "app-brave@1.service")
+        helper.program = False           # no menu entry, idle: hidden as a root row
+        self.view.update_view(Snapshot(system=SystemSample(), procs=GROUPED + [helper]))
+        from archpm.ui.proc_model import COL_NAME, PID_ROLE
+        brave = next(self.proxy.index(r, 0) for r in range(self.proxy.rowCount())
+                     if self.proxy.index(r, COL_NAME).data() == "Brave")
+        members = {self.proxy.index(r, 0, brave).data(PID_ROLE) for r in range(self.proxy.rowCount(brave))}
+        self.assertEqual(members, {100, 101, 102, 103})
+        self.view.search.setText("renderer")
+        members = {self.proxy.index(r, 0, brave).data(PID_ROLE) for r in range(self.proxy.rowCount(brave))}
+        self.assertEqual(members, {102}, "the search still filters members")
+
+    def test_a_process_that_gets_company_moves_under_a_new_group(self):
+        procs = GROUPED + [app(301, 300, "konsole-helper", "app-org.kde.konsole-300.scope")]
+        self.view.update_view(Snapshot(system=SystemSample(), procs=procs))
+        self.assertTrue(self.model.index_for_pid(300).parent().isValid(), "konsole now sits in a group")
+        self.view.update_view(Snapshot(system=SystemSample(), procs=GROUPED))
+        self.assertFalse(self.model.index_for_pid(300).parent().isValid(), "and is alone again")
+
+
+@unittest.skipUnless(QApplication, "PySide6 not installed")
+class Tooltip(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        TreeSearch.setUpClass()
+
+    def test_long_command_line_is_wrapped_and_cut(self):
+        from PySide6.QtCore import Qt
+        from archpm.ui.proc_model import COL_CMD, COL_NAME, ProcModel, TIP_WIDTH
+        long_cmd = "/usr/lib/steam/steamwebhelper " + " ".join(f"--flag-{i}=value{i}" for i in range(120))
+        self.assertGreater(len(long_cmd), 1500)
+        m = ProcModel(8)
+        m.set_mode("flat")
+        m.update([ProcSample(pid=7, name="steamwebhelper", cmdline=long_cmd, owned=True)])
+        for col in (COL_NAME, COL_CMD):
+            tip = m.data(m.index(0, col), Qt.ItemDataRole.ToolTipRole)
+            self.assertLessEqual(max(len(line) for line in tip.splitlines()), TIP_WIDTH)
+            self.assertIn("…", tip, "cut short")
+            self.assertLess(len(tip), 400)
+        self.assertEqual(m.data(m.index(0, COL_CMD)), long_cmd, "the column keeps it all")
 
 
 if __name__ == "__main__":

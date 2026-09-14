@@ -161,9 +161,10 @@ GLOSSARY: tuple[Section, ...] = (
              "adding them up overcounts a little; the number is still the one that matters "
              "when RAM runs out.",
              "Memory column"),
-        Term("Swap and zram",
+        Term("Swap in RAM",
              "When RAM is full, the kernel moves the least-used parts to swap. On CachyOS "
-             "swap usually lives in zram: compressed RAM, much faster than a disk. Some swap "
+             "swap usually lives in zram, a piece of RAM the kernel uses as compressed swap, "
+             "much faster than a disk. Some swap "
              "in use is normal; swap growing while a game runs means you are out of RAM.",
              "Overview memory card, System tab"),
         Term("Swappiness",
@@ -313,7 +314,7 @@ HINTS: dict[str, Hint] = {
         "Purple: how hard the card works. Pink: how full its memory is.", "GPU load",
         "In a game the purple line sits high and flat. Pink climbs when a level loads."),
     "graph.mem": Hint(
-        "Green: RAM in use. Orange: swap in use.", "Swap and zram",
+        "Green: RAM in use. Orange: swap in use.", "Swap in RAM",
         "Swap a little above zero is fine. Swap climbing while RAM is full means the PC "
         "is short of memory: close something."),
     "graph.net": Hint(

@@ -133,6 +133,15 @@ class Confirmations(unittest.TestCase):
         self.assertIn("and 4 more.", v.text)
         self.assertNotIn("worker9", v.text)
 
+    def test_list_all_names_every_process_for_a_group(self):
+        procs = [proc(9000 + i, f"worker{i}") for i in range(12)]
+        procs[0].app_name = "Brave"
+        v = verdict(procs, "TERM", tree=True, always_ask=True, list_all=True)
+        self.assertEqual(v.title, "Ask Brave and 11 more to quit?")
+        for p in procs:
+            self.assertIn(f"{p.display_name} ({p.pid})", v.text)
+        self.assertNotIn("more.", v.text)
+
     def test_a_long_command_line_is_cut(self):
         v = verdict([proc(9000, "game", cmdline="/opt/game/bin " + "x" * 300)], "KILL")
         self.assertLess(max(len(line) for line in v.text.splitlines()), 140)

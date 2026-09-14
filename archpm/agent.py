@@ -25,7 +25,7 @@ def main(argv: list[str] | None = None) -> int:
 
     gpu = GpuMonitor()
     gpu.start()
-    sampler = Sampler(gpu)
+    sampler = Sampler(gpu, group_memory=False)
     sampler.prime()
 
     running = True
