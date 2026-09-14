@@ -494,6 +494,11 @@ class ProcModel(QAbstractItemModel):
             self._nodes[p.pid] = node
         self.endInsertRows()
 
+    def remember(self, procs: list[ProcSample]) -> None:
+        """Keep the latest sample without touching the rows: the game-end
+        path reads it while the list itself is not on screen."""
+        self._last = procs
+
     def update(self, procs: list[ProcSample]) -> None:
         self._last = procs
         if self.frozen:

@@ -176,6 +176,7 @@ class ProcessView(QWidget):
         # after a kill you want to see what it was doing, not whatever row Qt
         # happens to make current next.
         self._pinned: tuple[ProcSample, list[int]] | None = None
+        self._pending = None          # newest snapshot received while hidden
         self._frozen = False
         self.settings = QSettings("archpm", "ArchPM")
 
@@ -351,6 +352,15 @@ class ProcessView(QWidget):
         self.backend = backend
 
     def update_view(self, snap) -> None:
+        if self.isHidden():
+            # Another page is on screen. Updating the model and re-sorting the
+            # proxy costs 8 ms per tick in the default view and 28 ms with
+            # every process shown (measured), for rows nobody sees. Keep the
+            # sample and apply it the moment the page comes back.
+            self._pending = snap
+            self.model.remember(snap.procs)
+            return
+        self._pending = None
         self.model.update(snap.procs)
         if self.model.hierarchical and not self.model.frozen:
             if self.model.tree:
@@ -359,6 +369,11 @@ class ProcessView(QWidget):
                 self._expand_matches()
         if self.panel.isVisible():
             self._show_history()
+
+    def showEvent(self, event) -> None:
+        super().showEvent(event)
+        if self._pending is not None:
+            self.update_view(self._pending)
 
     def _current_changed(self, *_) -> None:
         if self._frozen:

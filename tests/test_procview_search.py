@@ -51,6 +51,7 @@ class TreeSearch(unittest.TestCase):
         from archpm.actions import UserBackend
         from archpm.ui.procview import ProcessView
         self.view = ProcessView(8, UserBackend())
+        self.view.show()            # a never-shown widget counts as hidden and defers updates
         self.view.set_mode("tree")
         self.view.cb_all.setChecked(True)
         self.view.update_view(Snapshot(system=SystemSample(), procs=PROCS))
@@ -161,6 +162,7 @@ class Grouped(unittest.TestCase):
         from archpm.actions import UserBackend
         from archpm.ui.procview import ProcessView
         self.view = ProcessView(8, UserBackend())
+        self.view.show()            # a never-shown widget counts as hidden and defers updates
         self.view.set_mode("grouped")
         self.view.update_view(Snapshot(system=SystemSample(), procs=GROUPED))
         self.model, self.proxy = self.view.model, self.view.proxy
@@ -245,6 +247,42 @@ class Grouped(unittest.TestCase):
         self.assertTrue(self.model.index_for_pid(300).parent().isValid(), "konsole now sits in a group")
         self.view.update_view(Snapshot(system=SystemSample(), procs=GROUPED))
         self.assertFalse(self.model.index_for_pid(300).parent().isValid(), "and is alone again")
+
+
+@unittest.skipUnless(QApplication, "PySide6 not installed")
+class HiddenPage(unittest.TestCase):
+    """While another page is on screen the list keeps the sample but does not
+    rebuild its rows; the newest sample is applied when it comes back."""
+
+    @classmethod
+    def setUpClass(cls):
+        TreeSearch.setUpClass()
+
+    def test_updates_are_deferred_while_hidden_and_applied_on_show(self):
+        from PySide6.QtWidgets import QLabel, QStackedWidget
+        from archpm.actions import UserBackend
+        from archpm.ui.procview import ProcessView
+        stack = QStackedWidget()
+        other = QLabel("other page")
+        view = ProcessView(8, UserBackend())
+        view.set_mode("flat")
+        view.cb_all.setChecked(True)
+        stack.addWidget(other)
+        stack.addWidget(view)
+        stack.setCurrentWidget(other)
+        stack.show()
+        TreeSearch.app.processEvents()
+        self.assertTrue(view.isHidden())
+        view.update_view(Snapshot(system=SystemSample(), procs=PROCS))
+        self.assertEqual(view.model.rowCount(), 0, "no rows built while hidden")
+        self.assertEqual(len(view.model._last), len(PROCS), "the sample is kept for the game-end path")
+        newer = PROCS + [proc(9999, 1, "late")]
+        view.update_view(Snapshot(system=SystemSample(), procs=newer))
+        stack.setCurrentWidget(view)
+        TreeSearch.app.processEvents()
+        self.assertEqual(view.model.rowCount(), len(newer), "the newest sample, applied on show")
+        view.update_view(Snapshot(system=SystemSample(), procs=PROCS))
+        self.assertEqual(view.model.rowCount(), len(PROCS), "visible again: updates apply directly")
 
 
 @unittest.skipUnless(QApplication, "PySide6 not installed")
