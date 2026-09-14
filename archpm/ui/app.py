@@ -240,7 +240,7 @@ class MainWindow(QMainWindow):
     def _open_root(self) -> None:
         if self.root_panel is None:
             from .rootpanel import RootPanel
-            self.root_panel = RootPanel(self.root_client, self)
+            self.root_panel = RootPanel(self.root_client, self.backend, self)
             self.root_panel.unlocked.connect(self._set_elevated)
         self.root_panel.show()
         self.root_panel.raise_()

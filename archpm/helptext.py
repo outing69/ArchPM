@@ -215,8 +215,8 @@ GLOSSARY: tuple[Section, ...] = (
     Section("Root and safety", (
         Term("Root",
              "The administrator account. Most of ArchPM works without it: your own "
-             "processes, raising nice, affinity. Lowering nice, other users' processes, "
-             "services and the two cleanup items need it.",
+             "processes, raising nice, affinity, your own session's services. Lowering "
+             "nice, other users' processes, memory settings and the two cleanup items need it.",
              "Root tasks button"),
         Term("pkexec and polkit",
              "The standard way a desktop program asks for admin rights: polkit shows the "
@@ -225,9 +225,11 @@ GLOSSARY: tuple[Section, ...] = (
              "break your session. It is described in SECURITY.md.",
              "Password dialog"),
         Term("Protected services",
-             "Services ArchPM refuses to stop even as root, because your session depends on "
-             "them: dbus, logind, polkit, the display manager and their sockets.",
-             "Root tasks → services"),
+             "ArchPM only manages the services of your own login session (systemctl --user), "
+             "which needs no root; system services are left alone. It refuses to stop the "
+             "ones your desktop itself runs on: plasmashell, pipewire, wireplumber and the "
+             "desktop portal. Restarting them is allowed, that is how you recover them.",
+             "Root tasks → your session's services"),
     )),
     Section("Startup and Cleanup", (
         Term("Autostart entry",

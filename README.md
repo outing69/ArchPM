@@ -249,9 +249,9 @@ That separation is the core of the design:
   about five minutes.
 - `archpm/root/client.py` only builds the `pkexec` call and reads the JSON reply.
   The GUI never sees a password.
-- The helper validates on its own: fixed subcommands, numeric bounds, a
-  unit-name regex, and a list of services (dbus, logind, polkit, the display
-  manager) it refuses to stop.
+- The helper validates on its own: fixed subcommands, numeric bounds, and a
+  list of units (dbus, logind, polkit, the display manager) whose processes it
+  refuses to signal. It does not manage services at all.
 
 `ElevatedBackend` tries every action without privileges first. Only when that
 is denied does it go through the helper — so you never get a password prompt
@@ -262,8 +262,15 @@ for something you were already allowed to do.
 | Group | Actions |
 |---|---|
 | Processes | negative nice, realtime IO, acting on other users' processes |
-| Services and memory | start/stop/restart systemd units, swappiness, drop caches |
+| Your session's services | start/stop/restart the services of your own login session, through `systemctl --user` as you: no root involved |
+| Memory | swappiness, drop caches |
 | Cleanup | `paccache -rk2` and `journalctl --vacuum-size=100M`, fixed, no arguments |
+
+**System services are deliberately left out.** The helper no longer manages
+services at all. ArchPM only starts, stops and restarts the services of your
+own login session, which needs no password, and it refuses to stop the ones
+your desktop itself runs on (plasmashell, pipewire, wireplumber, the desktop
+portal). System-wide services are not touched.
 
 **GPU tuning is deliberately left out.** Power limit, clock cap and persistence
 mode used to be here and were removed: it is not process management. The helper
