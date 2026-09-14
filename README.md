@@ -8,7 +8,9 @@
 > on Linux, almost a year on CachyOS. Not an expert in Linux or Arch, but not a
 > beginner either. Read the code, and `SECURITY.md`, with that in mind.
 
-A task manager for a Linux gaming PC that explains itself: what is running,
+ArchPM is a task manager for gamers and newcomers on Arch-based distros. When I moved to CachyOS I went looking for a process manager that made sense to me and couldn't find one, so after a year on the distro I started building one myself with Claude Code.
+
+A task manager that explains itself: what is running,
 what it costs, who is using the network, what starts at login, and what can be
 cleaned up, in plain words. Three parts that share the same measurement core:
 
