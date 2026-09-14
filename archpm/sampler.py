@@ -31,7 +31,7 @@ _PROC_ATTRS = [
     "num_threads", "nice", "status", "create_time", "uids",
 ]
 TEMPS_EVERY = 5   # ticks; sensors are slow to read and slow to change
-PSS_EVERY = 5     # ticks; smaps_rollup costs ~50 ms for the members of multi-process groups
+PSS_EVERY = 5     # ticks between two PSS reads of the same group; the groups are spread over the ticks
 NET_EVERY_S = 5.0  # seconds between socket scans (one ss call, ~50 ms)
 
 
@@ -176,14 +176,18 @@ class Sampler:
         return cmd
 
     def _refresh_pss(self, procs: list[ProcSample]) -> None:
-        """Group memory that counts shared pages once. Read every PSS_EVERY
-        ticks and only for processes that share a group, then reused: a
-        newcomer counts its RSS until the next read, at most ten seconds."""
-        if self._tick % PSS_EVERY == 0:      # _tick counts finished samples: 0, 5, 10, ...
-            for members in build_groups(procs).values():
-                if len(members) >= 2:
-                    for p in members:
-                        self._pss[p.pid] = read_pss(p.pid)
+        """Group memory that counts shared pages once. Only processes that
+        share a group are read, each group once every PSS_EVERY ticks, and
+        the groups are spread over those ticks: reading them all on one tick
+        made that cycle three times as long (measured 130 to 168 ms against
+        47 ms). A newcomer counts its RSS until its group's next read, at
+        most ten seconds."""
+        slot = self._tick % PSS_EVERY
+        groups = [m for m in build_groups(procs).values() if len(m) >= 2]
+        for i, members in enumerate(groups):
+            if i % PSS_EVERY == slot:
+                for p in members:
+                    self._pss[p.pid] = read_pss(p.pid)
         for p in procs:
             p.mem_pss = self._pss.get(p.pid, 0)
 
