@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import os
 import shlex
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -58,6 +59,20 @@ def launch_command() -> str:
 
 
 _state = {"game_pid": 0}   # the game shown last tick, so the widget does not hop
+
+AGENT_UNIT = "archpm-agent"
+
+
+def agent_service_active(run=subprocess.run) -> bool:
+    """True when the agent runs as a systemd user service. Then the agent is
+    the one producer of status.json and the GUI must not write it too: the
+    two do not carry the same content, and the widget would alternate."""
+    try:
+        proc = run(["systemctl", "--user", "is-active", "--quiet", AGENT_UNIT],
+                   capture_output=True, timeout=3, check=False)
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return proc.returncode == 0
 
 
 def to_payload(snap: Snapshot, top_n: int = 5) -> dict:

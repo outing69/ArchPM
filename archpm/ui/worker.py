@@ -5,7 +5,7 @@ from PySide6.QtCore import QObject, Qt, QThread, QTimer, Signal, Slot
 
 from ..gpu import GpuMonitor
 from ..model import Snapshot
-from ..publisher import publish
+from ..publisher import agent_service_active, publish
 from ..sampler import Sampler
 
 
@@ -13,16 +13,21 @@ class SampleWorker(QObject):
     sampled = Signal(object)
     failed = Signal(str)
 
+    AGENT_CHECK_EVERY = 15   # ticks between looks at the agent service (30 s at 2 s)
+
     def __init__(self, interval: float = 2.0, publish_status: bool = True) -> None:
         super().__init__()
         self.interval = interval
-        self.publish_status = publish_status
+        self.publish_status = publish_status   # False = never write status.json
+        self.agent_active = False              # True = the service writes it; we stay out
+        self._ticks = 0
         self._timer: QTimer | None = None
         self._sampler: Sampler | None = None
         self.gpu = GpuMonitor()
 
     @Slot()
     def start(self) -> None:
+        self.agent_active = agent_service_active()
         self.gpu.start()
         self._sampler = Sampler(self.gpu)
         self._sampler.prime()
@@ -46,7 +51,10 @@ class SampleWorker(QObject):
         except Exception as exc:  # noqa: BLE001 - sampling must never take the app down
             self.failed.emit(str(exc))
             return
-        if self.publish_status:
+        self._ticks += 1
+        if self._ticks % self.AGENT_CHECK_EVERY == 0:
+            self.agent_active = agent_service_active()
+        if self.publish_status and not self.agent_active:
             try:
                 publish(snap)
             except OSError:
