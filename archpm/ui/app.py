@@ -16,7 +16,6 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QMenu,
     QSystemTrayIcon,
-    QTabWidget,
 )
 
 from .. import APP_NAME, __version__
@@ -30,6 +29,7 @@ from .cleanup import CleanupView
 from .dashboard import Dashboard
 from .help import HelpView
 from .history import ProcHistory
+from .navrail import NavShell
 from .network import NetworkView
 from .procview import ProcessView
 from .startup import StartupView
@@ -104,7 +104,7 @@ class MainWindow(QMainWindow):
         import psutil
         ncpu = psutil.cpu_count(logical=True) or 1
 
-        self.tabs = QTabWidget()
+        self.shell = NavShell(self.settings)
         self.worker_services = lambda port: (self.worker._sampler.net.service(port)
                                              if self.worker._sampler else "")
         self.history = ProcHistory()
@@ -112,19 +112,19 @@ class MainWindow(QMainWindow):
         self.procs = ProcessView(ncpu, self.backend, self.history)
         self.startup = StartupView()
         self.system = SystemView()
-        self.tabs.addTab(self.dashboard, "Overview")
-        self.tabs.addTab(self.procs, "Processes")
+        self.shell.add_page(self.dashboard, "Overview")
+        self.shell.add_page(self.procs, "Processes")
         self.network = NetworkView(self.worker_services)
-        self.tabs.addTab(self.network, "Network")
-        self.tabs.addTab(self.startup, "Startup")
-        self.tabs.addTab(self.system, "System")
+        self.shell.add_page(self.network, "Network")
+        self.shell.add_page(self.startup, "Startup")
+        self.shell.add_page(self.system, "System")
         self.cleanup = CleanupView(self.root_client)
-        self.tabs.addTab(self.cleanup, "Cleanup")
-        self.cleanup.leave.connect(lambda: self.tabs.setCurrentIndex(0))
+        self.shell.add_page(self.cleanup, "Cleanup")
+        self.cleanup.leave.connect(lambda: self.shell.set_current(0))
         self.cleanup.status.connect(self._flash)
         self.help = HelpView()
-        self.tabs.addTab(self.help, "Help")
-        self.setCentralWidget(self.tabs)
+        self.shell.add_page(self.help, "Help")
+        self.setCentralWidget(self.shell)
         for view in (self.dashboard, self.procs, self.network, self.startup, self.cleanup):
             view.help_requested.connect(self._show_help)
 
@@ -273,7 +273,7 @@ class MainWindow(QMainWindow):
 
     def _show_help(self, term: str) -> None:
         self.help.show_term(term)
-        self.tabs.setCurrentWidget(self.help)
+        self.shell.set_current(self.help)
 
     # -- data -------------------------------------------------------------
     def _on_sample(self, snap: Snapshot) -> None:
@@ -320,7 +320,7 @@ class MainWindow(QMainWindow):
         geo = self.settings.value("geometry")
         if geo:
             self.restoreGeometry(geo)
-        self.tabs.setCurrentIndex(0)  # always Overview; the tab is a place, not a setting
+        self.shell.set_current(0)  # always Overview; the page is a place, not a setting
 
     def shutdown(self) -> None:
         """Idempotent: both closeEvent and aboutToQuit pass through here.

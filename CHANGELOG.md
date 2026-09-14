@@ -3,6 +3,15 @@
 All notable changes, newest first. Versions are git tags on
 [github.com/outing69/ArchPM](https://github.com/outing69/ArchPM).
 
+## 0.2.5 (2026-09-14)
+
+- The tabs across the top are replaced by a navigation rail on the left: a
+  narrow strip of icons with a menu button on top. Hover it and it widens to
+  icon and label over the page; the menu button pins it open, which is
+  remembered. Tab reaches the rail, the arrow keys move along it and Enter
+  selects; every item has a tooltip while collapsed and an accessible name.
+  Icons come from your icon theme, each with a fallback name.
+
 ## 0.2.4 (2026-09-14)
 
 - Processes: a Grouped view, now the default, next to Tree and Flat. One row

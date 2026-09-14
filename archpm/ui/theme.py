@@ -1,6 +1,6 @@
 """Colours and stylesheet.
 
-Dark, with two fixed roles: **yellow** highlights (focus, active tab, headline
+Dark, with two fixed roles: **yellow** highlights (focus, active page, headline
 figures, warnings) and **blue** selects (selected rows, checked items). Never mix
 those two -- that is what keeps the UI readable.
 """
@@ -71,18 +71,6 @@ def apply(app) -> None:
 STYLE = f"""
 QWidget {{ color: {TEXT}; font-size: 10pt; }}
 QMainWindow, QDialog {{ background: {BG}; }}
-
-/* tabs as segments, active one marked with yellow */
-QTabWidget::pane {{ border: none; background: {BG}; }}
-QTabBar {{ qproperty-drawBase: 0; }}
-QTabBar::tab {{
-    background: transparent; color: {MUTED};
-    padding: 9px 20px; margin: 0 2px; border: none;
-    border-bottom: 2px solid transparent;
-    font-weight: 600;
-}}
-QTabBar::tab:selected {{ color: {ACCENT}; border-bottom: 2px solid {ACCENT}; }}
-QTabBar::tab:hover:!selected {{ color: {TEXT}; }}
 
 /* tables: blue selects, yellow marks the sorted column */
 QTableView {{
