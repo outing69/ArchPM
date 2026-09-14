@@ -106,6 +106,36 @@ class Rail(unittest.TestCase):
         QTest.keyClick(self.rail, Qt.Key.Key_Return)
         self.assertEqual(self.shell.pages.currentIndex(), len(LABELS) - 1)
 
+    def test_the_rail_is_opaque_over_the_page_in_both_states(self):
+        from archpm.ui import theme
+        from archpm.ui.navrail import COLLAPSED, EXPANDED, NavShell
+        shell = NavShell(QSettings("archpm", "ArchPM"))
+        page = QLabel("page")
+        page.setStyleSheet("background: #ff0000;")
+        shell.add_page(page, "Overview")
+        shell.add_page(QLabel("Help"), "Help")
+        shell.move(400, 400)              # away from the offscreen cursor, so no hover
+        shell.resize(800, 500)
+        shell.show()
+        self.app.processEvents()
+        rail = shell.rail
+        # Qt's stylesheet engine clears autoFillBackground on polish for a
+        # widget whose stylesheet paints the background itself; the styled
+        # background attribute is what makes that painting happen, and the
+        # pixels below are the proof.
+        self.assertTrue(rail.testAttribute(Qt.WidgetAttribute.WA_StyledBackground))
+        self.assertIn(f"background: {theme.SURFACE}", rail.styleSheet())
+
+        def pixel(x, y):
+            return shell.grab().toImage().pixelColor(x, y).name()
+        self.assertEqual(pixel(300, 250), "#ff0000", "the page itself is red")
+        self.assertEqual(pixel(COLLAPSED - 6, 250), theme.SURFACE, "collapsed rail paints itself")
+        rail.set_expanded(True)
+        self.app.processEvents()
+        for x in (COLLAPSED + 10, EXPANDED - 10):
+            self.assertEqual(pixel(x, 250), theme.SURFACE, f"expanded rail is opaque at x={x}")
+        self.assertEqual(pixel(EXPANDED + 10, 250), "#ff0000", "and the page shows next to it")
+
     def test_every_item_has_an_accessible_name(self):
         self.assertEqual([b.accessibleName() for b in self.rail.items], LABELS)
         self.assertEqual(self.rail.menu.accessibleName(), "Menu")

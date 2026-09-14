@@ -3,6 +3,13 @@
 All notable changes, newest first. Versions are git tags on
 [github.com/outing69/ArchPM](https://github.com/outing69/ArchPM).
 
+## 0.2.6 (2026-09-14)
+
+- Fixed: the navigation rail had no background of its own, so the page showed
+  through its icons and labels when it widened, and the collapsed strip took
+  the window colour instead of its own. It now paints an opaque surface in
+  both states and stays above the page.
+
 ## 0.2.5 (2026-09-14)
 
 - The tabs across the top are replaced by a navigation rail on the left: a

@@ -13,7 +13,7 @@ theme that lacks one name does not leave the rail blank.
 from __future__ import annotations
 
 from PySide6.QtCore import QSettings, QSize, Qt, Signal
-from PySide6.QtGui import QIcon, QKeyEvent
+from PySide6.QtGui import QColor, QIcon, QKeyEvent, QPalette
 from PySide6.QtWidgets import QHBoxLayout, QStackedWidget, QToolButton, QVBoxLayout, QWidget
 
 from . import theme
@@ -62,6 +62,16 @@ class NavRail(QWidget):
         self.setAccessibleName("Navigation")
         self.setFocusPolicy(Qt.FocusPolicy.TabFocus)
         self.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
+        # An overlay must be opaque. A plain QWidget subclass paints its
+        # stylesheet background only with WA_StyledBackground. The palette
+        # fill below covers the case of the stylesheet ever being removed;
+        # while the stylesheet is in force Qt turns autoFillBackground off
+        # itself and paints the rule instead.
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.setAutoFillBackground(True)
+        pal = self.palette()
+        pal.setColor(QPalette.ColorRole.Window, QColor(theme.SURFACE))
+        self.setPalette(pal)
         self.items: list[QToolButton] = []
         self._current = 0
         self._focused = 0
@@ -235,6 +245,7 @@ class NavShell(QWidget):
         name, fallback = PAGE_ICONS.get(label, ("", ""))
         self.pages.addWidget(widget)
         self.rail.add_item(label, theme_icon(name, fallback))
+        self.rail.raise_()
 
     def set_current(self, widget_or_index) -> None:
         index = (widget_or_index if isinstance(widget_or_index, int)
@@ -253,3 +264,4 @@ class NavShell(QWidget):
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
         self.rail.setGeometry(0, 0, self.rail.width(), self.height())
+        self.rail.raise_()
