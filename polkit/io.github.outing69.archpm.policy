@@ -7,9 +7,7 @@
 
   <action id="io.github.outing69.archpm.helper.run">
     <description>Manage processes and memory with ArchPM</description>
-    <description xml:lang="nl">Processen en geheugen beheren met ArchPM</description>
     <message>Authentication is required to give a process more priority than a normal user may, to act on processes of other users, to change how eagerly the system uses swap and free its caches, and to remove old package versions and old logs.</message>
-    <message xml:lang="nl">Authenticatie is vereist om een proces meer prioriteit te geven dan een gewone gebruiker mag, om processen van andere gebruikers te beheren, om te wijzigen hoe gretig het systeem swap gebruikt en zijn caches leegmaakt, en om oude pakketversies en oude logs op te ruimen.</message>
     <icon_name>utilities-system-monitor</icon_name>
     <defaults>
       <allow_any>auth_admin</allow_any>
