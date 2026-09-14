@@ -3,6 +3,20 @@
 All notable changes, newest first. Versions are git tags on
 [github.com/outing69/ArchPM](https://github.com/outing69/ArchPM).
 
+## 0.2.7 (2026-09-14)
+
+- Fixed: with the agent service running, the window wrote status.json as
+  well, every two seconds each, and the widget alternated between two
+  producers with different content. The window now leaves the file to the
+  agent while the service is active.
+- The memory reads for the Grouped view are spread over the ticks instead of
+  landing on one, so no sampling cycle is three times as long as the rest.
+- The process list is not rebuilt while another page is on screen; it takes
+  the newest sample the moment it comes back. One refresh of all pages drops
+  from about 29 ms to about 4 ms per tick in that case.
+- The NVIDIA per-process helper polls every 2 seconds, the sampling interval,
+  instead of every second; it cost as much as the agent itself.
+
 ## 0.2.6 (2026-09-14)
 
 - Fixed: the navigation rail had no background of its own, so the page showed
