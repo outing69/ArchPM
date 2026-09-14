@@ -292,7 +292,7 @@ class CleanupView(QWidget):
             desc.setToolTip(desc.text())
             desc.setForeground(QColor(theme.MUTED))
             self.table.setItem(row, COL_DESC, desc)
-            size = QTableWidgetItem(human(it.size) if it.size else "—")
+            size = QTableWidgetItem(human(it.size) if it.size else "-")
             size.setFont(mono(9))
             size.setTextAlignment(int(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter))
             self.table.setItem(row, COL_SIZE, size)

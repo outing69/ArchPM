@@ -148,7 +148,7 @@ class RootPanel(QDialog):
         grid.addWidget(self.btn_swap, 0, 2, Qt.AlignmentFlag.AlignLeft)
 
         self.btn_caches = QPushButton("Drop caches")
-        self.btn_caches.setToolTip("sync + drop_caches 3 — frees the page cache.")
+        self.btn_caches.setToolTip("sync + drop_caches 3: frees the page cache.")
         self.btn_caches.clicked.connect(lambda: self._run("drop-caches", "3"))
         grid.addWidget(self.btn_caches, 1, 0, 1, 2, Qt.AlignmentFlag.AlignLeft)
         return box

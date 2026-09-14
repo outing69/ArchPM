@@ -44,7 +44,7 @@ class RootStatus:
     @property
     def problem(self) -> str:
         if not self.pkexec:
-            return "pkexec is missing — install the 'polkit' package."
+            return "pkexec is missing: install the 'polkit' package."
         if not self.helper:
             return f"helper not installed at {HELPER}"
         if not self.policy:

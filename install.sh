@@ -62,7 +62,7 @@ install_user() {
         chmod +x "$desk/archpm.desktop"
         echo "   $desk/archpm.desktop"
     else
-        echo "   no desktop directory found — skipped"
+        echo "   no desktop directory found, skipped"
     fi
 }
 

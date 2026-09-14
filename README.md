@@ -22,41 +22,41 @@ cleaned up, in plain words. Three parts that share the same measurement core:
 
 ## Screenshots
 
-**Overview** — the machine at a glance: CPU per core, GPU, memory, network and
+**Overview**: the machine at a glance: CPU per core, GPU, memory, network and
 disk, the running game, and the heaviest programs.
 
 ![Overview tab](docs/overview.png)
 
-**Processes** — your programs as a tree with real names and icons, a collapsed
+**Processes**: your programs as a tree with real names and icons, a collapsed
 program showing the totals of its whole tree, and the last minutes of whatever
 you select underneath. Right-click to terminate, suspend, renice or pin to cores.
 
 ![Processes tab](docs/processes.png)
 
-**Network** — which of your programs talk to the network, at what speed, to
+**Network**: which of your programs talk to the network, at what speed, to
 which addresses, and which ones are "open doors" that other devices can reach.
 Interfaces with a VPN mark, so you can see the tunnel carrying the traffic.
 
 ![Network tab](docs/network.png)
 
-**Startup** — what starts when you log in, with a switch per entry, what each
+**Startup**: what starts when you log in, with a switch per entry, what each
 one does, and whether it is running now. Parts of the desktop are marked
 "keep on".
 
 ![Startup tab](docs/startup.png)
 
-**System** — the specs on one card, from motherboard and BIOS to disks and
+**System**: the specs on one card, from motherboard and BIOS to disks and
 network, with "Copy as text" for a forum post.
 
 ![System tab](docs/system.png)
 
-**Cleanup** — caches, shader caches, thumbnails, old package versions and old
+**Cleanup**: caches, shader caches, thumbnails, old package versions and old
 logs, each with its size and why it is safe to remove. Nothing goes until you
 tick, press and confirm.
 
 ![Cleanup tab](docs/cleanup.png)
 
-**Widgets** — two Plasma plasmoids, fed by the agent, so they keep working when
+**Widgets**: two Plasma plasmoids, fed by the agent, so they keep working when
 the GUI is closed: *ArchPM Monitor* (CPU, GPU, memory, game, top processes) and
 *ArchPM Network* (download and upload, VPN, top talkers, open doors).
 
@@ -179,26 +179,26 @@ the package, or the polkit policy file will conflict.
 
 ## What it measures
 
-- **CPU** — total, per logical core, frequency, load and Tctl temperature. The
+- **CPU**: total, per logical core, frequency, load and Tctl temperature. The
   per-core strip shows at most 64 bars in the GUI and 32 in the widget; bigger
   CPUs are shown as group averages (labelled "0-1", "2-3", …).
-- **GPU** — SM utilisation, VRAM, temperature, power draw and clock speed, plus
+- **GPU**: SM utilisation, VRAM, temperature, power draw and clock speed, plus
   **per-process GPU usage** via `nvidia-smi pmon` (works for games too, not
   just CUDA). AMD/Intel fall back to sysfs, without per-process data.
-- **Processes** — CPU, RSS, threads, nice, disk I/O, VRAM, affinity, start time.
+- **Processes**: CPU, RSS, threads, nice, disk I/O, VRAM, affinity, start time.
   Shown as a tree by parent (Steam → reaper → Proton → game). Programs
   with a `.desktop` entry get their proper name, icon and category; Steam games
   get the game's name and Steam's icon for it. No icon is shown for anything
   that has none. By default you see your programs plus whatever is busy; "Show
   all processes" shows everything. A collapsed program shows the totals of its
   whole tree, so a browser reads as one row with its real memory use.
-- **Game** — a card on the Overview for whatever game is running: its whole
+- **Game**: a card on the Overview for whatever game is running: its whole
   process tree's CPU, GPU, VRAM, RAM and threads, how many cores it may use, and
   a graph of its last minutes. Steam games are found by app id; anything else
   doing real GPU work qualifies too.
-- **History** — select a process and the last minutes of its CPU, GPU and memory
+- **History**: select a process and the last minutes of its CPU, GPU and memory
   appear under the list; a collapsed program shows its whole tree.
-- **Network** — every five seconds, one `ss` call lists the sockets of your
+- **Network**: every five seconds, one `ss` call lists the sockets of your
   own processes: which program has which connections open, to which address
   and port (named from `/etc/services`, never looked up online), download and
   upload per program for TCP, throughput per interface with VPN tunnels
@@ -206,18 +206,18 @@ the package, or the polkit policy file will conflict.
   other devices on your network can reach. Games mostly use UDP, which the
   kernel does not count, so a game shows its connections but not a speed.
   No root, no packet capture, no DNS or location lookups.
-- **Startup** — what starts when you log in (XDG autostart), with a switch per
+- **Startup**: what starts when you log in (XDG autostart), with a switch per
   entry and whether it is running now. Switching off writes an override in your
   own `~/.config/autostart`; nothing outside your home is touched.
-- **System** — the machine's specs on one card: CPU, memory, GPUs and drivers,
+- **System**: the machine's specs on one card: CPU, memory, GPUs and drivers,
   motherboard, kernel, desktop, disks, network. "Copy as text" for forum posts.
-- **Cleanup** — free up space: per-program caches, Steam shader caches,
+- **Cleanup**: free up space: per-program caches, Steam shader caches,
   thumbnails, old package versions (the last two of each are kept) and old
   logs, each with its size and a plain reason why it is safe. The tab explains
   itself on first open and asks for your password once for the two items that
   need root. Nothing is removed until you tick, press and confirm. Your files,
   saves and settings are never touched.
-- **Help** — a searchable glossary in plain language (what nice -5 means, what a
+- **Help**: a searchable glossary in plain language (what nice -5 means, what a
   PID is, SIGTERM versus SIGKILL, why root is asked), what the colours mean, and
   About with version, links and the changelog. Every tile, graph and column
   header has a one-line tooltip with an "is this normal?" range where it
@@ -227,7 +227,7 @@ the package, or the polkit policy file will conflict.
 
 Right-click in the process list: terminate (SIGTERM), force kill (SIGKILL),
 suspend/resume (SIGSTOP/SIGCONT), set nice, set disk priority, and choose CPU
-affinity per process — with presets for "physical cores only" (no SMT
+affinity per process, with presets for "physical cores only" (no SMT
 siblings) and each half. In tree view, "Terminate with children" takes a whole
 process tree down at once, so a killed game does not leave its launcher behind.
 
@@ -254,7 +254,7 @@ That separation is the core of the design:
   refuses to signal. It does not manage services at all.
 
 `ElevatedBackend` tries every action without privileges first. Only when that
-is denied does it go through the helper — so you never get a password prompt
+is denied does it go through the helper, so you never get a password prompt
 for something you were already allowed to do.
 
 ### What the root panel contains
@@ -276,7 +276,7 @@ portal). System-wide services are not touched.
 mode used to be here and were removed: it is not process management. The helper
 no longer knows those commands, so not via the command line either.
 
-The GPU is still fully *measured* — including per-process VRAM and SM usage.
+The GPU is still fully *measured*, including per-process VRAM and SM usage.
 Just not adjusted.
 
 ## Architecture

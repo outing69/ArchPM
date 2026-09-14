@@ -124,6 +124,7 @@ class ProcModel(QAbstractItemModel):
         self.busy_until: dict[int, float] = {}   # pid -> monotonic deadline
         self._expanded: set[int] = set()         # pids whose row the view shows expanded
         self.steam_pid = 0                       # the Steam client, if it runs
+        self.hoisted: set[int] = set()           # pid 1 and the systemd user managers
 
     # -- Qt structure -------------------------------------------------------
     def _node(self, index: QModelIndex) -> Node:
@@ -341,6 +342,9 @@ class ProcModel(QAbstractItemModel):
     def is_expanded(self, pid: int) -> bool:
         return pid in self._expanded
 
+    def expanded_pids(self) -> set[int]:
+        return set(self._expanded)
+
     def has_children(self, pid: int) -> bool:
         node = self._nodes.get(pid)
         return bool(node and node.children)
@@ -358,9 +362,19 @@ class ProcModel(QAbstractItemModel):
             return self.steam_pid
         if p.steam_appid and self.steam_pid and p.pid != self.steam_pid and p.ppid not in incoming:
             return self.steam_pid
+        # pid 1 and "systemd --user" carry no information of their own and
+        # would bury every program two levels deep: their children sit at the root.
+        if p.ppid in self.hoisted:
+            return 0
         if p.ppid in incoming and p.ppid != p.pid:
             return p.ppid
         return 0
+
+    @staticmethod
+    def find_managers(incoming: dict[int, ProcSample]) -> set[int]:
+        """pid 1 plus every systemd user manager (a "systemd" directly under pid 1)."""
+        return {1} | {p.pid for p in incoming.values()
+                      if p.name == "systemd" and p.ppid in (0, 1) and p.pid != 1}
 
     @staticmethod
     def find_steam(incoming: dict[int, ProcSample]) -> int:
@@ -405,6 +419,7 @@ class ProcModel(QAbstractItemModel):
             return
         incoming = {p.pid: p for p in procs}
         self.steam_pid = self.find_steam(incoming)
+        self.hoisted = self.find_managers(incoming)
 
         # 1. Remove what is gone, and what must move (its parent changed). A
         #    removed subtree may contain processes that still exist: they are
@@ -522,6 +537,20 @@ class ProcFilter(QSortFilterProxyModel):
         setattr(self, name, value)
         self.invalidateFilter()
 
+    def matches_text(self, p: ProcSample) -> bool:
+        t = self.text
+        return (not t or t in p.name.lower() or t in p.app_name.lower()
+                or t in p.cmdline.lower() or t == str(p.pid))
+
+    def data(self, index: QModelIndex, role: int = Qt.ItemDataRole.DisplayRole):
+        # During a search a visible row is a match or an ancestor of one; the
+        # ancestors are only context and step back so the matches stand out.
+        if role == Qt.ItemDataRole.ForegroundRole and self.text:
+            p = self.sourceModel().proc_at(self.mapToSource(index))
+            if p is not None and not self.matches_text(p):
+                return QColor(theme.FAINT)
+        return super().data(index, role)
+
     def filterAcceptsRow(self, row: int, parent: QModelIndex) -> bool:
         model: ProcModel = self.sourceModel()
         p = model.proc_at(model.index(row, 0, parent))
@@ -536,9 +565,4 @@ class ProcFilter(QSortFilterProxyModel):
             return False
         if self.category and p.category != self.category:
             return False
-        if self.text:
-            t = self.text
-            if (t not in p.name.lower() and t not in p.app_name.lower()
-                    and t not in p.cmdline.lower() and t != str(p.pid)):
-                return False
-        return True
+        return self.matches_text(p)

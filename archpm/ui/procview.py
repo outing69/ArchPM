@@ -300,19 +300,16 @@ class ProcessView(QWidget):
         self.table.pressed.connect(lambda _: self._unfreeze())
 
         # Collapsed by default, or a browser's twenty renderers bury everything.
-        # The one exception, applied once per process the first time it is
-        # seen (so what you collapse stays collapsed): the top two levels, init
-        # and your session, which is where your programs live. Done after each
-        # update rather than on rowsInserted: the proxy maps deeper rows lazily
-        # and emits nothing for them until the view looks.
-        self._auto_done: set[int] = set()
+        # The programs sit at the root (the model hoists them out from under
+        # pid 1 and your systemd --user), so there is nothing to open on
+        # startup. The one exception is Steam when a new game appears under it.
         self._games_seen: set[int] = set()   # game roots already used to open Steam
-        self.proxy.modelReset.connect(self._auto_done.clear)
+        self._expanded_before_search: set[int] | None = None
         self.proxy.modelReset.connect(self._games_seen.clear)
 
         # -- behaviour -----------------------------------------------------
         header.sortIndicatorChanged.connect(self._remember_sort)
-        self.search.textChanged.connect(self.proxy.set_text)
+        self.search.textChanged.connect(self._search_changed)
         self.cb_tree.toggled.connect(self._set_tree)
         self.cb_all.toggled.connect(self._set_show_all)
         self.combo_category.currentIndexChanged.connect(
@@ -348,6 +345,8 @@ class ProcessView(QWidget):
         self.model.update(snap.procs)
         if self.model.tree and not self.model.frozen:
             self._auto_expand()
+            if self.proxy.text:
+                self._expand_matches()
         if self.panel.isVisible():
             self._show_history()
 
@@ -412,34 +411,65 @@ class ProcessView(QWidget):
         self.settings.setValue("tree", on)
         self.model.set_tree(on)
         self.table.setRootIsDecorated(on)
+        if on and self.proxy.text:
+            self._expand_matches()
 
-    def _auto_expand(self) -> None:
-        """Apply the default-expansion rule to rows not seen before (see __init__)."""
-        alive = set(self.model.pids())
-        self._auto_done &= alive
-        pending = [(QModelIndex(), 0)]
+    # -- search -----------------------------------------------------------
+    def _search_changed(self, text: str) -> None:
+        """In Tree mode a match deep in a collapsed branch would stay out of
+        sight. While a search is active every branch on the way to a match is
+        open; clearing the box puts the tree back the way it was."""
+        had_text = bool(self.proxy.text)
+        self.proxy.set_text(text)
+        if not self.model.tree:
+            return
+        if self.proxy.text:
+            if not had_text:
+                self._expanded_before_search = self.model.expanded_pids()
+            self._expand_matches()
+        elif had_text:
+            self._restore_expansion()
+
+    def _expand_matches(self) -> None:
+        """The proxy filters recursively, so with a search active every visible
+        row is a match or an ancestor of one; opening every visible branch is
+        exactly "show the way to each match"."""
+        pending = [QModelIndex()]
         while pending:
-            parent, depth = pending.pop()
+            parent = pending.pop()
             for row in range(self.proxy.rowCount(parent)):
                 index = self.proxy.index(row, 0, parent)
-                children = self.proxy.rowCount(index)
-                if children:
-                    pending.append((index, depth + 1))
-                    pid = index.data(PID_ROLE)
-                    if pid not in self._auto_done:
-                        if depth <= 1:
-                            self.table.expand(index)
-                        self._auto_done.add(pid)
-                    # Steam opens when a new game shows up under it, so the
-                    # game is one row below Steam without digging.
-                    if pid == self.model.steam_pid:
-                        new_games = set(self.model.game_children(pid)) - self._games_seen
-                        if new_games:
-                            self._games_seen |= new_games
-                            self.table.expand(index)
-                            for ancestor in (index.parent(), index.parent().parent()):
-                                if ancestor.isValid():
-                                    self.table.expand(ancestor)
+                if self.proxy.rowCount(index):
+                    self.table.expand(index)
+                    pending.append(index)
+
+    def _restore_expansion(self) -> None:
+        before, self._expanded_before_search = self._expanded_before_search, None
+        if before is None:
+            return
+        # collapseAll() emits no collapsed() signals, so tell the model ourselves.
+        self.table.collapseAll()
+        for pid in self.model.expanded_pids():
+            self.model.set_expanded(pid, False)
+        for pid in before:
+            index = self.proxy.mapFromSource(self.model.index_for_pid(pid))
+            if index.isValid():
+                self.table.expand(index)
+
+    def _auto_expand(self) -> None:
+        """Steam opens when a new game shows up under it, so the game is one row
+        below Steam without digging. Nothing else opens by itself."""
+        steam = self.model.steam_pid
+        if not steam:
+            return
+        new_games = set(self.model.game_children(steam)) - self._games_seen
+        if not new_games:
+            return
+        self._games_seen |= new_games
+        index = self.proxy.mapFromSource(self.model.index_for_pid(steam))
+        while index.isValid():
+            self.table.expand(index)
+            index = index.parent()
 
     # -- selection --------------------------------------------------------
     def _selected(self) -> list[ProcSample]:

@@ -3,8 +3,30 @@
 All notable changes, newest first. Versions are git tags on
 [github.com/outing69/ArchPM](https://github.com/outing69/ArchPM).
 
-## Unreleased
+## 0.2.2 (2026-09-14)
 
+- Processes: searching in Tree mode opens every branch on the way to a match,
+  so a matching child is no longer hidden under a collapsed parent. The
+  ancestors are shown as context; clearing the search puts the tree back the
+  way it was.
+- Signals: a check before every Terminate, Force kill and Suspend. ArchPM
+  itself, whatever started it and the leader of your login session are refused.
+  A force kill, a process of another user, or a piece of the desktop itself
+  (plasmashell, kwin, pipewire, wireplumber, the desktop portal) asks first,
+  showing the program, who runs it and its command line, and naming what you
+  would lose: sound, the panel, the window borders.
+- Services: ArchPM manages only the services of your own login session, through
+  `systemctl --user` and without a password. The root helper no longer knows
+  about services at all, since a root process running `systemctl --user` would
+  address root's own session, not yours. The panel refuses to stop plasmashell,
+  pipewire, wireplumber and the desktop portal and says why; restarting them is
+  allowed. System services are not managed.
+- Polkit: the password prompt says in plain words what the helper can do and
+  no longer mentions how long the authentication is kept; SECURITY.md explains
+  that, and how to be asked every time, for a manual install and for the
+  package. The project is English only; the Dutch texts are gone.
+- Tests use invented data: no real home path or network address in the
+  repository. .gitignore covers the runtime status file and build output.
 - Hover over anything and it explains itself: every tile, graph, top list and
   column header has a one-line tooltip, and the Overview tiles add an "is this
   normal?" line with the ranges to expect at idle and in a game.
