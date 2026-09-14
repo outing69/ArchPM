@@ -69,8 +69,11 @@ Built for and tested on one machine: CachyOS (Arch), KDE Plasma 6 on Wayland,
 an AMD Ryzen 7800X3D and an NVIDIA RTX 5070. It will probably work on any Arch
 derivative with Plasma 6 and an NVIDIA card. AMD GPUs use a sysfs
 fallback that has only been exercised on the Ryzen's integrated Radeon (which it
-reports as "AMD Raphael", with temperature, power and clock). Other
-desktops get the GUI but not the widgets.
+reports as "AMD Raphael", with temperature, power and clock). The Intel
+per-process path (i915 and xe) is written from the kernel documentation and
+has never run on Intel hardware; if it misbehaves on yours, please open an
+issue with the output of `cat /proc/<pid>/fdinfo/*` for a process that uses
+the GPU. Other desktops get the GUI but not the widgets.
 
 This is a personal tool that I am sharing in case it is useful to you. There
 is **no support**: if it does not work on your PC, I probably cannot help. Bug
@@ -92,7 +95,7 @@ are Arch's; on another distribution find the equivalents.
 | Root tasks, Cleanup | `polkit` | provides `pkexec`; your user must be allowed to authenticate as admin (in Arch that is the `wheel` group) |
 | Cleanup of the package cache | `pacman-contrib` | provides `paccache` |
 | NVIDIA telemetry | `nvidia-utils` | provides `nvidia-smi`; without it the GPU falls back to sysfs |
-| AMD telemetry | nothing extra | read from sysfs; `hwdata` gives the card a proper name |
+| AMD and Intel telemetry | nothing extra | the card from sysfs, per-process usage from DRM fdinfo; `hwdata` gives the card a proper name |
 | Agent as a service | a systemd user session | standard on any systemd desktop |
 
 ## Installing
@@ -183,8 +186,12 @@ the package, or the polkit policy file will conflict.
   per-core strip shows at most 64 bars in the GUI and 32 in the widget; bigger
   CPUs are shown as group averages (labelled "0-1", "2-3", …).
 - **GPU**: SM utilisation, VRAM, temperature, power draw and clock speed, plus
-  **per-process GPU usage** via `nvidia-smi pmon` (works for games too, not
-  just CUDA). AMD/Intel fall back to sysfs, without per-process data.
+  **per-process GPU usage** from the kernel's DRM fdinfo, which AMD (amdgpu)
+  and Intel (i915, xe) export for every process without root or an extra
+  package; the Intel side is untested, see above. NVIDIA's driver exports
+  nothing there, so for an NVIDIA card the
+  per-process numbers come from `nvidia-smi pmon` (works for games too, not
+  just CUDA). Whole-card numbers for AMD still come from sysfs.
 - **Processes**: CPU, RSS, threads, nice, disk I/O, VRAM, affinity, start time.
   Shown as a tree by parent (Steam → reaper → Proton → game). Programs
   with a `.desktop` entry get their proper name, icon and category; Steam games
@@ -283,7 +290,7 @@ Just not adjusted.
 
 ```
 archpm/sampler.py   psutil sampling; keeps Process objects between ticks
-   ↑ gpu.py      two long-running nvidia-smi processes (stats + pmon)
+   ↑ gpu.py      DRM fdinfo per process; two long-running nvidia-smi processes (stats + pmon)
    ↓
    ├─ ui/worker.py  QThread → signals → dashboard.py / procview.py
    └─ agent.py      → publisher.py → $XDG_RUNTIME_DIR/archpm/status.json

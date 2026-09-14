@@ -3,6 +3,14 @@
 All notable changes, newest first. Versions are git tags on
 [github.com/outing69/ArchPM](https://github.com/outing69/ArchPM).
 
+## 0.2.3 (2026-09-14)
+
+- Per-process GPU usage on AMD and Intel: read from the kernel's DRM fdinfo
+  (amdgpu, i915, xe), without root or an extra package. NVIDIA keeps
+  `nvidia-smi pmon`, which fills in only what fdinfo cannot see; a process on
+  both cards keeps both. The Intel path is written from the kernel
+  documentation and has not run on Intel hardware yet.
+
 ## 0.2.2 (2026-09-14)
 
 - Processes: searching in Tree mode opens every branch on the way to a match,

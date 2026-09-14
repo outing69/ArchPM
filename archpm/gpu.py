@@ -1,12 +1,13 @@
 """GPU telemetry.
 
-NVIDIA: two long-running `nvidia-smi` processes that we read from, instead of
-spawning a new process every tick. That saves ~30ms CPU per sample and, via
-`pmon`, also gives per-process SM%/VRAM -- something the one-off queries don't
-offer.
+Per process, the first source is DRM fdinfo (fdinfo.py): every driver that
+exports it, amdgpu, i915 and xe among them, without root or an extra package.
+NVIDIA's proprietary driver exports nothing there, so `nvidia-smi pmon` fills
+in what fdinfo cannot see.
 
-AMD (and anything else exposing `gpu_busy_percent`): fall back to sysfs, without
-per-process data.
+For the card as a whole: NVIDIA via two long-running `nvidia-smi` processes
+that we read from, instead of spawning a new process every tick. AMD (and
+anything else exposing `gpu_busy_percent`): sysfs.
 """
 from __future__ import annotations
 
@@ -16,6 +17,7 @@ import threading
 import time
 from pathlib import Path
 
+from .fdinfo import DrmFdinfo
 from .model import GpuSample
 
 _PROC_TTL = 6.0  # a pid that hasn't shown up in pmon for 6s no longer uses the GPU
@@ -46,6 +48,7 @@ class GpuMonitor:
         self._threads: list[threading.Thread] = []
         self._procs_supported = False
         self.backend = "none"
+        self.fdinfo = DrmFdinfo()
 
     # -- lifecycle ---------------------------------------------------------
     def start(self) -> None:
@@ -73,7 +76,24 @@ class GpuMonitor:
             return GpuSample(**{f: getattr(self._sample, f) for f in GpuSample.__slots__})
 
     def processes(self) -> dict[int, tuple[float, float]]:
-        """pid -> (sm%, vram_mb). Empty if the backend can't provide it."""
+        """pid -> (busy%, device memory MB). Empty if no source can provide it.
+
+        fdinfo comes first. nvidia-smi only adds what fdinfo does not cover:
+        a process on an NVIDIA card next to an AMD one keeps both, the busy
+        share being the larger and the memory the sum, one card each. Should
+        a driver named nvidia ever export fdinfo, that entry wins outright so
+        the same card is never counted twice.
+        """
+        out = self._nvidia_processes()
+        for pid, (busy, mb, drivers) in self.fdinfo.processes().items():
+            nv = out.get(pid)
+            if nv is None or "nvidia" in drivers:
+                out[pid] = (busy, mb)
+            else:
+                out[pid] = (max(busy, nv[0]), mb + nv[1])
+        return out
+
+    def _nvidia_processes(self) -> dict[int, tuple[float, float]]:
         if not self._procs_supported:
             return {}
         cutoff = time.monotonic() - _PROC_TTL
@@ -85,7 +105,7 @@ class GpuMonitor:
 
     @property
     def per_process_available(self) -> bool:
-        return self._procs_supported
+        return self._procs_supported or self.fdinfo.seen_any
 
     # -- NVIDIA ------------------------------------------------------------
     _FIELDS = (
