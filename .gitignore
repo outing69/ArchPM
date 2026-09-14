@@ -7,3 +7,10 @@ build/
 dist/
 *.egg-info/
 .policy.tmp
+venv/
+.vscode/
+status.json
+*.log
+packaging/aur/src/
+packaging/aur/pkg/
+packaging/aur/*.pkg.tar.zst

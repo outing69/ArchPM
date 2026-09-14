@@ -70,7 +70,7 @@ LIBRARYFOLDERS = """\
 {
 \t"0"
 \t{
-\t\t"path"\t\t"/home/alex/.local/share/Steam"
+\t\t"path"\t\t"/home/user/.local/share/Steam"
 \t\t"label"\t\t""
 \t}
 \t"1"
@@ -187,7 +187,7 @@ class DesktopMatching(unittest.TestCase):
         write(self.system / "steam.desktop", "[Desktop Entry]\nType=Application\nName=Steam\n"
                                               "Exec=/usr/bin/steam %U\nIcon=steam\n")
         self.index.scan()
-        info = self.index.match(["bash", "/home/alex/.local/share/Steam/steam.sh", "-srt-logger"])
+        info = self.index.match(["bash", "/home/user/.local/share/Steam/steam.sh", "-srt-logger"])
         self.assertEqual((info.name, info.icon), ("Steam", "steam"))
         self.assertFalse(self.index.match(["bash", "-c", "steam.sh"]), "options are not scripts")
         self.assertFalse(self.index.match(["bash", "/usr/bin/limine-snapper-notify"]))
@@ -200,7 +200,7 @@ class DesktopMatching(unittest.TestCase):
 class SteamParsing(unittest.TestCase):
     def test_library_paths(self):
         self.assertEqual(appinfo.parse_library_folders(LIBRARYFOLDERS),
-                         ["/home/alex/.local/share/Steam", "/mnt/games/SteamLibrary"])
+                         ["/home/user/.local/share/Steam", "/mnt/games/SteamLibrary"])
 
     def test_appmanifest_name_and_installdir(self):
         self.assertEqual(appinfo.parse_appmanifest(APPMANIFEST),
@@ -212,7 +212,7 @@ class SteamParsing(unittest.TestCase):
         of these carried the app id, only the last two live in the game's dir."""
         d = "CULTIC"
         not_game = [
-            ("/home/alex/.local/share/Steam/ubuntu12_32/reaper", "reaper"),
+            ("/home/user/.local/share/Steam/ubuntu12_32/reaper", "reaper"),
             ("/run/pressure-vessel/libexec/steam-runtime-tools-0/srt-bwrap", "srt-bwrap"),
             ("/mnt/games/SteamLibrary/steamapps/common/Proton 9.0/files/bin/wineserver",
              "wineserver"),
