@@ -257,7 +257,7 @@ class Dashboard(QWidget):
         head.addWidget(self.lbl_root_state)
         self.btn_root = QPushButton("Root tasks")
         self.btn_root.setToolTip(
-            "Actions that require privileges: raising priority, services, memory."
+            "Root actions (raising priority, memory) and your own session's services."
         )
         self.btn_root.clicked.connect(self.root_requested.emit)
         head.addWidget(self.btn_root)

@@ -14,7 +14,7 @@ import io
 import json
 import os
 import unittest
-from contextlib import contextmanager, redirect_stdout
+from contextlib import redirect_stdout
 from types import SimpleNamespace
 
 from archpm.root import helper
@@ -22,26 +22,6 @@ from archpm.root import helper
 
 def args(**kw) -> SimpleNamespace:
     return SimpleNamespace(**kw)
-
-
-@contextmanager
-def fake_systemctl(show: dict[str, str]):
-    """Replace helper.run: `systemctl show` answers from `show` (unit -> output),
-    anything else records the call and returns "". Lets cmd_service be tested
-    end-to-end without touching systemd."""
-    calls: list[tuple[str, ...]] = []
-
-    def run(*cmd: str, timeout: int = 20) -> str:
-        calls.append(cmd)
-        if cmd[:2] == ("systemctl", "show"):
-            return show.get(cmd[-1], f"Id={cmd[-1]}\nNames={cmd[-1]}\nTriggers=")
-        return ""
-
-    original, helper.run = helper.run, run
-    try:
-        yield calls
-    finally:
-        helper.run = original
 
 
 class AsInt(unittest.TestCase):
@@ -137,95 +117,37 @@ class ProcCommands(unittest.TestCase):
             helper.cmd_proc_ionice(args(pid="1", klass="2", value="8"))
 
 
-class ServiceCommand(unittest.TestCase):
-    def test_rejects_unknown_action(self):
-        for action in ("enable", "disable", "mask", "kill", "daemon-reexec", ""):
-            with self.subTest(action=action), self.assertRaises(helper.HelperError):
-                helper.cmd_service(args(action=action, unit="sshd"))
+class ServiceCommandRemoved(unittest.TestCase):
+    """Services left the helper: your own session's run through systemctl --user
+    as you (see tests/test_actions.py) and system services are not managed at
+    all. An old client that still sends `service` gets a JSON refusal and no
+    systemctl call is ever made."""
 
-    def test_rejects_invalid_unit_names(self):
-        for unit in ("../etc", "a b", "unit;reboot", "$(id)", "x" * 200 + ".service",
-                     "foo.conf", "-flag.service", "--no-block.service", "-.service"):
-            with self.subTest(unit=unit), self.assertRaises(helper.HelperError) as ctx:
-                helper.cmd_service(args(action="restart", unit=unit))
-            # The helper itself must refuse; a failure from systemctl does not count.
-            self.assertIn("invalid unit name", str(ctx.exception))
+    def test_service_is_refused_as_json_before_anything_runs(self):
+        calls: list[tuple[str, ...]] = []
+        original, helper.run = helper.run, lambda *cmd, timeout=20: calls.append(cmd) or ""
+        out = io.StringIO()
+        try:
+            with redirect_stdout(out):
+                code = helper.main(["service", "stop", "sshd"])
+        finally:
+            helper.run = original
+        payload = json.loads(out.getvalue())
+        self.assertEqual(code, 1)
+        self.assertFalse(payload["ok"])
+        self.assertIn("no longer manages services", payload["error"])
+        self.assertEqual(calls, [])
 
-    def test_accepts_ordinary_unit_names(self):
-        for unit in ("sshd.service", "bluetooth", "user@1000.service", "systemd-timesyncd",
-                     "dbus-:1.2-org.example@0.service"):
-            with self.subTest(unit=unit):
-                full = unit if "." in unit else f"{unit}.service"
-                self.assertIsNotNone(helper.UNIT_RE.match(full))
+    def test_parser_has_no_service_subcommand(self):
+        with self.assertRaises(SystemExit), redirect_stdout(io.StringIO()), \
+                contextlib.redirect_stderr(io.StringIO()):
+            helper.build_parser().parse_args(["service", "restart", "sshd"])
 
-    def test_refuses_to_stop_or_restart_protected_units(self):
-        with fake_systemctl({}):
-            for unit in sorted(helper.PROTECTED_UNITS):
-                for action in ("stop", "restart"):
-                    with self.subTest(unit=unit, action=action), \
-                            self.assertRaises(helper.HelperError):
-                        helper.cmd_service(args(action=action, unit=unit))
-
-    def test_protected_units_also_match_without_suffix(self):
-        with fake_systemctl({}), self.assertRaises(helper.HelperError):
-            helper.cmd_service(args(action="stop", unit="polkit"))
-
-    def test_rejects_targets_including_reboot_and_emergency(self):
-        for unit in ("reboot.target", "poweroff.target", "emergency.target", "rescue.target",
-                     "halt.target", "kexec.target", "exit.target", "multi-user.target"):
-            for action in ("start", "stop", "restart"):
-                with self.subTest(unit=unit, action=action), \
-                        self.assertRaises(helper.HelperError) as ctx:
-                    helper.cmd_service(args(action=action, unit=unit))
-                self.assertIn("invalid unit name", str(ctx.exception))
-
-    def test_refuses_shutdown_services_even_for_start(self):
-        with fake_systemctl({}) as calls:
-            for unit in sorted(helper.DENIED_UNITS):
-                with self.subTest(unit=unit), self.assertRaises(helper.HelperError):
-                    helper.cmd_service(args(action="start", unit=unit))
-        self.assertEqual(calls, [], "must be refused before systemctl is ever called")
-
-    def test_refuses_protected_unit_via_alias(self):
-        alias = "dbus-org.freedesktop.login1.service"
-        show = {alias: f"Id=systemd-logind.service\nNames={alias} systemd-logind.service\n"
-                       f"Triggers="}
-        with fake_systemctl(show) as calls, self.assertRaises(helper.HelperError) as ctx:
-            helper.cmd_service(args(action="stop", unit=alias))
-        self.assertIn("systemd-logind.service", str(ctx.exception))
-        self.assertTrue(all(c[:2] == ("systemctl", "show") for c in calls),
-                        "only the lookup may run, never the stop")
-
-    def test_refuses_display_manager_through_its_link(self):
-        show = {"display-manager.service":
-                "Id=ly.service\nNames=display-manager.service ly.service\nTriggers="}
-        with fake_systemctl(show), self.assertRaises(helper.HelperError):
-            helper.cmd_service(args(action="restart", unit="display-manager.service"))
-
-    def test_refuses_socket_that_triggers_a_protected_service(self):
-        sock = "systemd-udevd-kernel.socket"
-        show = {sock: f"Id={sock}\nNames={sock}\nTriggers=systemd-udevd.service"}
-        with fake_systemctl(show), self.assertRaises(helper.HelperError):
-            helper.cmd_service(args(action="stop", unit=sock))
-
-    def test_refuses_alias_of_a_denied_unit_even_for_start(self):
-        show = {"harmless.service": "Id=systemd-reboot.service\n"
-                                    "Names=harmless.service systemd-reboot.service\nTriggers="}
-        with fake_systemctl(show), self.assertRaises(helper.HelperError):
-            helper.cmd_service(args(action="start", unit="harmless.service"))
-
-    def test_allows_an_ordinary_service_and_passes_double_dash(self):
-        with fake_systemctl({}) as calls:
-            result = helper.cmd_service(args(action="restart", unit="bluetooth"))
-        self.assertEqual(result["unit"], "bluetooth.service")
-        actions = [c for c in calls if c[1] == "restart"]
-        self.assertEqual(actions, [("systemctl", "restart", "--", "bluetooth.service")])
-
-    def test_trailing_newline_does_not_pass_the_regex(self):
-        for unit in ("systemd-logind.service\n", "sshd.service\n", "sshd.service\r"):
-            with self.subTest(unit=repr(unit)), self.assertRaises(helper.HelperError) as ctx:
-                helper.cmd_service(args(action="stop", unit=unit))
-            self.assertIn("invalid unit name", str(ctx.exception))
+    def test_service_machinery_is_gone_but_signal_protection_stays(self):
+        for name in ("cmd_service", "unit_names", "DENIED_UNITS", "SERVICE_ACTIONS", "UNIT_RE"):
+            self.assertFalse(hasattr(helper, name), name)
+        self.assertIn("sddm.service", helper.PROTECTED_UNITS)
+        self.assertIn("dbus.service", helper.PROTECTED_UNITS)
 
 
 class MemoryCommands(unittest.TestCase):
@@ -312,6 +234,12 @@ class HardeningInvariants(unittest.TestCase):
         self.assertNotIn("from .", src)
         self.assertNotIn("from archpm", src)
         self.assertNotIn("import archpm", src)
+
+    def test_helper_never_runs_systemctl(self):
+        import inspect
+        src = inspect.getsource(helper)
+        self.assertNotIn('run("systemctl', src)
+        self.assertNotIn('"systemctl",', src)
 
     def test_path_is_clean(self):
         self.assertTrue(all(p.startswith("/") for p in helper.PATH.split(":")))

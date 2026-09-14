@@ -2,16 +2,18 @@
 """archpm-helper -- the only piece of ArchPM that runs as root.
 
 Invoked via pkexec, one action per call, and replies with JSON on stdout.
-Limited to process management, system services, memory and two fixed cleanup
-commands (package cache, journal); GPU tuning belongs in a different tool.
+Limited to process management, memory and two fixed cleanup commands (package
+cache, journal); GPU tuning belongs in a different tool, and services are not
+managed here at all: ArchPM only touches your own session's services, which
+need no root (see actions.py).
 Deliberately stdlib-only and without imports from the archpm package: this
 file lives root-owned in /usr/lib/archpm/ (or /usr/local/lib/archpm/ when
 installed from a checkout) and must not be able to load anything from a
 directory a regular user can write to.
 
-Everything that comes in is validated: fixed subcommands, numeric bounds, a
-unit-name regex and a list of services we refuse to stop because your session
-would collapse with them. A shell is never started.
+Everything that comes in is validated: fixed subcommands, numeric bounds and a
+list of units whose processes we refuse to signal because your session would
+collapse with them. A shell is never started.
 """
 from __future__ import annotations
 
@@ -26,17 +28,10 @@ import sys
 PATH = "/usr/bin:/usr/sbin:/bin:/sbin"
 
 ALLOWED_SIGNALS = {"TERM", "KILL", "STOP", "CONT", "HUP", "INT", "USR1", "USR2"}
-# Unit names: an ordinary first character (a leading "-" would reach systemctl
-# looking like an option; "--" below is the second line of defence), and no
-# .target: targets are how you reboot, power off or isolate the system, and the
-# helper has no business with them. Matched with fullmatch so a trailing
-# newline cannot slip past the way it does with "$".
-UNIT_RE = re.compile(r"[A-Za-z0-9@_][A-Za-z0-9@._:-]{0,127}\.(service|socket|timer|path)")
 INT_RE = re.compile(r"-?[0-9]{1,10}")
 
-# Units whose stopping wrecks your graphical session or the system. Compared
-# against every name systemctl knows the unit by (aliases included) and against
-# the units a socket or timer triggers, not just the string the caller typed.
+# Units your graphical session or the system cannot live without. A process
+# inside one of these cgroups is never signalled, whatever the caller says.
 PROTECTED_UNITS = {
     "dbus.service", "dbus-broker.service", "dbus.socket",
     "systemd-logind.service", "systemd-logind-varlink.socket",
@@ -47,15 +42,12 @@ PROTECTED_UNITS = {
     "display-manager.service", "sddm.service", "gdm.service", "lightdm.service",
     "ly.service", "greetd.service", "lxdm.service", "xdm.service",
 }
-# Units that shut the system down, reboot it or drop it to single-user mode.
-# Refused for every action, including start.
-DENIED_UNITS = {
-    "systemd-poweroff.service", "systemd-reboot.service", "systemd-halt.service",
-    "systemd-kexec.service", "systemd-soft-reboot.service", "systemd-exit.service",
-    "systemd-suspend.service", "systemd-hibernate.service", "systemd-hybrid-sleep.service",
-    "systemd-suspend-then-hibernate.service", "emergency.service", "rescue.service",
+# Subcommands that used to exist. Refused explicitly so an old client gets a
+# JSON error it understands instead of argparse usage text.
+REMOVED_COMMANDS = {
+    "service": "the helper no longer manages services; ArchPM runs your own "
+               "session's services through systemctl --user without root",
 }
-SERVICE_ACTIONS = {"start", "stop", "restart"}
 # Processes of system accounts (root, polkitd, dbus, ...) are never signalled:
 # that is how you would kill logind or the display manager by pid and bypass the
 # unit protection above. Arch and most distributions start regular users at 1000.
@@ -185,44 +177,7 @@ def cmd_proc_ionice(args) -> dict:
     return {"pid": pid, "class": klass, "level": value}
 
 
-# -- services and memory ------------------------------------------------------
-def unit_names(unit: str) -> set[str]:
-    """Every name systemctl resolves the unit to, plus what it triggers.
-
-    `systemd-logind.service` is also `dbus-org.freedesktop.login1.service`;
-    `display-manager.service` is whatever the distribution linked it to; a
-    `.socket` or `.timer` triggers a service. All of those must hit the
-    protected list, not just the spelling the caller used.
-    """
-    out = run("systemctl", "show", "-p", "Id", "-p", "Names", "-p", "Triggers", "--", unit)
-    names = {unit}
-    for line in out.splitlines():
-        key, _, value = line.partition("=")
-        if key in ("Id", "Names", "Triggers"):
-            names.update(value.split())
-    return names
-
-
-def cmd_service(args) -> dict:
-    action = args.action
-    if action not in SERVICE_ACTIONS:
-        raise HelperError(f"action {action!r} not allowed")
-    unit = args.unit if "." in args.unit else f"{args.unit}.service"
-    if not UNIT_RE.fullmatch(unit):
-        raise HelperError(f"invalid unit name: {args.unit!r}")
-    if unit in DENIED_UNITS:
-        raise HelperError(f"{unit} shuts the system down or isolates it; refused")
-    names = unit_names(unit)
-    if names & DENIED_UNITS:
-        raise HelperError(f"{unit} resolves to {sorted(names & DENIED_UNITS)[0]}; refused")
-    if action != "start" and names & PROTECTED_UNITS:
-        hit = sorted(names & PROTECTED_UNITS)[0]
-        raise HelperError(f"{unit} is protected ({hit}): your session needs it")
-    run("systemctl", action, "--", unit, timeout=30)
-    state = run("systemctl", "is-active", "--", unit) if action != "stop" else "inactive"
-    return {"unit": unit, "action": action, "state": state}
-
-
+# -- memory ------------------------------------------------------------------
 def cmd_swappiness(args) -> dict:
     value = as_int(args.value, 0, 200, "swappiness")
     with open("/proc/sys/vm/swappiness", "w") as fh:
@@ -276,8 +231,6 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("pid"); p.add_argument("klass"); p.add_argument("value", nargs="?", default="4")
     p.set_defaults(fn=cmd_proc_ionice)
 
-    p = sub.add_parser("service"); p.add_argument("action"); p.add_argument("unit")
-    p.set_defaults(fn=cmd_service)
     p = sub.add_parser("swappiness"); p.add_argument("value"); p.set_defaults(fn=cmd_swappiness)
     p = sub.add_parser("drop-caches"); p.add_argument("level", nargs="?", default="3")
     p.set_defaults(fn=cmd_drop_caches)
@@ -288,8 +241,11 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
+    argv = sys.argv[1:] if argv is None else list(argv)
     try:
+        if argv and argv[0] in REMOVED_COMMANDS:
+            raise HelperError(REMOVED_COMMANDS[argv[0]])
+        args = build_parser().parse_args(argv)
         payload = {"ok": True, "result": args.fn(args)}
     except HelperError as exc:
         payload = {"ok": False, "error": str(exc)}
