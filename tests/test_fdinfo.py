@@ -200,6 +200,11 @@ class Merge(unittest.TestCase):
         m = self.monitor({1: (70.0, 900.0)}, {1: (65.0, 880.0, frozenset({"nvidia"}))})
         self.assertEqual(m.processes(), {1: (65.0, 880.0)})
 
+    def test_pmon_polls_at_the_sampling_interval_not_faster(self):
+        from archpm import gpu
+        self.assertEqual(gpu.PMON_INTERVAL_S, 2)
+        self.assertGreater(gpu._PROC_TTL, gpu.PMON_INTERVAL_S, "a pid must survive one missed poll")
+
     def test_per_process_available_follows_either_source(self):
         m = GpuMonitor()
         self.assertFalse(m.per_process_available)

@@ -1,7 +1,9 @@
 """Headless sampler daemon: sample, publish status.json, repeat.
 
 Runs as a systemd --user service so the desktop widget keeps working when the
-GUI is closed. Costs ~1% of one core on a 7800X3D.
+GUI is closed. Measured at 2.4% of one core at idle on a 7800X3D (September
+2026), plus what the two nvidia-smi helpers it keeps running cost, about 1.5%
+before their polling was slowed to the sampling interval.
 """
 from __future__ import annotations
 

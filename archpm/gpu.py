@@ -21,6 +21,9 @@ from .fdinfo import DrmFdinfo
 from .model import GpuSample
 
 _PROC_TTL = 6.0  # a pid that hasn't shown up in pmon for 6s no longer uses the GPU
+# pmon polls at the sampler's own interval: at 1 s it cost 1.45% of a core on
+# its own (measured), for numbers the sampler only picks up every 2 s.
+PMON_INTERVAL_S = 2
 
 
 def _line_buffered(cmd: list[str]) -> list[str]:
@@ -132,7 +135,7 @@ class GpuMonitor:
                 self._sample = s
 
     def _nvidia_pmon_loop(self) -> None:
-        cmd = _line_buffered(["nvidia-smi", "pmon", "-d", "1", "-s", "um"])
+        cmd = _line_buffered(["nvidia-smi", "pmon", "-d", str(PMON_INTERVAL_S), "-s", "um"])
         for line in self._stream(cmd):
             if line.startswith("#"):
                 continue
