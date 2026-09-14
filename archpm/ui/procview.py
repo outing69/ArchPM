@@ -28,6 +28,7 @@ from PySide6.QtWidgets import (
 )
 
 from ..actions import ActionError, UserBackend
+from .. import signalguard
 from ..appinfo import CATEGORIES
 from ..model import ProcSample
 from . import hints, theme
@@ -70,7 +71,7 @@ class AffinityDialog(QDialog):
 
     def __init__(self, proc: ProcSample, current: list[int], ncpu: int, parent=None) -> None:
         super().__init__(parent)
-        self.setWindowTitle(f"CPU affinity — {proc.display_name} ({proc.pid})")
+        self.setWindowTitle(f"CPU affinity: {proc.display_name} ({proc.pid})")
         self.ncpu = ncpu
         lay = QVBoxLayout(self)
         lay.setSpacing(10)
@@ -533,22 +534,39 @@ class ProcessView(QWidget):
 
     def _signal_selected(self, sig: signal.Signals, confirm: bool = False,
                          tree: bool = False) -> None:
+        """There is no undo for a signal, so the guard sits here, before it is sent."""
         procs = self._selected_trees() if tree else self._selected()
         if not procs:
             return
-        if confirm:
-            names = ", ".join(f"{p.display_name} ({p.pid})" for p in procs[:6])
-            extra = "" if len(procs) <= 6 else f" and {len(procs) - 6} more"
-            answer = QMessageBox.question(
-                self, "Force kill",
-                f"Send SIGKILL to {names}{extra}?\n\n"
-                "The process gets no chance to clean up — unsaved work is lost.",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                QMessageBox.StandardButton.No,
-            )
-            if answer != QMessageBox.StandardButton.Yes:
-                return
+        verdict = signalguard.check(procs, sig.name, tree=tree, always_ask=confirm)
+        if verdict.refused:
+            self._notice("Not done", verdict.refused)
+            return
+        if verdict.confirm and not self._confirm(verdict):
+            return
         self._run(lambda p: self.backend.send_signal(p.pid, sig), procs, sig.name)
+
+    def _confirm(self, verdict: signalguard.Verdict) -> bool:
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.NoIcon)
+        box.setWindowTitle(verdict.title)
+        box.setTextFormat(Qt.TextFormat.PlainText)
+        box.setText(verdict.title)
+        box.setInformativeText(verdict.text)
+        go = box.addButton(verdict.button, QMessageBox.ButtonRole.AcceptRole)
+        cancel = box.addButton("Cancel", QMessageBox.ButtonRole.RejectRole)
+        box.setDefaultButton(cancel)
+        box.setEscapeButton(cancel)
+        box.exec()
+        return box.clickedButton() is go
+
+    def _notice(self, title: str, text: str) -> None:
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.NoIcon)
+        box.setWindowTitle(title)
+        box.setTextFormat(Qt.TextFormat.PlainText)
+        box.setText(text)
+        box.exec()
 
     def _set_nice(self, value: int) -> None:
         self._run(lambda p: self.backend.set_nice(p.pid, value),

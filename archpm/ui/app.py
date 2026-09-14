@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
 )
 
 from .. import APP_NAME, __version__
+from .. import signalguard
 from ..actions import ActionError, get_backend
 from ..model import Snapshot
 from ..publisher import status_path
@@ -255,6 +256,11 @@ class MainWindow(QMainWindow):
 
     def _terminate_game(self, pids: list, name: str) -> None:
         """SIGTERM to the whole game tree, through whichever backend is active."""
+        by_pid = {p.pid: p for p in self.procs.model._last}
+        verdict = signalguard.check([by_pid[pid] for pid in pids if pid in by_pid], "TERM", tree=True)
+        if verdict.refused:
+            self._flash(verdict.refused)
+            return
         done, failed = 0, 0
         for pid in pids:
             try:
