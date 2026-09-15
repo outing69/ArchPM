@@ -123,6 +123,24 @@ class ProcessLevel(unittest.TestCase):
         self.assertEqual(row.text(COL_INFO), "pid 100 · 2 socket(s)")
         self.assertFalse(brave.child(0).isExpanded())
 
+    def test_process_rows_stay_closed_unless_opened_by_hand(self):
+        from archpm.ui.network import COL_INFO
+        brave = self.top("Brave Web Browser")
+        self.assertFalse(brave.isExpanded())
+        self.assertFalse(brave.child(0).isExpanded() or brave.child(1).isExpanded())
+        brave.setExpanded(True)
+        brave.child(1).setExpanded(True)                 # by hand
+        self.view.search.setText("443")                  # a filter opens the program ...
+        brave = self.top("Brave Web Browser")
+        self.assertTrue(brave.isExpanded())
+        self.assertTrue(brave.child(1).isExpanded(), "the hand-opened process stays open")
+        self.assertFalse(brave.child(0).isExpanded(), "... but not the other process")
+        self.assertTrue(brave.child(0).text(COL_INFO).endswith("→ 443 (https), 8443"))
+        self.view.search.setText("")
+        brave = self.top("Brave Web Browser")
+        self.assertTrue(brave.isExpanded(), "programs keep the open state a filter gave them")
+        self.assertEqual([brave.child(0).isExpanded(), brave.child(1).isExpanded()], [False, True])
+
     def test_the_filter_reaches_the_process_row(self):
         from archpm.ui.network import COL_NAME
         self.view.search.setText("8443")

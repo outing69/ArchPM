@@ -229,7 +229,7 @@ class NetworkView(QWidget):
                     if q and q not in name.lower() and not self._matches(q, p, name):
                         continue
                     key = f"{name}/{p.pid}"
-                    opened = key in self._expanded or bool(q)
+                    opened = key in self._expanded     # only by hand, never by a filter
                     brief = f"pid {p.pid} · {len(p.conns)} socket(s)"
                     ports = self._ports(p)
                     info = brief if opened or not ports else f"{brief} · {ports}"
@@ -242,7 +242,7 @@ class NetworkView(QWidget):
                     if opened:
                         open_mids.append(mid)
             self.tree.addTopLevelItem(top)      # expand only once in the tree: the signals fire then
-            if name in self._expanded or q:
+            if name in self._expanded or q:     # a filter opens the programs, not their processes
                 top.setExpanded(True)
             for mid in open_mids:
                 mid.setExpanded(True)
