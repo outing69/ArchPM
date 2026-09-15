@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ..autostart import Autostart, StartupEntry, running_pids
+from ..autostart import Autostart, StartupEntry, running_pids, tilde
 from . import hints, theme
 from .widgets import app_icon
 
@@ -66,7 +66,7 @@ class StartupView(QWidget):
         hint = QLabel(
             "Untick an entry and it will not start at your next login. Nothing is closed now, "
             "nothing is deleted, and you can tick it back any time; ArchPM only writes in your "
-            f"own folder ({self.auto.user_dir}).<br>"
+            f"own folder ({tilde(self.auto.user_dir)}).<br>"
             f"<span style='color:{theme.WARN}'>Rows marked <b>Desktop · keep on</b> are parts of "
             "your desktop itself (panels, shortcuts, password prompts, power management). "
             "Switching those off gives you a broken login, not a faster one.</span>"

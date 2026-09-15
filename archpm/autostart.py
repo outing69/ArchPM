@@ -53,6 +53,18 @@ class StartupEntry:
         return self.user_path is not None and self.system_path is not None
 
 
+def tilde(path: Path) -> str:
+    """The path with the home folder written as "~", for anything a user may
+    paste into a bug report or a forum post; a path outside home is unchanged."""
+    home = Path(os.path.expanduser("~"))
+    if path == home:
+        return "~"
+    try:
+        return "~/" + path.relative_to(home).as_posix()
+    except ValueError:
+        return str(path)
+
+
 def config_dirs() -> tuple[Path, list[Path]]:
     home = Path(os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config"))
     dirs = os.environ.get("XDG_CONFIG_DIRS") or "/etc/xdg"

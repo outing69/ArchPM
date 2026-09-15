@@ -2,6 +2,7 @@
 and that disabling/enabling only ever writes inside the user's directory."""
 from __future__ import annotations
 
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -170,3 +171,14 @@ class Running(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TildeTest(unittest.TestCase):
+    def test_home_is_shortened(self):
+        home = Path(os.path.expanduser("~"))
+        self.assertEqual(autostart.tilde(home / ".config" / "autostart"), "~/.config/autostart")
+        self.assertEqual(autostart.tilde(home), "~")
+
+    def test_outside_home_is_unchanged(self):
+        self.assertEqual(autostart.tilde(Path("/etc/xdg/autostart")), "/etc/xdg/autostart")
+

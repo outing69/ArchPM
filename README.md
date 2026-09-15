@@ -16,49 +16,58 @@ cleaned up, in plain words. Three parts that share the same measurement core:
 
 | Component | What it is |
 |---|---|
-| **GUI** ("ArchPM" in your application menu) | the window: Overview, Processes, Network, Startup, System, Cleanup and Help tabs |
-| **Agent** (`archpm-agent`) | a small background service that samples every 2 s and writes `status.json` |
-| **Widgets** | two Plasma 6 plasmoids (Monitor, Network) that read that `status.json`, so they work with the window closed |
+| **GUI** ("ArchPM" in your application menu) | the window: Overview, Processes, Network, Startup, System, Cleanup and Help, reached from a rail of icons on the left that widens when you hover it and pins open with its menu button |
+| **Agent** (`archpm-agent`) | a background service that samples every 2 s and writes `status.json`. Measured on a 7800X3D over two and a half hours with a game running part of the time: 3.7% of one core in total, of which 2.8% is the sampler itself, 0.9% the `nvidia-smi pmon` helper that gives per-process GPU figures and 0.1% the `nvidia-smi` query loop for the card; the two helpers only exist on NVIDIA |
+| **Widgets** | two Plasma 6 plasmoids (Monitor, Network) that read `status.json`. They work while the window is open, because the window writes that file itself; the agent is what keeps them running with the window closed |
 
 ## Screenshots
 
 **Overview**: the machine at a glance: CPU per core, GPU, memory, network and
-disk, the running game, and the heaviest programs.
+disk, the game card, and the heaviest programs.
 
-![Overview tab](docs/overview.png)
+![Overview page, with the rail pinned open](docs/overview.png)
 
-**Processes**: your programs as a tree with real names and icons, a collapsed
-program showing the totals of its whole tree, and the last minutes of whatever
-you select underneath. Right-click to terminate, suspend, renice or pin to cores.
+**Processes**: the Grouped view, one row per application with its real name
+and icon, a browser folded to one row with its real memory use, and the last
+minutes of whatever you select graphed underneath. Right-click to terminate,
+suspend, renice or pin to cores.
 
-![Processes tab](docs/processes.png)
+![Processes page](docs/processes.png)
 
 **Network**: which of your programs talk to the network, at what speed, to
 which addresses, and which ones are "open doors" that other devices can reach.
-Interfaces with a VPN mark, so you can see the tunnel carrying the traffic.
+A browser opens to one row per process that holds sockets, each with its
+ports. Interfaces with a VPN mark, so you can see the tunnel carrying the
+traffic.
 
-![Network tab](docs/network.png)
+![Network page](docs/network.png)
 
 **Startup**: what starts when you log in, with a switch per entry, what each
 one does, and whether it is running now. Parts of the desktop are marked
 "keep on".
 
-![Startup tab](docs/startup.png)
+![Startup page](docs/startup.png)
 
 **System**: the specs on one card, from motherboard and BIOS to disks and
 network, with "Copy as text" for a forum post.
 
-![System tab](docs/system.png)
+![System page](docs/system.png)
 
 **Cleanup**: caches, shader caches, thumbnails, old package versions and old
 logs, each with its size and why it is safe to remove. Nothing goes until you
 tick, press and confirm.
 
-![Cleanup tab](docs/cleanup.png)
+![Cleanup page](docs/cleanup.png)
 
-**Widgets**: two Plasma plasmoids, fed by the agent, so they keep working when
-the GUI is closed: *ArchPM Monitor* (CPU, GPU, memory, game, top processes) and
-*ArchPM Network* (download and upload, VPN, top talkers, open doors).
+**Help**: a glossary in plain language, searched as you type, what the colours
+mean, and About with the version and the changelog.
+
+![Help page](docs/help.png)
+
+**Widgets**: two Plasma plasmoids, *ArchPM Monitor* (CPU, GPU, memory, game,
+top processes) and *ArchPM Network* (download and upload, VPN, top talkers,
+open doors). They work with the window open; the agent is what keeps them
+running with the window closed.
 
 <img src="docs/widget.png" width="320" alt="Plasma widget">
 <img src="docs/widget-network.png" width="320" alt="Network widget">
@@ -89,9 +98,10 @@ are Arch's; on another distribution find the equivalents.
 
 | For | Packages | Notes |
 |---|---|---|
-| GUI and agent | `python` (3.10+), `pyside6` (6.5+), `python-psutil` (5.9+), `git` | the only hard requirements |
+| GUI and agent | `python` (3.10+), `pyside6` (6.5+), `python-psutil` (5.9+) | the only hard requirements |
+| Installing from a checkout | `git` | to clone; the package and pipx routes do not need it |
 | Widgets | KDE Plasma 6 (`plasma-desktop`, `kpackage`) | other desktops get the GUI but no widgets |
-| Network tab | `iproute2` | provides `ss`; part of every Arch install |
+| Network page | `iproute2` | provides `ss`; part of every Arch install |
 | Root tasks, Cleanup | `polkit` | provides `pkexec`; your user must be allowed to authenticate as admin (in Arch that is the `wheel` group) |
 | Cleanup of the package cache | `pacman-contrib` | provides `paccache` |
 | NVIDIA telemetry | `nvidia-utils` | provides `nvidia-smi`; without it the GPU falls back to sysfs |
@@ -121,14 +131,16 @@ Optional, for the full experience: `plasma-desktop` (the widgets),
 `pacman-contrib` (cleaning the package cache).
 
 **2. ArchPM itself.** The first script needs no password and puts everything
-in your home folder. The second asks for your password once: it installs the
-small root helper that the Root tasks and Cleanup features use. You can skip
-it and add it later.
+in your home folder: the agent as a user service, both widgets, the menu entry
+and a shortcut on your desktop. The second asks for your password once: it
+installs the small root helper that the Root tasks and Cleanup features use.
+You can skip it and add it later, or do both in one go with `--all`.
 
 ```bash
 git clone https://github.com/outing69/ArchPM.git && cd ArchPM
-./install.sh          # agent, widgets, menu entry  (no root needed)
+./install.sh          # agent, widgets, menu entry, desktop shortcut  (no root needed)
 ./install.sh --root   # the pkexec helper and the polkit policy (optional)
+./install.sh --all    # both
 ```
 
 Now open **ArchPM** from your application menu. The agent is already running
@@ -151,9 +163,10 @@ helper; those still come from `install.sh`.
 
 ### Updating
 
-From a checkout: pull, then run the install script again. The GUI picks up new
-code the next time it starts; the agent, widgets and root helper are copies and
-need the script.
+From a checkout: pull, then run the install script again. The GUI and the
+agent run from the checkout, so the GUI picks up new code the next time it
+starts and the agent after a restart; the widgets, the menu entry and the root
+helper are copies and need the script.
 
 ```bash
 cd ArchPM && git pull
@@ -192,13 +205,17 @@ the package, or the polkit policy file will conflict.
   nothing there, so for an NVIDIA card the
   per-process numbers come from `nvidia-smi pmon` (works for games too, not
   just CUDA). Whole-card numbers for AMD still come from sysfs.
-- **Processes**: CPU, RSS, threads, nice, disk I/O, VRAM, affinity, start time.
-  Shown as a tree by parent (Steam → reaper → Proton → game). Programs
-  with a `.desktop` entry get their proper name, icon and category; Steam games
-  get the game's name and Steam's icon for it. No icon is shown for anything
-  that has none. By default you see your programs plus whatever is busy; "Show
-  all processes" shows everything. A collapsed program shows the totals of its
-  whole tree, so a browser reads as one row with its real memory use.
+- **Processes**: CPU, memory, GPU, VRAM, threads, nice, disk I/O, start time
+  and category per process; CPU affinity is read when you open the affinity
+  dialog. Three views: **Grouped** (the default), one row per application by
+  its systemd unit, opened for its processes; **Tree**, every process under
+  its parent (Steam → reaper → Proton → game); **Flat**, one row per process.
+  Programs with a `.desktop` entry get their proper name, icon and category;
+  Steam games get the game's name and Steam's icon for it. No icon is shown
+  for anything that has none. By default you see your programs plus whatever
+  is busy; "Show all processes" shows everything. A collapsed application
+  shows the totals of its whole group, with shared memory counted once, so a
+  browser reads as one row with its real memory use.
 - **Game**: a card on the Overview for whatever game is running: its whole
   process tree's CPU, GPU, VRAM, RAM and threads, how many cores it may use, and
   a graph of its last minutes. Steam games are found by app id; anything else
@@ -210,9 +227,12 @@ the package, or the polkit policy file will conflict.
   and port (named from `/etc/services`, never looked up online), download and
   upload per program for TCP, throughput per interface with VPN tunnels
   marked, and the "open doors": programs listening on every address, which
-  other devices on your network can reach. Games mostly use UDP, which the
-  kernel does not count, so a game shows its connections but not a speed.
-  No root, no packet capture, no DNS or location lookups.
+  other devices on your network can reach. A program that holds sockets in
+  several processes, like a browser, shows one row per process between the
+  program and its sockets, with that process's ports summarised on the row.
+  Games mostly use UDP, which the kernel does not count, so a game shows its
+  connections but not a speed. No root, no packet capture, no DNS or location
+  lookups.
 - **Startup**: what starts when you log in (XDG autostart), with a switch per
   entry and whether it is running now. Switching off writes an override in your
   own `~/.config/autostart`; nothing outside your home is touched.
@@ -220,7 +240,7 @@ the package, or the polkit policy file will conflict.
   motherboard, kernel, desktop, disks, network. "Copy as text" for forum posts.
 - **Cleanup**: free up space: per-program caches, Steam shader caches,
   thumbnails, old package versions (the last two of each are kept) and old
-  logs, each with its size and a plain reason why it is safe. The tab explains
+  logs, each with its size and a plain reason why it is safe. The page explains
   itself on first open and asks for your password once for the two items that
   need root. Nothing is removed until you tick, press and confirm. Your files,
   saves and settings are never touched.
@@ -257,8 +277,9 @@ That separation is the core of the design:
 - `archpm/root/client.py` only builds the `pkexec` call and reads the JSON reply.
   The GUI never sees a password.
 - The helper validates on its own: fixed subcommands, numeric bounds, and a
-  list of units (dbus, logind, polkit, the display manager) whose processes it
-  refuses to signal. It does not manage services at all.
+  list of units whose processes it refuses to signal, whatever the caller
+  says: dbus, logind, journald, udevd, polkit, oomd and the display manager.
+  It does not manage services at all.
 
 `ElevatedBackend` tries every action without privileges first. Only when that
 is denied does it go through the helper, so you never get a password prompt
@@ -298,8 +319,10 @@ archpm/sampler.py   psutil sampling; keeps Process objects between ticks
                                         ↑ plasmoid reads here
 ```
 
-The GUI and the agent sample independently of each other; you only need the
-agent for the widget.
+The GUI and the agent sample independently of each other. While the window is
+open and the agent service is not running, the window writes `status.json`
+itself, so the widgets work either way; when both run, the agent is the only
+writer. The agent is what keeps the widgets running with the window closed.
 
 The widget reads that JSON through the `executable` data engine (`cat`), not
 through `XMLHttpRequest`: Qt 6 blocks XHR on `file://` unless
@@ -319,11 +342,13 @@ archpm/ui/rootpanel.py ─ pkexec ─→ /usr/lib/archpm/archpm-helper   (root)
 ```bash
 systemctl --user status archpm-agent        # is the agent running?
 systemctl --user restart archpm-agent
-python3 -m archpm.agent --once              # one sample to stdout
+python3 -m archpm.agent --once              # one sample to stdout (from a checkout)
+archpm-agent --once                         # the same, installed as a package
 journalctl --user -u archpm-agent -f        # logs
 kpackagetool6 -t Plasma/Applet -u plasmoid/package   # update the Monitor widget
 kpackagetool6 -t Plasma/Applet -u plasmoid/network   # update the Network widget
-/usr/local/lib/archpm/archpm-helper status           # test the helper (without root)
+/usr/local/lib/archpm/archpm-helper status           # test the helper without root (checkout install)
+/usr/lib/archpm/archpm-helper status                 # the same, installed as a package
 pkaction --action-id io.github.outing69.archpm.helper.run --verbose    # inspect the polkit rules
 ./install.sh --uninstall-root                        # remove the root part
 ```

@@ -3,6 +3,13 @@
 All notable changes, newest first. Versions are git tags on
 [github.com/outing69/ArchPM](https://github.com/outing69/ArchPM).
 
+## 0.2.12 (2026-09-15)
+
+- Startup: the hint names the autostart folder as ~/.config/autostart
+  instead of the full path under your home folder, so a screenshot or a
+  pasted line does not carry your username.
+- README: full-page screenshots of every page, the Help page included.
+
 ## 0.2.11 (2026-09-15)
 
 - The navigation rail slides between its two widths with an eased 160 ms
