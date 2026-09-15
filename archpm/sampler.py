@@ -30,8 +30,9 @@ _PROC_ATTRS = [
     "pid", "ppid", "name", "memory_info", "memory_percent",
     "num_threads", "nice", "status", "create_time", "uids",
 ]
-TEMPS_EVERY = 5   # ticks; sensors are slow to read and slow to change
-PSS_EVERY = 5     # ticks between two PSS reads of the same group; the groups are spread over the ticks
+PSS_EVERY = 5     # ticks between two PSS reads of the same process
+PSS_SLOTS = 4     # the reads are spread by pid over the first four of those ticks ...
+TEMPS_EVERY = 5   # ... and the fifth reads the sensors, slow to read and slow to change
 NET_EVERY_S = 5.0  # seconds between socket scans (one ss call, ~50 ms)
 
 
@@ -177,17 +178,25 @@ class Sampler:
 
     def _refresh_pss(self, procs: list[ProcSample]) -> None:
         """Group memory that counts shared pages once. Only processes that
-        share a group are read, each group once every PSS_EVERY ticks, and
-        the groups are spread over those ticks: reading them all on one tick
-        made that cycle three times as long (measured 130 to 168 ms against
-        47 ms). A newcomer counts its RSS until its group's next read, at
-        most ten seconds."""
+        share a group are read, each once every PSS_EVERY ticks, spread by
+        pid over PSS_SLOTS of those ticks; the remaining tick reads the
+        sensors instead, so no tick carries both. Reading them all on one
+        tick made that cycle three times as long (measured 130 to 168 ms
+        against 47 ms), and spreading whole groups still put a browser's
+        thirty processes on one tick. A newcomer counts its RSS until its
+        first read, at most ten seconds; a group's figure mixes reads up to
+        eight seconds apart, which is fine for a memory total."""
         slot = self._tick % PSS_EVERY
-        groups = [m for m in build_groups(procs).values() if len(m) >= 2]
-        for i, members in enumerate(groups):
-            if i % PSS_EVERY == slot:
+        if slot >= PSS_SLOTS:
+            return self._apply_pss(procs)
+        for members in build_groups(procs).values():
+            if len(members) >= 2:
                 for p in members:
-                    self._pss[p.pid] = read_pss(p.pid)
+                    if p.pid % PSS_SLOTS == slot:
+                        self._pss[p.pid] = read_pss(p.pid)
+        self._apply_pss(procs)
+
+    def _apply_pss(self, procs: list[ProcSample]) -> None:
         for p in procs:
             p.mem_pss = self._pss.get(p.pid, 0)
 
@@ -255,8 +264,8 @@ class Sampler:
             s.freq_mhz = f.current if f else 0.0
         except (OSError, AttributeError):
             pass
-        self._tick += 1
-        if self._tick % TEMPS_EVERY == 1 or not self._temps_cache[0]:
+        self._tick += 1      # the tick just finished was the PSS round's last slot when this is 0
+        if self._tick % TEMPS_EVERY == 0 or not self._temps_cache[0]:
             self._temps_cache = self._temps()
         s.temps, s.cpu_temp_c = self._temps_cache
         s.net_rx_bps, s.net_tx_bps = self._net_rates(now)

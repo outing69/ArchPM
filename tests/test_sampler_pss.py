@@ -1,13 +1,14 @@
-"""PSS for grouped rows: only for processes that share a group, each group
-once every fifth sample, the groups spread over the ticks so no single cycle
-carries all the reads. Runs the real sampler for ten ticks."""
+"""PSS for grouped rows: only for processes that share a group, each process
+once every fifth sample, spread by pid over four of the five ticks so no
+single cycle carries all the reads, nor a whole large group; the fifth tick
+reads the sensors instead. Runs the real sampler for ten ticks."""
 from __future__ import annotations
 
 import unittest
 
 from archpm import sampler as sampler_mod
 from archpm.grouping import build_groups
-from archpm.sampler import PSS_EVERY, Sampler
+from archpm.sampler import PSS_EVERY, PSS_SLOTS, Sampler
 
 
 class Cadence(unittest.TestCase):
@@ -39,9 +40,15 @@ class Cadence(unittest.TestCase):
             window = reads[start:start + PSS_EVERY]
             for pid in grouped_every_tick:
                 self.assertEqual(sum(r.count(pid) for r in window), 1, pid)
-        # and no single tick carries them all
+        # and they are spread by pid, so no tick carries them all, nor a whole group
         biggest = max(len(r) for r in reads)
         self.assertLess(biggest, len(grouped_every_tick), "the reads are spread over the ticks")
+        for i, r in enumerate(reads):
+            slot = i % PSS_EVERY
+            if slot >= PSS_SLOTS:
+                self.assertEqual(r, [], "the fifth tick is the sensors' tick, no PSS reads")
+            else:
+                self.assertTrue(all(pid % PSS_SLOTS == slot for pid in r))
         for snap in snaps[PSS_EVERY:]:
             self.assertTrue(all(p.mem_pss == 4096 for p in snap.procs if p.pid in grouped_every_tick))
 
