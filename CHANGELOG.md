@@ -3,6 +3,13 @@
 All notable changes, newest first. Versions are git tags on
 [github.com/outing69/ArchPM](https://github.com/outing69/ArchPM).
 
+## 0.2.8 (2026-09-15)
+
+- The memory reads for the Grouped view are spread by process over four of
+  every five sampling ticks, and the fifth tick reads the temperature sensors
+  instead of sharing a tick with them. The slowest tick in twenty drops from
+  about 125 ms to about 85 ms; before 0.2.7 it was 143 ms.
+
 ## 0.2.7 (2026-09-14)
 
 - Fixed: with the agent service running, the window wrote status.json as
