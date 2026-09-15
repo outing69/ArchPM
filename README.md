@@ -190,8 +190,17 @@ cd packaging/aur && makepkg -si
 systemctl --user enable --now archpm-agent
 ```
 
-Do not mix the two routes: run `./install.sh --uninstall-root` before installing
-the package, or the polkit policy file will conflict.
+If you installed from a checkout before, remove that install first:
+
+```bash
+./install.sh --uninstall
+```
+
+pacman refuses to overwrite a file it does not own, and the polkit policy that
+`install.sh --root` put in `/usr/share/polkit-1/actions` is such a file, so the
+package will not install over it. The copies in your home folder (the user
+unit, the widgets, the menu entry) would not block pacman, but they would
+shadow the packaged ones. `--uninstall` removes all of it; your settings stay.
 
 ## What it measures
 
@@ -351,6 +360,7 @@ kpackagetool6 -t Plasma/Applet -u plasmoid/network   # update the Network widget
 /usr/lib/archpm/archpm-helper status                 # the same, installed as a package
 pkaction --action-id io.github.outing69.archpm.helper.run --verbose    # inspect the polkit rules
 ./install.sh --uninstall-root                        # remove the root part
+./install.sh --uninstall                             # remove everything install.sh installed
 ```
 
 After changing a widget: `kpackagetool6 ... -u` and then

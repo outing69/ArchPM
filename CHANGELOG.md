@@ -3,6 +3,17 @@
 All notable changes, newest first. Versions are git tags on
 [github.com/outing69/ArchPM](https://github.com/outing69/ArchPM).
 
+## 0.2.13 (2026-09-15)
+
+- install.sh --uninstall removes everything the script installed: the root
+  helper and the polkit policy, the user unit, both widgets, the menu entry
+  and the desktop shortcut. Settings and the cache stay. The README says to
+  run it before installing the package, because pacman refuses to overwrite
+  the policy file it does not own.
+- install.sh renders the polkit policy into a mktemp file instead of
+  .policy.tmp inside the checkout, and removes it on exit, also when a step
+  fails.
+
 ## 0.2.12 (2026-09-15)
 
 - Startup: the hint names the autostart folder as ~/.config/autostart
