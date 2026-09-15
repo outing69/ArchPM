@@ -3,6 +3,14 @@
 All notable changes, newest first. Versions are git tags on
 [github.com/outing69/ArchPM](https://github.com/outing69/ArchPM).
 
+## 0.2.9 (2026-09-15)
+
+- Network: a program that holds sockets in more than one process, like a
+  browser, shows one row per process between the program and its sockets,
+  with the process name and pid and, while the row is closed, a summary of
+  the ports it listens on and talks to. A program with a single such process
+  looks as before. The filter also finds a process by name or pid.
+
 ## 0.2.8 (2026-09-15)
 
 - The memory reads for the Grouped view are spread by process over four of
