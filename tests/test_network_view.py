@@ -11,7 +11,6 @@ import unittest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 try:
-    from PySide6.QtCore import Qt
     from PySide6.QtWidgets import QApplication
 except ImportError:                       # pragma: no cover
     QApplication = None
@@ -72,8 +71,8 @@ class ProcessLevel(unittest.TestCase):
         for i in range(tree.topLevelItemCount()):
             if tree.topLevelItem(i).text(COL_NAME) == name:
                 return tree.topLevelItem(i)
-        self.fail(f"no row for {name}: "
-                  f"{[tree.topLevelItem(i).text(COL_NAME) for i in range(tree.topLevelItemCount())]}")
+        names = [tree.topLevelItem(i).text(COL_NAME) for i in range(tree.topLevelItemCount())]
+        self.fail(f"no row for {name}: {names}")
 
     def test_a_single_process_program_keeps_its_sockets_directly_under_it(self):
         from archpm.ui.network import COL_INFO, COL_NAME
@@ -152,7 +151,8 @@ class ProcessLevel(unittest.TestCase):
         self.assertEqual(brave.child(0).childCount(), 1)
         self.view.search.setText("101")
         self.assertEqual(tree.topLevelItem(0).childCount(), 1)
-        self.assertEqual(tree.topLevelItem(0).child(0).childCount(), 3, "a pid keeps all its sockets")
+        self.assertEqual(tree.topLevelItem(0).child(0).childCount(), 3,
+                         "a pid keeps all its sockets")
 
 
 if __name__ == "__main__":

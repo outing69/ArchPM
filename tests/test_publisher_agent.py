@@ -22,7 +22,8 @@ class AgentServiceActive(unittest.TestCase):
         self.assertEqual(calls[0][4], publisher.AGENT_UNIT)
 
     def test_inactive_failed_or_missing_means_not_active(self):
-        self.assertFalse(publisher.agent_service_active(lambda *a, **k: SimpleNamespace(returncode=3)))
+        self.assertFalse(publisher.agent_service_active(
+            lambda *a, **k: SimpleNamespace(returncode=3)))
 
         def missing(*a, **k):
             raise FileNotFoundError("systemctl")
@@ -34,7 +35,7 @@ class AgentServiceActive(unittest.TestCase):
 
     def test_on_this_machine_it_matches_systemctl(self):
         expected = subprocess.run(["systemctl", "--user", "is-active", "--quiet", "archpm-agent"],
-                                  capture_output=True).returncode == 0
+                                  capture_output=True, check=False).returncode == 0
         self.assertEqual(publisher.agent_service_active(), expected)
 
 

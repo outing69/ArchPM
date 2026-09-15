@@ -118,7 +118,8 @@ class Confirmations(unittest.TestCase):
         self.assertFalse(v.confirm)
 
     def test_dialog_shows_name_owner_and_command_line(self):
-        v = verdict([proc(9000, "firefox", app_name="Firefox", cmdline="/usr/lib/firefox/firefox --new-window")], "KILL")
+        v = verdict([proc(9000, "firefox", app_name="Firefox",
+                          cmdline="/usr/lib/firefox/firefox --new-window")], "KILL")
         self.assertEqual(v.title, "Force kill Firefox?")
         self.assertEqual(v.button, "Force kill")
         self.assertIn("Program: Firefox (firefox), process 9000", v.text)

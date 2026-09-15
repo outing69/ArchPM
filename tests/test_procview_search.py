@@ -111,6 +111,7 @@ class TreeSearch(unittest.TestCase):
     def test_ancestors_of_a_match_are_faint_and_the_match_is_not(self):
         from PySide6.QtCore import Qt
         from PySide6.QtGui import QColor
+
         from archpm.ui import theme
         self.view.search.setText("game")
 
@@ -145,7 +146,8 @@ def app(pid, ppid, name, unit, cpu=0.0, rss=0, app_name="", cmdline=""):
 GROUPED = [
     app(100, 1, "brave", "app-brave@1.service", cpu=5, rss=300, app_name="Brave"),
     app(101, 100, "brave", "app-brave@1.service", cpu=1, rss=100),
-    app(102, 101, "brave", "app-brave@1.service", cpu=20, rss=600, cmdline="/opt/brave/brave --type=renderer"),
+    app(102, 101, "brave", "app-brave@1.service", cpu=20, rss=600,
+        cmdline="/opt/brave/brave --type=renderer"),
     app(200, 1, "steam", "app-steam@2.service", cpu=2, rss=200, app_name="Steam"),
     app(201, 200, "steamwebhelper", "app-steam@2.service", cpu=9, rss=400),
     app(300, 1, "konsole", "app-org.kde.konsole-300.scope", cpu=50, rss=50, app_name="Konsole"),
@@ -185,7 +187,8 @@ class Grouped(unittest.TestCase):
 
     def test_group_row_carries_the_sums_and_the_count(self):
         from archpm.ui.proc_model import COL_CPU, COL_MEM, COL_PID
-        brave = next(n for n in self.model._nodes.values() if n.proc.members and n.proc.name == "brave").proc
+        brave = next(n for n in self.model._nodes.values()
+                     if n.proc.members and n.proc.name == "brave").proc
         self.assertEqual((brave.members, brave.cpu_percent, brave.mem_rss), (3, 26.0, 1000))
         idx = self.model.index_for_pid(brave.pid)
         self.assertEqual(self.model.data(idx.siblingAtColumn(COL_PID)), "", "no pid on a group row")
@@ -196,14 +199,15 @@ class Grouped(unittest.TestCase):
         self.assertIn("RSS instead", tip, "no member has PSS in this fixture")
 
     def test_sorting_orders_groups_by_their_aggregate(self):
-        from archpm.ui.proc_model import COL_CPU, PID_ROLE
         from PySide6.QtCore import Qt
-        from archpm.ui.proc_model import COL_NAME
+
+        from archpm.ui.proc_model import COL_CPU, COL_NAME, PID_ROLE
         self.view.table.sortByColumn(COL_CPU, Qt.SortOrder.DescendingOrder)
         names = [self.proxy.index(r, COL_NAME).data() for r in range(self.proxy.rowCount())]
         self.assertEqual(names, ["Konsole", "Brave", "Steam"], "50 > 26 > 11")
         brave = self.proxy.index(1, 0)
-        members = [self.proxy.index(r, 0, brave).data(PID_ROLE) for r in range(self.proxy.rowCount(brave))]
+        members = [self.proxy.index(r, 0, brave).data(PID_ROLE)
+                   for r in range(self.proxy.rowCount(brave))]
         self.assertEqual(members, [102, 100, 101], "within the group, by their own CPU")
 
     def test_search_matches_a_member_and_keeps_its_group_visible(self):
@@ -235,16 +239,19 @@ class Grouped(unittest.TestCase):
         from archpm.ui.proc_model import COL_NAME, PID_ROLE
         brave = next(self.proxy.index(r, 0) for r in range(self.proxy.rowCount())
                      if self.proxy.index(r, COL_NAME).data() == "Brave")
-        members = {self.proxy.index(r, 0, brave).data(PID_ROLE) for r in range(self.proxy.rowCount(brave))}
+        members = {self.proxy.index(r, 0, brave).data(PID_ROLE)
+                   for r in range(self.proxy.rowCount(brave))}
         self.assertEqual(members, {100, 101, 102, 103})
         self.view.search.setText("renderer")
-        members = {self.proxy.index(r, 0, brave).data(PID_ROLE) for r in range(self.proxy.rowCount(brave))}
+        members = {self.proxy.index(r, 0, brave).data(PID_ROLE)
+                   for r in range(self.proxy.rowCount(brave))}
         self.assertEqual(members, {102}, "the search still filters members")
 
     def test_a_process_that_gets_company_moves_under_a_new_group(self):
         procs = GROUPED + [app(301, 300, "konsole-helper", "app-org.kde.konsole-300.scope")]
         self.view.update_view(Snapshot(system=SystemSample(), procs=procs))
-        self.assertTrue(self.model.index_for_pid(300).parent().isValid(), "konsole now sits in a group")
+        self.assertTrue(self.model.index_for_pid(300).parent().isValid(),
+                        "konsole now sits in a group")
         self.view.update_view(Snapshot(system=SystemSample(), procs=GROUPED))
         self.assertFalse(self.model.index_for_pid(300).parent().isValid(), "and is alone again")
 
@@ -260,6 +267,7 @@ class HiddenPage(unittest.TestCase):
 
     def test_updates_are_deferred_while_hidden_and_applied_on_show(self):
         from PySide6.QtWidgets import QLabel, QStackedWidget
+
         from archpm.actions import UserBackend
         from archpm.ui.procview import ProcessView
         stack = QStackedWidget()
@@ -275,7 +283,8 @@ class HiddenPage(unittest.TestCase):
         self.assertTrue(view.isHidden())
         view.update_view(Snapshot(system=SystemSample(), procs=PROCS))
         self.assertEqual(view.model.rowCount(), 0, "no rows built while hidden")
-        self.assertEqual(len(view.model._last), len(PROCS), "the sample is kept for the game-end path")
+        self.assertEqual(len(view.model._last), len(PROCS),
+                         "the sample is kept for the game-end path")
         newer = PROCS + [proc(9999, 1, "late")]
         view.update_view(Snapshot(system=SystemSample(), procs=newer))
         stack.setCurrentWidget(view)
@@ -293,8 +302,10 @@ class Tooltip(unittest.TestCase):
 
     def test_long_command_line_is_wrapped_and_cut(self):
         from PySide6.QtCore import Qt
-        from archpm.ui.proc_model import COL_CMD, COL_NAME, ProcModel, TIP_WIDTH
-        long_cmd = "/usr/lib/steam/steamwebhelper " + " ".join(f"--flag-{i}=value{i}" for i in range(120))
+
+        from archpm.ui.proc_model import COL_CMD, COL_NAME, TIP_WIDTH, ProcModel
+        long_cmd = "/usr/lib/steam/steamwebhelper " + " ".join(
+            f"--flag-{i}=value{i}" for i in range(120))
         self.assertGreater(len(long_cmd), 1500)
         m = ProcModel(8)
         m.set_mode("flat")

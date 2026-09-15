@@ -227,7 +227,8 @@ class RootPanel(QDialog):
         self._say(f"$ {' '.join(argv)}")
         self._proc = QProcess(self)
         self._proc.finished.connect(lambda *_: self._service_finished(unit, action))
-        self._proc.errorOccurred.connect(lambda _: self._service_finished(unit, action, failed=True))
+        self._proc.errorOccurred.connect(
+            lambda _: self._service_finished(unit, action, failed=True))
         self.setEnabled(False)
         self._proc.start(argv[0], argv[1:])
 

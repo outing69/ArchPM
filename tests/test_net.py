@@ -35,7 +35,8 @@ class Parsing(unittest.TestCase):
         self.assertTrue(steam_loc.listening)
         self.assertFalse(steam_loc.exposed, "127.0.0.1 is only this PC")
         outbound = next(c for c in conns if c.pid == 1504)
-        self.assertEqual((outbound.raddr, outbound.rport, outbound.state), ("198.51.100.7", 443, "ESTAB"))
+        self.assertEqual((outbound.raddr, outbound.rport, outbound.state),
+                         ("198.51.100.7", 443, "ESTAB"))
         v6 = next(c for c in conns if c.pid == 1606)
         self.assertEqual(v6.raddr, "[2001:db8:2::200e]")
         self.assertEqual(sum(1 for c in conns if not c.pid), 3, "sockets we cannot attribute")

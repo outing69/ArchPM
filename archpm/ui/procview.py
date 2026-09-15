@@ -27,8 +27,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ..actions import ActionError, UserBackend
 from .. import signalguard
+from ..actions import ActionError, UserBackend
 from ..appinfo import CATEGORIES
 from ..model import ProcSample
 from . import hints, theme

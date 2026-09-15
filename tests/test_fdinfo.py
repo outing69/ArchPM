@@ -91,10 +91,13 @@ class Parsing(unittest.TestCase):
         self.assertAlmostEqual(c.device_bytes, 60060 * 1024)
 
     def test_resident_beats_the_deprecated_alias_and_total(self):
-        text = "drm-driver:\tamdgpu\ndrm-total-vram:\t300 MiB\ndrm-memory-vram:\t200 MiB\ndrm-resident-vram:\t100 MiB\n"
-        self.assertAlmostEqual(fdinfo.client_from_fields(fdinfo.parse_fdinfo(text)).device_bytes, 100 * 1024 ** 2)
+        text = ("drm-driver:\tamdgpu\ndrm-total-vram:\t300 MiB\n"
+                "drm-memory-vram:\t200 MiB\ndrm-resident-vram:\t100 MiB\n")
+        client = fdinfo.client_from_fields(fdinfo.parse_fdinfo(text))
+        self.assertAlmostEqual(client.device_bytes, 100 * 1024 ** 2)
         text = "drm-driver:\tamdgpu\ndrm-total-vram:\t300 MiB\n"
-        self.assertAlmostEqual(fdinfo.client_from_fields(fdinfo.parse_fdinfo(text)).device_bytes, 300 * 1024 ** 2)
+        client = fdinfo.client_from_fields(fdinfo.parse_fdinfo(text))
+        self.assertAlmostEqual(client.device_bytes, 300 * 1024 ** 2)
 
     def test_i915_counts_local_memory_not_system_memory(self):
         c = fdinfo.client_from_fields(fdinfo.parse_fdinfo(I915.format(render=1)))
@@ -138,10 +141,12 @@ class Scanning(unittest.TestCase):
         self.proc.add(1, 3, "/dev/dri/renderD128", I915.format(render=0))
         self.src.processes()
         (self.proc.root / "1" / "fdinfo" / "3").write_text(
-            I915.format(render=3_000_000_000).replace("drm-engine-video:\t0 ns", "drm-engine-video:\t3000000000 ns"))
+            I915.format(render=3_000_000_000).replace("drm-engine-video:\t0 ns",
+                                                      "drm-engine-video:\t3000000000 ns"))
         self.now += 1.0
         busy = self.src.processes()[1][0]
-        self.assertEqual(busy, 100.0, "render alone is 300% of a second, capped; video/2 is 150, capped")
+        self.assertEqual(busy, 100.0,
+                         "render alone is 300% of a second, capped; video/2 is 150, capped")
 
     def test_xe_share_comes_from_cycles(self):
         self.proc.add(1, 3, "/dev/dri/renderD128", XE.format(cycles=1000, total=10000))

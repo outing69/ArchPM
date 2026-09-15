@@ -81,6 +81,7 @@ class Rail(unittest.TestCase):
 
     def test_the_slide_is_one_eased_animation_that_leaves_the_page_alone(self):
         from PySide6.QtCore import QEasingCurve, QEvent, QObject, QPropertyAnimation
+
         from archpm.ui.navrail import COLLAPSED, EXPANDED
         self.assertIsInstance(self.rail.anim, QPropertyAnimation)
         self.assertEqual(self.rail.anim.easingCurve().type(), QEasingCurve.Type.OutCubic)
@@ -119,7 +120,8 @@ class Rail(unittest.TestCase):
         # start; the frames themselves ask for none, and the page stays put
         self.assertLessEqual(counts["layout"], 1, counts)
         self.assertEqual(counts["page geometry"], 0, counts)
-        self.assertEqual(counts["paint"], 0, "the page under the rail is not repainted while it expands")
+        self.assertEqual(counts["paint"], 0,
+                         "the page under the rail is not repainted while it expands")
         self.rail.set_expanded(False)
         self.settle()
         self.assertEqual(widths[-1], COLLAPSED)
@@ -158,7 +160,8 @@ class Rail(unittest.TestCase):
         self.app.processEvents()
         QTest.keyClick(self.rail, Qt.Key.Key_Down)
         QTest.keyClick(self.rail, Qt.Key.Key_Down)
-        self.assertEqual(self.shell.pages.currentIndex(), 0, "moving the cursor selects nothing yet")
+        self.assertEqual(self.shell.pages.currentIndex(), 0,
+                         "moving the cursor selects nothing yet")
         QTest.keyClick(self.rail, Qt.Key.Key_Return)
         self.assertEqual(self.shell.pages.currentIndex(), 2)
         QTest.keyClick(self.rail, Qt.Key.Key_Up)
@@ -205,8 +208,10 @@ class Rail(unittest.TestCase):
 
     def test_icon_falls_back_to_the_second_name(self):
         from archpm.ui.navrail import PAGE_ICONS, pick_icon_name
-        self.assertEqual(pick_icon_name("missing", "present", has=lambda n: n == "present"), "present")
-        self.assertEqual(pick_icon_name("present", "other", has=lambda n: n == "present"), "present")
+        self.assertEqual(pick_icon_name("missing", "present", has=lambda n: n == "present"),
+                         "present")
+        self.assertEqual(pick_icon_name("present", "other", has=lambda n: n == "present"),
+                         "present")
         for label in LABELS:
             name, fallback = PAGE_ICONS[label]
             self.assertTrue(name and fallback and name != fallback, label)

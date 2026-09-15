@@ -20,10 +20,12 @@ class Keys(unittest.TestCase):
     def test_app_unit_wins_even_when_nested(self):
         self.assertEqual(grouping.unit_of(SLICE + "app-org.kde.konsole-5694.scope/main.scope"),
                          "app-org.kde.konsole-5694.scope")
-        self.assertEqual(grouping.unit_of(SLICE + "app-steam@ecab.service"), "app-steam@ecab.service")
+        self.assertEqual(grouping.unit_of(SLICE + "app-steam@ecab.service"),
+                         "app-steam@ecab.service")
 
     def test_plain_service_is_a_unit_too(self):
-        path = "/user.slice/user-1000.slice/user@1000.service/session.slice/plasma-kwin_wayland.service"
+        path = ("/user.slice/user-1000.slice/user@1000.service/session.slice/"
+                "plasma-kwin_wayland.service")
         self.assertEqual(grouping.unit_of(path), "plasma-kwin_wayland.service")
         self.assertEqual(grouping.unit_of("/system.slice/sshd.service"), "sshd.service")
 
@@ -52,12 +54,14 @@ class Merge(unittest.TestCase):
 
     def brave(self):
         exe = ["/opt/brave-bin/brave"]
+        scope = SLICE + "app-org.chromium.Chromium-4582.scope"
+        unit = SLICE + "app-brave@1f72.service"
         return [
-            proc(4582, "brave", ppid=1014, cgroup=SLICE + "app-org.chromium.Chromium-4582.scope", argv=exe, program=True, app_name="Brave"),
-            proc(4600, "brave", ppid=4582, cgroup=SLICE + "app-org.chromium.Chromium-4582.scope", argv=exe),
-            proc(4597, "brave", ppid=4582, cgroup=SLICE + "app-brave@1f72.service", argv=exe + ["--type=zygote"]),
-            proc(4598, "brave", ppid=4582, cgroup=SLICE + "app-brave@1f72.service", argv=exe + ["--type=utility"]),
-            proc(4700, "brave", ppid=4597, cgroup=SLICE + "app-brave@1f72.service", argv=exe + ["--type=renderer"]),
+            proc(4582, "brave", ppid=1014, cgroup=scope, argv=exe, program=True, app_name="Brave"),
+            proc(4600, "brave", ppid=4582, cgroup=scope, argv=exe),
+            proc(4597, "brave", ppid=4582, cgroup=unit, argv=exe + ["--type=zygote"]),
+            proc(4598, "brave", ppid=4582, cgroup=unit, argv=exe + ["--type=utility"]),
+            proc(4700, "brave", ppid=4597, cgroup=unit, argv=exe + ["--type=renderer"]),
         ]
 
     def test_brave_becomes_one_group_led_by_its_main_process(self):
@@ -69,8 +73,10 @@ class Merge(unittest.TestCase):
 
     def test_a_different_executable_is_not_folded(self):
         procs = self.brave() + [
-            proc(9000, "steam", ppid=1014, cgroup=SLICE + "app-steam@2.service", argv=["/usr/bin/steam"]),
-            proc(9001, "game.sh", ppid=9000, cgroup=SLICE + "app-game@3.service", argv=["/bin/sh", "game.sh"]),
+            proc(9000, "steam", ppid=1014, cgroup=SLICE + "app-steam@2.service",
+                 argv=["/usr/bin/steam"]),
+            proc(9001, "game.sh", ppid=9000, cgroup=SLICE + "app-game@3.service",
+                 argv=["/bin/sh", "game.sh"]),
         ]
         groups = grouping.build_groups(procs)
         self.assertIn("cgroup:app-steam@2.service", groups)
@@ -131,7 +137,8 @@ class Summary(unittest.TestCase):
 
     def test_the_root_program_names_the_group(self):
         g = grouping.summarize(-1, "cgroup:x", self.members())
-        self.assertEqual((g.name, g.app_name, g.icon, g.category), ("brave", "Brave Web Browser", "brave", "Browser"))
+        self.assertEqual((g.name, g.app_name, g.icon, g.category),
+                         ("brave", "Brave Web Browser", "brave", "Browser"))
         self.assertTrue(g.program)
         self.assertEqual(g.cmdline, "/opt/brave/brave")
 

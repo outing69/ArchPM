@@ -85,7 +85,8 @@ class ServiceRun(unittest.TestCase):
         def fake(*args, timeout=30):
             calls.append(args)
             return "active" if args[0] == "show" else ""
-        state = self._with_fake(fake, lambda: actions.UserBackend().service("restart", "archpm-agent"))
+        state = self._with_fake(
+            fake, lambda: actions.UserBackend().service("restart", "archpm-agent"))
         self.assertEqual(state, "active")
         self.assertEqual(calls[0], ("restart", "--", "archpm-agent.service"))
         self.assertEqual(calls[1][:1], ("show",))

@@ -224,8 +224,9 @@ class NetworkView(QWidget):
             if len(members) == 1:
                 self._add_sockets(top, members[0], name, q)
             else:
-                members = sorted(members, key=lambda p: (-(p.rx_bps + p.tx_bps), -p.established, p.pid))
-                for p in members:
+                ordered = sorted(members,
+                                 key=lambda p: (-(p.rx_bps + p.tx_bps), -p.established, p.pid))
+                for p in ordered:
                     if q and q not in name.lower() and not self._matches(q, p, name):
                         continue
                     key = f"{name}/{p.pid}"
@@ -241,7 +242,8 @@ class NetworkView(QWidget):
                     top.addChild(mid)
                     if opened:
                         open_mids.append(mid)
-            self.tree.addTopLevelItem(top)      # expand only once in the tree: the signals fire then
+            # expand only once in the tree: the signals fire then
+            self.tree.addTopLevelItem(top)
             if name in self._expanded or q:     # a filter opens the programs, not their processes
                 top.setExpanded(True)
             for mid in open_mids:

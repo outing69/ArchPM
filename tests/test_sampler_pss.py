@@ -32,9 +32,11 @@ class Cadence(unittest.TestCase):
         grouped_every_tick = set.intersection(*[
             {p.pid for g in build_groups(snap.procs).values() if len(g) >= 2 for p in g}
             for snap in snaps])
-        self.assertTrue(grouped_every_tick, "this machine has at least one steady multi-process application")
+        self.assertTrue(grouped_every_tick,
+                        "this machine has at least one steady multi-process application")
         for r in reads:
-            self.assertTrue(set(r) <= {p.pid for snap in snaps for p in snap.procs}, "only members of groups")
+            self.assertTrue(set(r) <= {p.pid for snap in snaps for p in snap.procs},
+                            "only members of groups")
         # over any five consecutive ticks every steady grouped pid is read exactly once
         for start in (0, PSS_EVERY):
             window = reads[start:start + PSS_EVERY]
@@ -50,7 +52,8 @@ class Cadence(unittest.TestCase):
             else:
                 self.assertTrue(all(pid % PSS_SLOTS == slot for pid in r))
         for snap in snaps[PSS_EVERY:]:
-            self.assertTrue(all(p.mem_pss == 4096 for p in snap.procs if p.pid in grouped_every_tick))
+            self.assertTrue(all(p.mem_pss == 4096
+                                for p in snap.procs if p.pid in grouped_every_tick))
 
     def test_the_agent_can_switch_it_off(self):
         s = Sampler(None, group_memory=False)

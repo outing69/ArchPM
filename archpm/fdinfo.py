@@ -58,7 +58,7 @@ def parse_size(value: str) -> float:
 def parse_count(value: str) -> int:
     """"500727657 ns" or "1234" -> int."""
     try:
-        return int(value.split()[0])
+        return int(value.split(maxsplit=1)[0])
     except (ValueError, IndexError):
         return 0
 

@@ -17,11 +17,23 @@ theme that lacks one name does not leave the rail blank.
 from __future__ import annotations
 
 from PySide6.QtCore import (
-    QAbstractAnimation, QEasingCurve, QPropertyAnimation, QSettings, QSize, Qt, Signal,
+    QAbstractAnimation,
+    QEasingCurve,
+    QPropertyAnimation,
+    QSettings,
+    QSize,
+    Qt,
+    Signal,
 )
 from PySide6.QtGui import QColor, QIcon, QKeyEvent, QPainter, QPalette
 from PySide6.QtWidgets import (
-    QHBoxLayout, QStackedWidget, QStyle, QStyleOption, QToolButton, QVBoxLayout, QWidget,
+    QHBoxLayout,
+    QStackedWidget,
+    QStyle,
+    QStyleOption,
+    QToolButton,
+    QVBoxLayout,
+    QWidget,
 )
 
 from . import theme
@@ -130,7 +142,9 @@ class NavRail(QWidget):
                 padding: 0 10px; text-align: left; font-weight: 600;
             }}
             #navrail QToolButton:hover {{ color: {theme.TEXT}; background: {theme.SURFACE_ALT}; }}
-            #navrail QToolButton:checked {{ color: {theme.ACCENT}; border-left: 2px solid {theme.ACCENT}; }}
+            #navrail QToolButton:checked {{
+                color: {theme.ACCENT}; border-left: 2px solid {theme.ACCENT};
+            }}
             #navrail QToolButton[cursor="true"] {{ background: {theme.SURFACE_HI}; }}
         """)
         self._apply_width()
