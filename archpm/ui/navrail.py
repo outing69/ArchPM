@@ -2,8 +2,12 @@
 
 Collapsed it is a narrow strip of icons with a hamburger button on top.
 Hovering expands it to icon plus label as an overlay over the page, so the
-page does not reflow while the mouse moves. The hamburger pins it open; then
-the rail takes real width and the page shifts once. Tab reaches the rail,
+page does not reflow while the mouse moves. The width change is one property
+animation with an easing curve, and it drives a plain resize: a fixed-width
+change would invalidate the shell's layout on every frame although the rail
+is not in it. The rail declares itself opaque, so the page beneath is not
+repainted for every frame either. The hamburger pins it open; then the rail
+takes real width and the page shifts once. Tab reaches the rail,
 Up/Down move between items, Enter or Space selects; every item has an
 accessible name and, while collapsed, a tooltip with its label.
 
@@ -12,15 +16,20 @@ theme that lacks one name does not leave the rail blank.
 """
 from __future__ import annotations
 
-from PySide6.QtCore import QSettings, QSize, Qt, Signal
-from PySide6.QtGui import QColor, QIcon, QKeyEvent, QPalette
-from PySide6.QtWidgets import QHBoxLayout, QStackedWidget, QToolButton, QVBoxLayout, QWidget
+from PySide6.QtCore import (
+    QAbstractAnimation, QEasingCurve, QPropertyAnimation, QSettings, QSize, Qt, Signal,
+)
+from PySide6.QtGui import QColor, QIcon, QKeyEvent, QPainter, QPalette
+from PySide6.QtWidgets import (
+    QHBoxLayout, QStackedWidget, QStyle, QStyleOption, QToolButton, QVBoxLayout, QWidget,
+)
 
 from . import theme
 
 COLLAPSED = 52      # px: icon only
 EXPANDED = 200      # px: icon and label
 ITEM_H = 44
+SLIDE_MS = 160      # the expand and collapse animation
 ICON = QSize(22, 22)
 SETTINGS_KEY = "nav_pinned"
 
@@ -69,6 +78,11 @@ class NavRail(QWidget):
         # itself and paints the rule instead.
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setAutoFillBackground(True)
+        # Every pixel is painted by the stylesheet rule, so the backing store
+        # need not paint the page underneath first: without this, each frame
+        # of the animation repainted the page as well. Qt then also skips its
+        # own styled-background pass, so paintEvent below draws the rule.
+        self.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent, True)
         pal = self.palette()
         pal.setColor(QPalette.ColorRole.Window, QColor(theme.SURFACE))
         self.setPalette(pal)
@@ -81,6 +95,18 @@ class NavRail(QWidget):
         lay = QVBoxLayout(self)
         lay.setContentsMargins(4, 6, 4, 6)
         lay.setSpacing(2)
+        # The width is set by resize() from the animation, never by the
+        # layout: explicit bounds keep the layout from raising the minimum
+        # to the labels' width while they are showing.
+        lay.setSizeConstraint(QVBoxLayout.SizeConstraint.SetNoConstraint)
+        self.setMinimumWidth(COLLAPSED)
+        self.setMaximumWidth(EXPANDED)
+        # On the built-in size property: a Python-side Property for the width
+        # alone leaves an uncollectable descriptor behind in PySide.
+        self.anim = QPropertyAnimation(self, b"size", self)
+        self.anim.setDuration(SLIDE_MS)
+        self.anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+        self.anim.finished.connect(self._slide_done)
         self.menu = QToolButton()
         self.menu.setCheckable(True)
         self.menu.setIcon(theme_icon(*MENU_ICON))
@@ -120,7 +146,9 @@ class NavRail(QWidget):
         b.setAccessibleName(label)
         b.setFocusPolicy(Qt.FocusPolicy.NoFocus)   # the rail holds the focus
         b.setFixedHeight(ITEM_H)
-        b.setSizePolicy(b.sizePolicy().horizontalPolicy().Expanding, b.sizePolicy().verticalPolicy())
+        # Ignored: the rail's width decides, so while it slides the label is
+        # clipped at the rail's edge instead of the button overflowing it.
+        b.setSizePolicy(b.sizePolicy().horizontalPolicy().Ignored, b.sizePolicy().verticalPolicy())
         index = len(self.items)
         b.clicked.connect(lambda _=False, i=index: self.set_current(i))
         self.items.append(b)
@@ -166,15 +194,43 @@ class NavRail(QWidget):
         self.pinned_changed.emit(on)
 
     def _apply_width(self) -> None:
+        """Slide to the width the state asks for. Expanding shows the labels
+        from the first frame, so they appear from under the edge; collapsing
+        keeps them until the slide is done. Hidden, the width is set at once."""
         wide = self.expanded
-        style = (Qt.ToolButtonStyle.ToolButtonTextBesideIcon if wide
-                 else Qt.ToolButtonStyle.ToolButtonIconOnly)
         self.menu.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
         self.menu.setToolTip("Unpin the menu" if self.pinned else "Pin the menu open")
+        target = EXPANDED if wide else COLLAPSED
+        if wide:
+            self._set_labels(True)
+        self.anim.stop()
+        if not self.isVisible():
+            self.resize(target, self.height())
+            self._slide_done()
+            return
+        self.anim.setStartValue(self.size())
+        self.anim.setEndValue(QSize(target, self.height()))
+        self.anim.start()
+
+    def _slide_done(self) -> None:
+        if not self.expanded:
+            self._set_labels(False)
+
+    def _set_labels(self, on: bool) -> None:
+        style = (Qt.ToolButtonStyle.ToolButtonTextBesideIcon if on
+                 else Qt.ToolButtonStyle.ToolButtonIconOnly)
         for b in self.items:
             b.setToolButtonStyle(style)
-            b.setToolTip("" if wide else b.text())
-        self.setFixedWidth(EXPANDED if wide else COLLAPSED)
+            b.setToolTip("" if on else b.text())
+
+    def sliding(self) -> bool:
+        return self.anim.state() == QAbstractAnimation.State.Running
+
+    def paintEvent(self, event) -> None:
+        opt = QStyleOption()
+        opt.initFrom(self)
+        painter = QPainter(self)
+        self.style().drawPrimitive(QStyle.PrimitiveElement.PE_Widget, opt, painter, self)
 
     # -- hover and keyboard ----------------------------------------------------
     def enterEvent(self, event) -> None:
@@ -264,4 +320,6 @@ class NavShell(QWidget):
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
         self.rail.setGeometry(0, 0, self.rail.width(), self.height())
+        if self.rail.sliding():            # the slide ends at the new height too
+            self.rail.anim.setEndValue(QSize(self.rail.anim.endValue().width(), self.height()))
         self.rail.raise_()
