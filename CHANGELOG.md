@@ -3,6 +3,12 @@
 All notable changes, newest first. Versions are git tags on
 [github.com/outing69/ArchPM](https://github.com/outing69/ArchPM).
 
+## 0.2.10 (2026-09-15)
+
+- Network: process rows are closed by default and open only by hand. The
+  filter opened them along with the programs, and they stayed open after the
+  filter was cleared. Programs and hand-opened rows behave as before.
+
 ## 0.2.9 (2026-09-15)
 
 - Network: a program that holds sockets in more than one process, like a
