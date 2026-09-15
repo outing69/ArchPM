@@ -14,3 +14,8 @@ status.json
 packaging/aur/src/
 packaging/aur/pkg/
 packaging/aur/*.pkg.tar.zst
+
+# never commit credentials
+.env
+.env.*
+.netrc
