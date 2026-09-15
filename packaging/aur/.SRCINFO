@@ -20,6 +20,6 @@ pkgbase = archpm
 	optdepends = nvidia-utils: NVIDIA GPU telemetry via nvidia-smi
 	optdepends = hwdata: proper names for AMD GPUs
 	source = archpm-0.2.10.tar.gz::https://github.com/outing69/ArchPM/archive/refs/tags/v0.2.10.tar.gz
-	sha256sums = f6eddd6fe89088ec6b8501e0a8ddfccb8dd69969a1151430d8a4d1d5c3935460
+	sha256sums = dc257545f71ea22890497b79604bede026ed815ecffe9ef1c67d7fa8209b12ed
 
 pkgname = archpm
