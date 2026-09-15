@@ -3,6 +3,12 @@
 All notable changes, newest first. Versions are git tags on
 [github.com/outing69/ArchPM](https://github.com/outing69/ArchPM).
 
+## 0.2.11 (2026-09-15)
+
+- The navigation rail slides between its two widths with an eased 160 ms
+  animation instead of jumping. The page beneath it is no longer repainted
+  while it expands, and the window layout is not run for every frame.
+
 ## 0.2.10 (2026-09-15)
 
 - Network: process rows are closed by default and open only by hand. The
