@@ -14,7 +14,7 @@ optdepends=('plasma-desktop: the Monitor and Network widgets'
             'hwdata: proper names for AMD GPUs')
 makedepends=('python-build' 'python-installer' 'python-wheel' 'python-setuptools')
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
-sha256sums=('87ea88ed3feadc3ffb9f12fee8e5777bff84830e817f0f9f36cc19bd3a6578f4')
+sha256sums=('8be5db17edee6c961fe65a6924349b19fd033dbce168093b5c0ceceb22c5a0ad')
 
 _src="ArchPM-$pkgver"
 _helper=/usr/lib/archpm/archpm-helper
