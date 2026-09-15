@@ -114,8 +114,8 @@ class NetworkView(QWidget):
             self.tree.setColumnWidth(col, w)
         hints.header_tooltips(self.tree, HINT_KEYS)
         hints.attach_header(header, HINT_KEYS, self.help_requested.emit)
-        self.tree.itemExpanded.connect(lambda i: self._expanded.add(i.text(COL_NAME)))
-        self.tree.itemCollapsed.connect(lambda i: self._expanded.discard(i.text(COL_NAME)))
+        self.tree.itemExpanded.connect(lambda i: self._toggled(i, True))
+        self.tree.itemCollapsed.connect(lambda i: self._toggled(i, False))
         outer.addWidget(self.tree, 1)
 
     # -- data -----------------------------------------------------------------
@@ -187,7 +187,9 @@ class NetworkView(QWidget):
             self.lbl_doors.setText("No program is accepting connections from the network right "
                                    "now. Everything listening is reachable from this PC only.")
 
-        # programs and their connections, grouped by program name
+        # programs and their connections, grouped by program name; a program
+        # whose sockets sit in several processes gets one row per process in
+        # between, so Brave shows which of its processes holds what
         groups: dict[str, list[ProcNet]] = {}
         for p in net.procs.values():
             groups.setdefault(self._name(p), []).append(p)
@@ -198,8 +200,7 @@ class NetworkView(QWidget):
             tx = sum(p.tx_bps for p in members)
             estab = sum(p.established for p in members)
             listen = sum(len(p.listening) for p in members)
-            if q and q not in name.lower() and not any(
-                    q in self._describe(c).lower() for c in conns):
+            if q and q not in name.lower() and not any(self._matches(q, p, name) for p in members):
                 continue
             rows.append((name, members, conns, rx, tx, estab, listen))
         rows.sort(key=lambda r: (-(r[3] + r[4]), -r[5], r[0].lower()))
@@ -208,37 +209,110 @@ class NetworkView(QWidget):
         self.tree.setUpdatesEnabled(False)
         self.tree.clear()
         for name, members, conns, rx, tx, estab, listen in rows:
-            pids = ", ".join(str(p.pid) for p in members[:4])
-            top = QTreeWidgetItem([name, str(estab), _rate(rx), _rate(tx),
-                                   str(listen) if listen else "",
-                                   f"{len(conns)} socket(s), pid {pids}"])
+            if len(members) == 1:
+                info = f"{len(conns)} socket(s), pid {members[0].pid}"
+            else:
+                info = f"{len(conns)} socket(s) in {len(members)} processes"
+            top = self._row(name, estab, rx, tx, listen, info, conns)
+            top.setData(COL_NAME, Qt.ItemDataRole.UserRole, name)
             proc = self._procs.get(members[0].pid)
             if proc is not None and proc.icon:
                 icon = app_icon(proc.icon)
                 if not icon.isNull():
                     top.setIcon(COL_NAME, icon)
-            for col in (COL_CONNS, COL_RX, COL_TX, COL_LISTEN):
-                top.setTextAlignment(col, RIGHT)
-            top.setForeground(COL_INFO, QColor(theme.MUTED))
-            if listen:
-                open_door = any(c.exposed for c in conns)
-                top.setForeground(COL_LISTEN, QColor(theme.WARN if open_door else theme.MUTED))
-            for c in sorted(conns, key=lambda c: (not c.listening, c.local_only, c.raddr, c.rport)):
-                if q and q not in self._describe(c).lower() and q not in name.lower():
-                    continue
-                child = QTreeWidgetItem(["", "", "", "", "", self._describe(c)])
-                child.setForeground(COL_INFO, QColor(theme.WARN if c.exposed else theme.TEXT))
-                child.setFont(COL_INFO, mono(9))
-                top.addChild(child)
-            self.tree.addTopLevelItem(top)
+            open_mids = []
+            if len(members) == 1:
+                self._add_sockets(top, members[0], name, q)
+            else:
+                members = sorted(members, key=lambda p: (-(p.rx_bps + p.tx_bps), -p.established, p.pid))
+                for p in members:
+                    if q and q not in name.lower() and not self._matches(q, p, name):
+                        continue
+                    key = f"{name}/{p.pid}"
+                    opened = key in self._expanded or bool(q)
+                    brief = f"pid {p.pid} · {len(p.conns)} socket(s)"
+                    ports = self._ports(p)
+                    info = brief if opened or not ports else f"{brief} · {ports}"
+                    mid = self._row(self._proc_name(p), p.established, p.rx_bps, p.tx_bps,
+                                    len(p.listening), info, p.conns)
+                    mid.setData(COL_NAME, Qt.ItemDataRole.UserRole, key)
+                    mid.setData(COL_INFO, Qt.ItemDataRole.UserRole, (brief, ports))
+                    self._add_sockets(mid, p, name, q)
+                    top.addChild(mid)
+                    if opened:
+                        open_mids.append(mid)
+            self.tree.addTopLevelItem(top)      # expand only once in the tree: the signals fire then
             if name in self._expanded or q:
                 top.setExpanded(True)
+            for mid in open_mids:
+                mid.setExpanded(True)
         self.tree.verticalScrollBar().setValue(scroll)
         self.tree.setUpdatesEnabled(True)
         n_procs = len(net.procs)
         note = "" if net.tcp_rates else "  ·  ss not found: no speeds"
         self.lbl_state.setText(f"{n_procs} programs · {net.other_sockets} sockets of other users"
                                f"{note}")
+
+    def _row(self, name: str, estab: int, rx: float, tx: float, listen: int, info: str,
+             conns: list[Conn]) -> QTreeWidgetItem:
+        """A program or process row: the counts and rates, the details muted,
+        the listening count amber when one of the sockets is an open door."""
+        item = QTreeWidgetItem([name, str(estab), _rate(rx), _rate(tx),
+                                str(listen) if listen else "", info])
+        for col in (COL_CONNS, COL_RX, COL_TX, COL_LISTEN):
+            item.setTextAlignment(col, RIGHT)
+        item.setForeground(COL_INFO, QColor(theme.MUTED))
+        if listen:
+            open_door = any(c.exposed for c in conns)
+            item.setForeground(COL_LISTEN, QColor(theme.WARN if open_door else theme.MUTED))
+        return item
+
+    def _add_sockets(self, parent: QTreeWidgetItem, p: ProcNet, name: str, q: str) -> None:
+        whole = not q or q in name.lower() or q in self._proc_name(p).lower() or q == str(p.pid)
+        for c in sorted(p.conns, key=lambda c: (not c.listening, c.local_only, c.raddr, c.rport)):
+            if not whole and q not in self._describe(c).lower():
+                continue
+            child = QTreeWidgetItem(["", "", "", "", "", self._describe(c)])
+            child.setForeground(COL_INFO, QColor(theme.WARN if c.exposed else theme.TEXT))
+            child.setFont(COL_INFO, mono(9))
+            parent.addChild(child)
+
+    def _matches(self, q: str, p: ProcNet, name: str) -> bool:
+        return (q in name.lower() or q in self._proc_name(p).lower() or q == str(p.pid)
+                or any(q in self._describe(c).lower() for c in p.conns))
+
+    def _toggled(self, item: QTreeWidgetItem, expanded: bool) -> None:
+        key = item.data(COL_NAME, Qt.ItemDataRole.UserRole)
+        if key is None:
+            return
+        (self._expanded.add if expanded else self._expanded.discard)(key)
+        summary = item.data(COL_INFO, Qt.ItemDataRole.UserRole)
+        if summary:                       # a process row: the ports only while collapsed
+            brief, ports = summary
+            item.setText(COL_INFO, brief if expanded or not ports else f"{brief} · {ports}")
+
+    def _ports(self, p: ProcNet) -> str:
+        """The ports of one process on one line: what it listens on, then the
+        remote ports it talks to."""
+        listen = sorted({c.lport for c in p.conns if c.listening})
+        remote = sorted({c.rport for c in p.conns if c.raddr and not c.listening})
+        parts = []
+        if listen:
+            parts.append("listening " + self._port_list(listen))
+        if remote:
+            parts.append("→ " + self._port_list(remote))
+        return " · ".join(parts)
+
+    def _port_list(self, ports: list[int], cap: int = 5) -> str:
+        text = ", ".join(self._port(port) for port in ports[:cap])
+        return text if len(ports) <= cap else f"{text} +{len(ports) - cap} more"
+
+    def _proc_name(self, p: ProcNet) -> str:
+        """The process's own name (brave, steamwebhelper), unlike the program's."""
+        proc = self._procs.get(p.pid)
+        if proc is not None and proc.name:
+            return proc.name
+        return p.name or f"pid {p.pid}"
 
     def _port(self, port: int) -> str:
         svc = self.service(port)

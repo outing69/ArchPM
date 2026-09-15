@@ -370,7 +370,9 @@ HINTS: dict[str, Hint] = {
                       "Listening / open door",
                       "KDE Connect, Steam and a printer helper are normal here. A "
                       "program you do not recognise deserves a look."),
-    "net.program": Hint("The program; expand it to see each connection.", "Connection"),
+    "net.program": Hint("The program; expand it to see each connection. A program that "
+                        "holds sockets in several processes, like a browser, shows one row "
+                        "per process in between.", "Connection"),
     "net.connections": Hint("Open conversations with another computer.", "Connection",
                             "A browser opens dozens; a game a handful."),
     "net.download": Hint("Bytes received per second over TCP by this program.",
@@ -378,8 +380,8 @@ HINTS: dict[str, Hint] = {
     "net.upload": Hint("Bytes sent per second over TCP by this program.", "TCP and UDP"),
     "net.listening": Hint("Ports this program waits on; orange when reachable from "
                           "other devices.", "Listening / open door"),
-    "net.details": Hint("Sockets and process ids; expand the row for each address and port.",
-                        "Port"),
+    "net.details": Hint("Sockets and process ids; a process row lists its ports here while "
+                        "closed. Expand a row for each address and port.", "Port"),
     # -- Startup ------------------------------------------------------------------
     "startup.on": Hint("Ticked: starts at your next login. Untick to stop that; nothing "
                        "is closed now.", "Autostart entry"),
