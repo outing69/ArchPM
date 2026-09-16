@@ -24,7 +24,22 @@ from ..sysinfo import cpu_model, short_cpu_name
 from . import hints, theme
 from .history import ProcHistory
 from .proc_model import age_text
-from .widgets import Card, CoreGrid, Graph, StatTile, TextLink, app_icon, human_bytes, mono
+from .widgets import (
+    Card,
+    CoreGrid,
+    FlowLayout,
+    Graph,
+    StatTile,
+    TextLink,
+    TileRow,
+    app_icon,
+    human_bytes,
+    mono,
+)
+
+# Below this page width the four cards stand in one column instead of two,
+# so a graph keeps a readable width; the page scrolls, so height is free.
+ONE_COLUMN_BELOW = 720
 
 
 class GameCard(Card):
@@ -70,8 +85,6 @@ class GameCard(Card):
         self.lbl_sub.setFont(mono("small"))
         self.lbl_sub.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         left.addWidget(self.lbl_sub)
-        self.tiles = QHBoxLayout()
-        self.tiles.setSpacing(theme.CARD_GAP)
         self.t_cpu = StatTile("cpu", "CPU")
         self.t_gpu = StatTile("gpu", "GPU")
         self.t_vram = StatTile("vram", "GPU")
@@ -81,9 +94,11 @@ class GameCard(Card):
         for t, key in ((self.t_cpu, "game.cpu"), (self.t_gpu, "game.gpu"),
                        (self.t_vram, "game.vram"), (self.t_mem, "game.ram"),
                        (self.t_thr, "game.threads"), (self.t_cores, "game.cores")):
-            self.tiles.addWidget(t, 1)   # equal widths, like the six tiles at the top
             hints.attach(t, key, self.help_requested.emit)
-        left.addLayout(self.tiles)
+        # equal widths, like the six tiles at the top; two rows of three when narrow
+        self.tiles = TileRow([self.t_cpu, self.t_gpu, self.t_vram, self.t_mem,
+                              self.t_thr, self.t_cores], theme.CARD_GAP)
+        left.addWidget(self.tiles)
         left.addStretch(1)
         row.addLayout(left, 3)
 
@@ -95,8 +110,7 @@ class GameCard(Card):
         self._set_tiles_visible(False)
 
     def _set_tiles_visible(self, on: bool) -> None:
-        for t in (self.t_cpu, self.t_gpu, self.t_vram, self.t_mem, self.t_thr, self.t_cores):
-            t.setVisible(on)
+        self.tiles.setVisible(on)
         self.graph.setVisible(on)
         self.btn_kill.setVisible(on)
 
@@ -245,11 +259,12 @@ class Dashboard(QWidget):
         outer.setSpacing(theme.CARD_GAP)
 
         # -- header: what machine is this, and the entry point to root -----
-        head = QHBoxLayout()
-        head.setSpacing(12)
+        head = FlowLayout(spacing=12)   # the controls drop to a second row when narrow
         self.lbl_machine = QLabel()
         self.lbl_machine.setFont(mono("body"))
         self.lbl_machine.setTextFormat(Qt.TextFormat.RichText)
+        self.lbl_machine.setWordWrap(True)      # two lines in a narrow window
+        self.lbl_machine.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         head.addWidget(self.lbl_machine)
         head.addStretch(1)
         self.lbl_root_state = QLabel()
@@ -279,9 +294,7 @@ class Dashboard(QWidget):
         self._render_machine(0.0)
         self.set_root_state(False)
 
-        # -- tiles ---------------------------------------------------------
-        tiles = QHBoxLayout()
-        tiles.setSpacing(theme.CARD_GAP)
+        # -- tiles: six across, or two rows of three when the window is narrow
         self.t_cpu = StatTile("cpu", "CPU")
         self.t_cputemp = StatTile("cpu temp", "CPU")
         self.t_gpu = StatTile("gpu", "GPU")
@@ -291,13 +304,15 @@ class Dashboard(QWidget):
         for t, key in ((self.t_cpu, "tile.cpu"), (self.t_cputemp, "tile.cpu temp"),
                        (self.t_gpu, "tile.gpu"), (self.t_gputemp, "tile.gpu temp"),
                        (self.t_mem, "tile.memory"), (self.t_vram, "tile.vram")):
-            tiles.addWidget(t)
             hints.attach(t, key, self.help_requested.emit)
-        outer.addLayout(tiles)
+        self.tiles = TileRow([self.t_cpu, self.t_cputemp, self.t_gpu, self.t_gputemp,
+                              self.t_mem, self.t_vram], theme.CARD_GAP)
+        outer.addWidget(self.tiles)
 
         grid = QGridLayout()
         grid.setSpacing(theme.CARD_GAP)
         outer.addLayout(grid, 1)
+        self.grid = grid
 
         # -- CPU -----------------------------------------------------------
         cpu_card = Card("processor", color="CPU")
@@ -315,6 +330,7 @@ class Dashboard(QWidget):
         gpu_card.body.addWidget(self.g_gpu, 1)
         hints.attach(self.g_gpu, "graph.gpu", self.help_requested.emit)
         self.gpu_sub = QLabel("--")
+        self.gpu_sub.setWordWrap(True)
         self.gpu_sub.setFont(mono("small"))
         theme.style(self.gpu_sub, "color: {MUTED};")
         gpu_card.body.addWidget(self.gpu_sub)
@@ -326,6 +342,7 @@ class Dashboard(QWidget):
         mem_card.body.addWidget(self.g_mem, 1)
         hints.attach(self.g_mem, "graph.mem", self.help_requested.emit)
         self.mem_sub = QLabel("--")
+        self.mem_sub.setWordWrap(True)
         self.mem_sub.setFont(mono("small"))
         theme.style(self.mem_sub, "color: {MUTED};")
         mem_card.body.addWidget(self.mem_sub)
@@ -348,7 +365,6 @@ class Dashboard(QWidget):
         # -- game ----------------------------------------------------------
         self.game = GameCard(ncpu)
         self.game.help_requested.connect(self.help_requested.emit)
-        grid.addWidget(self.game, 2, 0, 1, 2)
 
         # -- top lists -----------------------------------------------------
         top_card = Card("top processes")
@@ -372,14 +388,37 @@ class Dashboard(QWidget):
                          (self.top_gpu, "top.vram")):
             hints.attach(lst, key, self.help_requested.emit)
         top_card.body.addLayout(row)
-        grid.addWidget(top_card, 3, 0, 1, 2)
 
-        grid.setRowStretch(0, 3)
-        grid.setRowStretch(1, 3)
-        grid.setRowStretch(2, 2)
-        grid.setRowStretch(3, 2)
-        grid.setColumnStretch(0, 1)
-        grid.setColumnStretch(1, 1)
+        # Two columns of cards, one column when the window is narrow; the
+        # game and the top lists always span the width.
+        self.cards = [cpu_card, gpu_card, mem_card, io_card]
+        self.wide_cards = [self.game, top_card]
+        self._columns = 0
+        self._place_cards(2)
+
+    def _place_cards(self, cols: int) -> None:
+        if cols == self._columns:
+            return
+        grid = self.grid
+        while grid.count():
+            grid.takeAt(0)
+        for i, card in enumerate(self.cards):
+            grid.addWidget(card, i // cols, i % cols)
+        rows = -(-len(self.cards) // cols)
+        for i, card in enumerate(self.wide_cards):
+            grid.addWidget(card, rows + i, 0, 1, cols)
+        for r in range(rows + len(self.wide_cards) + 2):
+            grid.setRowStretch(r, 3 if r < rows else (2 if r < rows + len(self.wide_cards) else 0))
+        for c in range(2):
+            grid.setColumnStretch(c, 1 if c < cols else 0)
+        self._columns = cols
+
+    def columns(self) -> int:
+        return self._columns
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        self._place_cards(1 if event.size().width() < ONE_COLUMN_BELOW else 2)
 
     def set_failed(self, count: int) -> None:
         if count == 0:

@@ -4,7 +4,6 @@ from __future__ import annotations
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QGridLayout,
-    QHBoxLayout,
     QLabel,
     QLineEdit,
     QPlainTextEdit,
@@ -15,7 +14,7 @@ from PySide6.QtWidgets import (
 
 from .. import helptext
 from . import theme
-from .widgets import Card, mono
+from .widgets import Card, FlowLayout, mono
 
 
 class HelpView(QWidget):
@@ -25,13 +24,13 @@ class HelpView(QWidget):
         outer.setContentsMargins(*theme.page_margins())
         outer.setSpacing(theme.CARD_GAP)
 
-        head = QHBoxLayout()
-        head.setSpacing(12)
+        head = FlowLayout(spacing=12)   # wraps when the window is narrow
         title = QLabel("What does this mean?")
         title.setFont(theme.font("title", bold=True))
         head.addWidget(title)
         how = QLabel("Hover over any tile, graph or column header for a one-line explanation; "
                      "right-click it to land here.")
+        how.setWordWrap(True)
         theme.style(how, "color: {MUTED};")
         head.addWidget(how)
         head.addStretch(1)

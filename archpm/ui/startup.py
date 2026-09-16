@@ -6,7 +6,6 @@ from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
-    QHBoxLayout,
     QHeaderView,
     QLabel,
     QMessageBox,
@@ -20,7 +19,7 @@ from PySide6.QtWidgets import (
 from ..actions import ActionError, UserBackend
 from ..autostart import Autostart, StartupEntry, running_pids, tilde
 from . import hints, theme
-from .widgets import app_icon
+from .widgets import FlowLayout, app_icon
 
 COL_ON, COL_NAME, COL_DESC, COL_STATE, COL_KIND, COL_SOURCE = range(6)
 HEADERS = ["", "Name", "What it does", "Status", "Kind", "Source"]
@@ -45,8 +44,7 @@ class StartupView(QWidget):
         outer.setContentsMargins(*theme.page_margins())
         outer.setSpacing(theme.CARD_GAP)
 
-        head = QHBoxLayout()
-        head.setSpacing(12)
+        head = FlowLayout(spacing=12)   # wraps when the window is narrow
         title = QLabel("What starts when you log in")
         title.setFont(theme.font("title", bold=True))
         head.addWidget(title)

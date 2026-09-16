@@ -425,7 +425,12 @@ class NavShell(QWidget):
         lay.setContentsMargins(0, 0, 0, 0)
         lay.setSpacing(0)
         lay.addWidget(self.placeholder)
-        lay.addWidget(self.pages, 1)
+        # The content column: a header bar, when one is set, over the pages.
+        self.column = QVBoxLayout()
+        self.column.setContentsMargins(0, 0, 0, 0)
+        self.column.setSpacing(0)
+        self.column.addWidget(self.pages, 1)
+        lay.addLayout(self.column, 1)
         self.rail = NavRail(self)
         self.rail.current_changed.connect(self.pages.setCurrentIndex)
         self.rail.pinned_changed.connect(self._pinned)
@@ -433,10 +438,19 @@ class NavShell(QWidget):
         self.rail.set_pinned(self.settings.value(SETTINGS_KEY, False, type=bool))
         self._pinned(self.rail.pinned, persist=False)
 
+    def set_header(self, widget: QWidget) -> None:
+        """The content column's header bar, above the pages; the rail keeps
+        the full height beside it, as the sidebar of a split layout."""
+        self.column.insertWidget(0, widget)
+        self.rail.raise_()
+
     def add_page(self, widget: QWidget, label: str) -> None:
         self.pages.addWidget(widget)
         self.rail.add_item(label, page_icon(label, theme.MUTED))
         self.rail.raise_()
+
+    def label_of(self, index: int) -> str:
+        return self.rail.items[index].text() if 0 <= index < len(self.rail.items) else ""
 
     def set_current(self, widget_or_index) -> None:
         index = (widget_or_index if isinstance(widget_or_index, int)

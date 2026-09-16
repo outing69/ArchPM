@@ -6,7 +6,6 @@ from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QGridLayout,
-    QHBoxLayout,
     QHeaderView,
     QLabel,
     QLineEdit,
@@ -19,7 +18,7 @@ from PySide6.QtWidgets import (
 from ..model import ProcSample, Snapshot
 from ..net import Conn, NetSnapshot, ProcNet
 from . import hints, theme
-from .widgets import Card, app_icon, human_bytes, mono
+from .widgets import Card, ElidedLabel, FlowLayout, app_icon, human_bytes, mono
 
 COL_NAME, COL_CONNS, COL_RX, COL_TX, COL_LISTEN, COL_INFO = range(6)
 HEADERS = ["Program", "Connections", "Download", "Upload", "Listening", "Details"]
@@ -30,6 +29,11 @@ RIGHT = int(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
 
 def _rate(v: float) -> str:
     return f"{human_bytes(v)}/s" if v >= 1024 else ("" if v < 1 else f"{v:.0f} B/s")
+
+
+# Below this page width the interfaces and the open doors stand one under
+# the other instead of side by side.
+ONE_COLUMN_BELOW = 640
 
 
 class NetworkView(QWidget):
@@ -46,8 +50,7 @@ class NetworkView(QWidget):
         outer.setContentsMargins(*theme.page_margins())
         outer.setSpacing(theme.CARD_GAP)
 
-        head = QHBoxLayout()
-        head.setSpacing(12)
+        head = FlowLayout(spacing=12)   # wraps when the window is narrow
         title = QLabel("Who is talking to the network")
         title.setFont(theme.font("title", bold=True))
         head.addWidget(title)
@@ -73,14 +76,14 @@ class NetworkView(QWidget):
         theme.style(hint, "color: {MUTED};")
         outer.addWidget(hint)
 
-        top = QHBoxLayout()
-        top.setSpacing(10)
+        # Two cards side by side, one under the other when the window is narrow.
+        self.top = QGridLayout()
+        self.top.setSpacing(theme.CARD_GAP)
         self.card_if = Card("interfaces", color="NET")
         self.grid_if = QGridLayout()
-        self.grid_if.setHorizontalSpacing(16)
+        self.grid_if.setHorizontalSpacing(theme.CARD_GAP)
         self.grid_if.setVerticalSpacing(3)
         self.card_if.body.addLayout(self.grid_if)
-        top.addWidget(self.card_if, 1)
         hints.attach(self.card_if, "net.interfaces", self.help_requested.emit)
         self.card_doors = Card("open doors", color="WARN")
         self.lbl_doors = QLabel("")
@@ -88,9 +91,10 @@ class NetworkView(QWidget):
         self.lbl_doors.setTextFormat(Qt.TextFormat.RichText)
         self.lbl_doors.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         self.card_doors.body.addWidget(self.lbl_doors)
-        top.addWidget(self.card_doors, 1)
         hints.attach(self.card_doors, "net.doors", self.help_requested.emit)
-        outer.addLayout(top)
+        self._columns = 0
+        self._place_cards(2)
+        outer.addLayout(self.top)
 
         self.tree = QTreeWidget()
         self.tree.setHeaderLabels(HEADERS)
@@ -129,6 +133,24 @@ class NetworkView(QWidget):
         if self._last is not None:
             self._rebuild()
 
+    def _place_cards(self, cols: int) -> None:
+        if cols == self._columns:
+            return
+        while self.top.count():
+            self.top.takeAt(0)
+        for i, card in enumerate((self.card_if, self.card_doors)):
+            self.top.addWidget(card, i // cols, i % cols)
+        for c in range(2):
+            self.top.setColumnStretch(c, 1 if c < cols else 0)
+        self._columns = cols
+
+    def columns(self) -> int:
+        return self._columns
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        self._place_cards(1 if event.size().width() < ONE_COLUMN_BELOW else 2)
+
     def _describe(self, c: Conn) -> str:
         svc = self.service(c.rport if c.raddr else c.lport)
         svc = f" ({svc})" if svc else ""
@@ -157,14 +179,15 @@ class NetworkView(QWidget):
             theme.text(name, "NET" if i.up else "FAINT")
             state = QLabel(("up" if i.up else "down") + ("  ·  VPN" if i.vpn else ""))
             theme.text(state, "OK" if i.up else "FAINT")
-            addr = QLabel(i.addr)
+            # Both can be squeezed: an address or a rate must not hold the
+            # window open, and the value changes with the traffic.
+            addr = ElidedLabel(i.addr)
             theme.style(addr, "color: {MUTED};")
             addr.setFont(mono("small"))
-            rx = QLabel(f"↓ {_rate(i.rx_bps) or '0 B/s'}" if i.up else "")
-            tx = QLabel(f"↑ {_rate(i.tx_bps) or '0 B/s'}" if i.up else "")
-            for lbl in (rx, tx):
-                lbl.setFont(mono("body"))
-            for col, w in enumerate((name, state, addr, rx, tx)):
+            rates = ElidedLabel(f"↓ {_rate(i.rx_bps) or '0 B/s'}   ↑ {_rate(i.tx_bps) or '0 B/s'}"
+                                if i.up else "")
+            rates.setFont(mono("body"))
+            for col, w in enumerate((name, state, addr, rates)):
                 self.grid_if.addWidget(w, r, col)
         self.grid_if.setColumnStretch(2, 1)
 

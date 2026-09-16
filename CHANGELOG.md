@@ -3,6 +3,39 @@
 All notable changes, newest first. Versions are git tags on
 [github.com/outing69/ArchPM](https://github.com/outing69/ArchPM).
 
+## 0.2.27 (2026-09-16)
+
+- Stage three of the GNOME look, first part: the header bar, the controls
+  and the window width. The status bar is gone. A header bar above the
+  pages, to the right of the navigation rail, carries the page's name as its
+  title, centred, and the Theme and Interval controls on the right, flat
+  until hovered; the desktop's own title bar stays above it and no window
+  buttons are drawn. Of what the status bar showed, the process count and
+  the GPU note are on the Overview already and the render time is dropped.
+- The transient messages are a toast: one line over the content, bottom
+  centre, that fades in and goes by itself; a click dismisses it, a new
+  message replaces it. The texts and times are as before: 4 s for the
+  results of Terminate, Force kill and the other actions, for Startup
+  switches, "System information copied to the clipboard", "Freed …",
+  root on and off and the signal guard's refusal; 6 s for the status file's
+  path at start; 10 s for the sampler's notice that it is not publishing.
+- Focus is a 2 px ring in a second blue, FOCUS, which is not the selection
+  blue, wherever focus is drawn: fields, drop-downs, buttons, check boxes,
+  sliders and the failed-services link. The yellow focus border is gone;
+  yellow highlights, blue selects, and the ring marks where a key press
+  goes. Help's colour legend says so.
+- Overlay scrollbars: a thin handle over the content's edge, no track and no
+  arrows, drawn by a proxy style so it is the same on Breeze and Fusion,
+  fading when nothing moves and back on a wheel turn, a scroll or the
+  pointer. A scrollbar no longer takes a column of its own.
+- The window can be made narrow. The minimum width was 1163 px, set by the
+  Processes toolbar and the Help page's head, each on one row; it is 472 px
+  now, set by the Overview's tiles at three across. Toolbars and page heads
+  wrap to a second row when the window is narrow, the Overview's six tiles
+  become two rows of three and its four cards one column, the Network cards
+  stand one under the other, and an address or a rate elides instead of
+  holding the window open. A table scrolls sideways; no page does.
+
 ## 0.2.26 (2026-09-16)
 
 - Cleanup: no password at page entry. The sizes are read without root

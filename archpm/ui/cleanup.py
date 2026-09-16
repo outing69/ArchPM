@@ -11,7 +11,6 @@ from PySide6.QtCore import QProcess, Qt, QThread, QTimer, Signal, Slot
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QAbstractItemView,
-    QHBoxLayout,
     QHeaderView,
     QLabel,
     QMessageBox,
@@ -27,7 +26,7 @@ from ..actions import ActionError
 from ..cleanup import Cleaner, CleanupItem, human, running_owner
 from ..root.client import RootClient, check
 from . import hints, theme
-from .widgets import mono
+from .widgets import FlowLayout, mono
 
 COL_ON, COL_NAME, COL_DESC, COL_SIZE, COL_ROOT = range(5)
 HEADERS = ["", "What", "Why it is safe to remove", "Size", "Note"]
@@ -87,8 +86,7 @@ class CleanupView(QWidget):
         outer.setContentsMargins(*theme.page_margins())
         outer.setSpacing(theme.CARD_GAP)
 
-        head = QHBoxLayout()
-        head.setSpacing(12)
+        head = FlowLayout(spacing=12)   # wraps when the window is narrow
         title = QLabel("Free up space")
         title.setFont(theme.font("title", bold=True))
         head.addWidget(title)

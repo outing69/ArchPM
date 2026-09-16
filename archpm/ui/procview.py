@@ -56,7 +56,7 @@ from .proc_model import (
     ProcModel,
     age_text,
 )
-from .widgets import Graph, app_icon, human_bytes, mono
+from .widgets import FlowLayout, Graph, app_icon, human_bytes, mono
 
 NICE_PRESETS = [
     ("Game priority (nice -10)", -10),
@@ -185,14 +185,13 @@ class ProcessView(QWidget):
         outer.setContentsMargins(*theme.page_margins())
         outer.setSpacing(theme.CARD_GAP)
 
-        # -- toolbar -------------------------------------------------------
-        bar = QHBoxLayout()
-        bar.setSpacing(10)
+        # -- toolbar: one row when it fits, wrapped when the window is narrow
+        bar = FlowLayout(spacing=10)
         self.search = QLineEdit()
         self.search.setPlaceholderText("Search by name, command or PID…   (Ctrl+F)")
         self.search.setClearButtonEnabled(True)
         self.search.setMinimumWidth(240)
-        bar.addWidget(self.search, 2)
+        bar.addWidget(self.search)
 
         self.combo_category = QComboBox()
         self.combo_category.addItem("All categories", "")

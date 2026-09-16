@@ -4,7 +4,7 @@ from __future__ import annotations
 from collections import deque
 from dataclasses import dataclass, field
 
-from PySide6.QtCore import QPointF, QRectF, Qt, Signal
+from PySide6.QtCore import QEvent, QPoint, QPointF, QRect, QRectF, QSize, Qt, Signal
 from PySide6.QtGui import (
     QBrush,
     QColor,
@@ -15,7 +15,17 @@ from PySide6.QtGui import (
     QPainterPath,
     QPen,
 )
-from PySide6.QtWidgets import QFrame, QLabel, QScrollArea, QSizePolicy, QVBoxLayout, QWidget
+from PySide6.QtWidgets import (
+    QFrame,
+    QGridLayout,
+    QLabel,
+    QLayout,
+    QScrollArea,
+    QSizePolicy,
+    QSpacerItem,
+    QVBoxLayout,
+    QWidget,
+)
 
 from . import theme
 
@@ -337,6 +347,29 @@ class StatTile(QFrame):
             self._value.setStyleSheet(f"color: {value};")
 
 
+class ElidedLabel(QLabel):
+    """A one-line label that can be squeezed: it asks for its text's width
+    but accepts any, and elides with an ellipsis instead of holding the
+    window open. For a value that may be long in a column that may be
+    narrow, and for the header bar's title."""
+
+    def __init__(self, text: str = "", parent: QWidget | None = None) -> None:
+        super().__init__(text, parent)
+        self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
+
+    def minimumSizeHint(self) -> QSize:
+        return QSize(0, super().minimumSizeHint().height())
+
+    def paintEvent(self, event) -> None:
+        p = QPainter(self)
+        p.setFont(self.font())
+        p.setPen(self.palette().color(self.foregroundRole()))
+        text = self.fontMetrics().elidedText(self.text(), Qt.TextElideMode.ElideRight,
+                                             self.width())
+        p.drawText(self.rect(), int(self.alignment()), text)
+        p.end()
+
+
 class TextLink(QLabel):
     """A line of text that is a link when it has somewhere to go, and plain
     text otherwise. As a link it shows a pointer, underlines on hover, takes
@@ -416,18 +449,243 @@ class TextLink(QLabel):
         super().paintEvent(event)
         if self._link and self.hasFocus():
             p = QPainter(self)
-            p.setPen(QPen(theme.color(self._color), 1, Qt.PenStyle.DashLine))
-            p.drawRoundedRect(self.rect().adjusted(0, 0, -1, -1), 3, 3)
+            p.setRenderHint(QPainter.RenderHint.Antialiasing)
+            p.setPen(QPen(theme.color("FOCUS"), theme.FOCUS_W))
+            inset = theme.FOCUS_W / 2
+            p.drawRoundedRect(QRectF(self.rect()).adjusted(inset, inset, -inset, -inset),
+                              theme.RADIUS_SMALL, theme.RADIUS_SMALL)
             p.end()
 
 
-def scrolling(widget: QWidget) -> QScrollArea:
+class VScrollArea(QScrollArea):
+    """A page that scrolls up and down and never sideways: its minimum width
+    is the page's own, so the window cannot be made narrower than the page,
+    while the height is free and gains a scrollbar when the window is short."""
+
+    def __init__(self, widget: QWidget, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setWidgetResizable(True)
+        self.setFrameShape(QScrollArea.Shape.NoFrame)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.viewport().setAutoFillBackground(False)
+        self.setWidget(widget)
+        # A scroll area does not pass its page's size hints up. When the
+        # page lays itself out again, the window's minimum must follow.
+        widget.installEventFilter(self)
+
+    def eventFilter(self, obj, event) -> bool:
+        if obj is self.widget() and event.type() == QEvent.Type.LayoutRequest:
+            self.updateGeometry()
+        return super().eventFilter(obj, event)
+
+    def minimumSizeHint(self) -> QSize:
+        base = super().minimumSizeHint()
+        inner = self.widget().minimumSizeHint().width() if self.widget() else 0
+        return QSize(max(base.width(), inner + 2 * self.frameWidth()), base.height())
+
+
+def scrolling(widget: QWidget) -> VScrollArea:
     """A page in a frameless, transparent scroll area: it lays itself out at
     its natural size and gains a scrollbar only when the window is shorter,
     instead of forcing the window to grow to fit."""
-    area = QScrollArea()
-    area.setWidgetResizable(True)
-    area.setFrameShape(QScrollArea.Shape.NoFrame)
-    area.viewport().setAutoFillBackground(False)
-    area.setWidget(widget)
-    return area
+    return VScrollArea(widget)
+
+
+class FlowLayout(QLayout):
+    """A row of controls that wraps to a second row when the width runs out,
+    instead of setting the window's minimum width to the whole row.
+
+    On one row it reads like a QHBoxLayout: a stretch takes the leftover
+    width, and so does a widget that expands sideways (a search field), so a
+    toolbar that fits looks as it did. When it does not fit, the items after
+    the break start the next row at the left. A label that wraps its words
+    counts at its one-line width, since Qt's own hint for it is a narrow
+    column; when even the row is too narrow for that line it takes a row of
+    its own and wraps there. The minimum width is the widest single item."""
+
+    def __init__(self, parent=None, spacing: int = 12) -> None:
+        super().__init__(parent)
+        self._items: list = []
+        self.setContentsMargins(0, 0, 0, 0)
+        self.setSpacing(spacing)
+
+    def __del__(self) -> None:
+        while self.count():
+            self.takeAt(0)
+
+    def addItem(self, item) -> None:
+        self._items.append(item)
+
+    def addStretch(self, stretch: int = 1) -> None:
+        self.addItem(QSpacerItem(0, 0, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum))
+
+    def count(self) -> int:
+        return len(self._items)
+
+    def itemAt(self, index: int):
+        return self._items[index] if 0 <= index < len(self._items) else None
+
+    def takeAt(self, index: int):
+        return self._items.pop(index) if 0 <= index < len(self._items) else None
+
+    def expandingDirections(self):
+        return Qt.Orientation(0)
+
+    def hasHeightForWidth(self) -> bool:
+        return True
+
+    def heightForWidth(self, width: int) -> int:
+        return self._arrange(QRect(0, 0, width, 0), test=True)
+
+    def setGeometry(self, rect: QRect) -> None:
+        super().setGeometry(rect)
+        self._arrange(rect, test=False)
+
+    def sizeHint(self) -> QSize:
+        """One row: every item at its hint, side by side."""
+        m = self.contentsMargins()
+        w = h = 0
+        for item in self._items:
+            hint = item.sizeHint()
+            w += hint.width() + (self.spacing() if w else 0)
+            h = max(h, hint.height())
+        return QSize(w + m.left() + m.right(), h + m.top() + m.bottom())
+
+    def minimumSize(self) -> QSize:
+        m = self.contentsMargins()
+        w = h = 0
+        for item in self._items:
+            ms = item.minimumSize()
+            w = max(w, ms.width())
+            h = max(h, ms.height())
+        return QSize(w + m.left() + m.right(), h + m.top() + m.bottom())
+
+    def rows(self) -> int:
+        """How many rows the current geometry uses; for tests."""
+        return self._arrange(self.geometry(), test=True, count_rows=True)
+
+    @staticmethod
+    def _one_line(item, width: int) -> int:
+        """The width an item wants: its hint, or for one that reflows (a
+        wrapping label) the narrowest width at which it is still as low as
+        it can be, found by bisection on heightForWidth; more than `width`
+        means it does not fit on one line of this row."""
+        hint = item.sizeHint().width()
+        if not item.hasHeightForWidth():
+            return hint
+        lowest = item.heightForWidth(1 << 14)
+        if item.heightForWidth(width) > lowest:
+            return width + 1
+        lo, hi = max(item.minimumSize().width(), 1), width
+        while lo < hi:
+            mid = (lo + hi) // 2
+            if item.heightForWidth(mid) > lowest:
+                lo = mid + 1
+            else:
+                hi = mid
+        return lo
+
+    @staticmethod
+    def _expands(item) -> bool:
+        if item.spacerItem() is not None:
+            return bool(item.expandingDirections() & Qt.Orientation.Horizontal)
+        w = item.widget()
+        return w is not None and bool(w.sizePolicy().expandingDirections()
+                                      & Qt.Orientation.Horizontal)
+
+    def _arrange(self, rect: QRect, test: bool, count_rows: bool = False) -> int:
+        m = self.contentsMargins()
+        left, top = rect.x() + m.left(), rect.y() + m.top()
+        width = rect.width() - m.left() - m.right()
+        gap = self.spacing()
+        rows: list[list] = [[]]
+        wants: dict = {}
+        used = 0
+        for item in self._items:
+            if item.widget() is not None and item.widget().isHidden():
+                continue
+            w = self._one_line(item, width)
+            if w > width:                 # a wrapping label on a row of its own
+                if rows[-1]:
+                    rows.append([])
+                rows[-1].append(item)
+                rows.append([])
+                used = 0
+                wants[id(item)] = width
+                continue
+            if rows[-1] and used + gap + w > width:
+                rows.append([])
+                used = 0
+            rows[-1].append(item)
+            wants[id(item)] = w
+            used += w + (gap if len(rows[-1]) > 1 else 0)
+        y = top
+        for row in rows:
+            if not row:
+                continue
+            widths = [wants[id(item)] for item in row]
+            spare = width - sum(widths) - gap * (len(row) - 1)
+            takers = [item for item in row if self._expands(item)]
+            extra = max(spare, 0) // len(takers) if takers else 0
+            widths = [w + (extra if item in takers else 0)
+                      for item, w in zip(row, widths, strict=True)]
+            heights = [item.heightForWidth(w) if item.hasHeightForWidth()
+                       else item.sizeHint().height()
+                       for item, w in zip(row, widths, strict=True)]
+            row_h = max(heights)
+            x = left
+            for item, w, h in zip(row, widths, heights, strict=True):
+                if not test:
+                    item.setGeometry(QRect(QPoint(x, y + (row_h - h) // 2), QSize(w, h)))
+                x += w + gap
+            y += row_h + gap
+        if count_rows:
+            return sum(1 for r in rows if r)
+        return y - gap - top + m.top() + m.bottom() if any(rows) else 0
+
+
+class TileRow(QWidget):
+    """Equal tiles side by side, on two rows of half as many when the width
+    no longer fits them all on one; the minimum width is the two-row one."""
+
+    def __init__(self, tiles: list[QWidget], gap: int, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.tiles = list(tiles)
+        self.gap = gap
+        self.grid = QGridLayout(self)
+        self.grid.setContentsMargins(0, 0, 0, 0)
+        self.grid.setSpacing(gap)
+        # The grid must not put its one-row minimum on the widget: the
+        # minimum is the two-row one, from minimumSizeHint below.
+        self.grid.setSizeConstraint(QLayout.SizeConstraint.SetNoConstraint)
+        self._cols = 0
+        self._place(len(self.tiles))
+
+    def _tile_min(self) -> int:
+        return max((t.minimumSizeHint().width() for t in self.tiles), default=0)
+
+    def _width_for(self, cols: int) -> int:
+        return cols * self._tile_min() + (cols - 1) * self.gap
+
+    def _place(self, cols: int) -> None:
+        if cols == self._cols:
+            return
+        while self.grid.count():
+            self.grid.takeAt(0)
+        for i, t in enumerate(self.tiles):
+            self.grid.addWidget(t, i // cols, i % cols)
+        for c in range(len(self.tiles)):
+            self.grid.setColumnStretch(c, 1 if c < cols else 0)
+        self._cols = cols
+
+    def columns(self) -> int:
+        return self._cols
+
+    def minimumSizeHint(self) -> QSize:
+        half = (len(self.tiles) + 1) // 2
+        return QSize(self._width_for(half), self.grid.minimumSize().height())
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        n = len(self.tiles)
+        self._place(n if event.size().width() >= self._width_for(n) else (n + 1) // 2)

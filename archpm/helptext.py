@@ -296,14 +296,15 @@ GLOSSARY: tuple[Section, ...] = (
     )),
     Section("Appearance", (
         Term("Theme",
-             "Light or dark, chosen at the bottom of the window. \"Follow system\" takes "
+             "Light or dark, chosen in the header bar at the top of the window. \"Follow "
+             "system\" takes "
              "the desktop's preference, as Qt or the desktop portal reports it, and "
              "switches along when it changes; dark when neither says anything. Every "
              "colour has a value for each mode; the light ones are not the dark ones "
              "inverted, since the yellow that glows on dark would vanish on white, so "
              "yellow becomes amber and the pastel series colours become their stronger "
              "cousins.",
-             "Status bar, Theme"),
+             "Header bar, Theme"),
         Term("Rail icons",
              "The navigation rail uses the Adwaita symbolic icons when the "
              "adwaita-icon-theme package is installed and every one of its eight icons "
@@ -336,8 +337,10 @@ GLOSSARY: tuple[Section, ...] = (
 COLOURS: tuple[tuple[str, str], ...] = (
     ("Yellow", "Highlight. The active tab, the machine's name, the running game, values that "
                "deserve a look, and a process that started less than a minute ago."),
-    ("Blue", "Selection. The selected row, ticked boxes, the focused field. Never anything "
-             "else, so a blue row always means \"this is what you picked\"."),
+    ("Blue", "Selection. The selected row, ticked boxes. Never anything else, so a blue "
+             "row always means \"this is what you picked\". The thin ring around whatever "
+             "has keyboard focus is a lighter blue of its own; it marks where a key press "
+             "goes, not a choice."),
     ("Green · orange · red", "Load and temperature. Green is fine, orange is busy or warm "
                              "(above 60%), red is hot or nearly full (above 85%). The same "
                              "scale everywhere: tiles, core strip, CPU column, widget."),

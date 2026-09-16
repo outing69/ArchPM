@@ -2,9 +2,11 @@
 
 Every colour is a token with a dark and a light value; no hex lives outside
 this module. Two fixed roles in both modes: **yellow** (amber in light)
-highlights (focus, active page, headline figures, warnings) and **blue**
-selects (selected rows, checked items). Never mix those two -- that is what
-keeps the UI readable.
+highlights (active page, headline figures, warnings) and **blue** selects
+(selected rows, checked items). Never mix those two -- that is what keeps
+the UI readable. The one exception is the focus ring: a 2 px ring in FOCUS,
+a second blue that is not the selection fill, drawn wherever keyboard focus
+lands, as Adwaita does. The toast and nothing else uses the OSD pair.
 
 The tokens are module names (theme.MUTED, ...) so a paint routine reads the
 current value every time. A stylesheet baked at construction cannot, so it
@@ -32,6 +34,7 @@ DARK = {
     "ACCENT": "#f5c542", "ACCENT_DIM": "#8a6d1c", "ACCENT_HOVER": "#ffd45e",
     "ON_ACCENT": "#1a1405", "ON_ACCENT_DIM": "#2a2308",
     "SELECT": "#3d7dff", "SELECT_DIM": "#1e3a6b", "ON_SELECT": "#ffffff",
+    "FOCUS": "#7fb0ff", "OSD": "#2b3040", "ON_OSD": "#e7eaf2",
     "ON_CRIT": "#1f0708",
     # data series
     "CPU": "#f5c542", "GPU": "#a78bfa", "MEM": "#4fd1c5", "NET": "#5aa2ff",
@@ -49,6 +52,7 @@ LIGHT = {
     "ACCENT": "#a16207", "ACCENT_DIM": "#e2c886", "ACCENT_HOVER": "#8a5306",
     "ON_ACCENT": "#ffffff", "ON_ACCENT_DIM": "#5a4a1a",
     "SELECT": "#2f6fe0", "SELECT_DIM": "#cfe0ff", "ON_SELECT": "#ffffff",
+    "FOCUS": "#1c71d8", "OSD": "#2b2f38", "ON_OSD": "#f6f5f4",
     "ON_CRIT": "#ffffff",
     "CPU": "#a16207", "GPU": "#7c3aed", "MEM": "#0f766e", "NET": "#2563eb",
     "DISK": "#be185d", "SWAP": "#c2410c",
@@ -61,12 +65,14 @@ TOKENS = tuple(DARK)
 # small. The font family is never named; the system's own font wins, from
 # QFontDatabase (Noto Sans and Noto Sans Mono on the development machine).
 # Data tables stay dense on purpose: a process list is a data view, so its
-# row height follows readability, not Adwaita's row spacing.
+# row height follows readability, not Adwaita's row spacing. The header bar
+# is Adwaita's 47 px including its bottom line; the focus ring is 2 px and
+# the overlay scrollbar's handle 6 px, over the content instead of beside it.
 SHAPE = {
     "RADIUS_CARD": 12, "RADIUS_CONTROL": 9, "RADIUS_SMALL": 6, "RADIUS_TAG": 5,
     "BUTTON_H": 34, "BUTTON_PAD_X": 16, "FIELD_PAD_X": 10,
     "PAGE_MARGIN": 18, "CARD_GAP": 12, "CARD_PAD": 18, "CARD_PAD_Y": 14, "TILE_PAD": 12,
-    "ROW_H": 26, "RAIL_ITEM_H": 44,
+    "ROW_H": 26, "RAIL_ITEM_H": 44, "HEADER_H": 47, "FOCUS_W": 2, "SCROLL_W": 6,
     "FONT_TITLE": 12, "FONT_BODY": 10, "FONT_SMALL": 8.5,
 }
 SHAPE_TOKENS = tuple(SHAPE)
@@ -92,6 +98,9 @@ ON_ACCENT_DIM = DARK["ON_ACCENT_DIM"]
 SELECT = DARK["SELECT"]
 SELECT_DIM = DARK["SELECT_DIM"]
 ON_SELECT = DARK["ON_SELECT"]
+FOCUS = DARK["FOCUS"]
+OSD = DARK["OSD"]
+ON_OSD = DARK["ON_OSD"]
 ON_CRIT = DARK["ON_CRIT"]
 CPU = DARK["CPU"]
 GPU = DARK["GPU"]
@@ -118,6 +127,9 @@ CARD_PAD_Y = SHAPE["CARD_PAD_Y"]
 TILE_PAD = SHAPE["TILE_PAD"]
 ROW_H = SHAPE["ROW_H"]
 RAIL_ITEM_H = SHAPE["RAIL_ITEM_H"]
+HEADER_H = SHAPE["HEADER_H"]
+FOCUS_W = SHAPE["FOCUS_W"]
+SCROLL_W = SHAPE["SCROLL_W"]
 FONT_TITLE = SHAPE["FONT_TITLE"]
 FONT_BODY = SHAPE["FONT_BODY"]
 FONT_SMALL = SHAPE["FONT_SMALL"]
@@ -145,6 +157,12 @@ def current() -> dict:
     out = {t: globals()[t] for t in TOKENS}
     out.update(SHAPE)
     out["BUTTON_INNER"] = SHAPE["BUTTON_H"] - 2
+    # With the focus ring on, the border grows by FOCUS_W - 1 on each side
+    # and the padding shrinks by as much, so a focused control keeps its size.
+    grow = SHAPE["FOCUS_W"] - 1
+    out["BUTTON_INNER_FOCUS"] = out["BUTTON_INNER"] - 2 * grow
+    out["BUTTON_PAD_X_FOCUS"] = SHAPE["BUTTON_PAD_X"] - grow
+    out["FIELD_PAD_X_FOCUS"] = SHAPE["FIELD_PAD_X"] - grow
     return out
 
 
@@ -356,8 +374,10 @@ QLineEdit, QComboBox, QSpinBox, QAbstractSpinBox {{
     selection-color: {ON_SELECT};
 }}
 QLineEdit:hover, QComboBox:hover, QSpinBox:hover {{ border-color: {BORDER_HI}; }}
+/* the focus ring: FOCUS_W px of the second blue, the size unchanged */
 QLineEdit:focus, QComboBox:focus, QSpinBox:focus, QAbstractSpinBox:focus {{
-    border-color: {ACCENT};
+    border: {FOCUS_W}px solid {FOCUS}; padding: 0 {FIELD_PAD_X_FOCUS}px;
+    min-height: {BUTTON_INNER_FOCUS}px;
 }}
 QComboBox::drop-down {{ border: none; width: 20px; }}
 QComboBox QAbstractItemView {{
@@ -372,7 +392,10 @@ QPushButton {{
 QPushButton:hover {{ background: {SURFACE_HI}; border-color: {BORDER_HI}; }}
 QPushButton:pressed {{ background: {SURFACE}; }}
 QPushButton:disabled {{ color: {FAINT}; border-color: {SURFACE_ALT}; background: {SURFACE}; }}
-QPushButton:focus {{ border-color: {ACCENT}; }}
+QPushButton:focus {{
+    border: {FOCUS_W}px solid {FOCUS}; padding: 0 {BUTTON_PAD_X_FOCUS}px;
+    min-height: {BUTTON_INNER_FOCUS}px;
+}}
 QPushButton#accent {{
     background: {ACCENT}; color: {ON_ACCENT}; border-color: {ACCENT};
 }}
@@ -393,9 +416,12 @@ QCheckBox::indicator, QRadioButton::indicator {{
     border: 1px solid {BORDER_HI}; border-radius: {RADIUS_TAG}px; background: {SURFACE};
 }}
 QRadioButton::indicator {{ border-radius: 8px; }}
-QCheckBox::indicator:hover, QRadioButton::indicator:hover {{ border-color: {ACCENT}; }}
+QCheckBox::indicator:hover, QRadioButton::indicator:hover {{ border-color: {BORDER_HI}; }}
 QCheckBox::indicator:checked, QRadioButton::indicator:checked {{
     background: {SELECT}; border-color: {SELECT};
+}}
+QCheckBox::indicator:focus, QRadioButton::indicator:focus {{
+    border: {FOCUS_W}px solid {FOCUS};
 }}
 
 QSlider::groove:horizontal {{
@@ -406,6 +432,7 @@ QSlider::handle:horizontal {{
     background: {TEXT}; width: 15px; height: 15px; margin: -5px 0; border-radius: 8px;
 }}
 QSlider::handle:horizontal:hover {{ background: {ACCENT}; }}
+QSlider::handle:horizontal:focus {{ border: {FOCUS_W}px solid {FOCUS}; }}
 
 QMenu {{
     background: {SURFACE_ALT}; border: 1px solid {BORDER};
@@ -425,21 +452,33 @@ QGroupBox::title {{
     color: {MUTED}; font-size: {FONT_SMALL}pt; font-weight: 700;
 }}
 
-QStatusBar {{ color: {MUTED}; border-top: 1px solid {BORDER}; }}
-QStatusBar::item {{ border: none; }}
+/* header bar: the title and the window's few controls, flat until hovered */
+#headerbar {{ background: {SURFACE}; border-bottom: 1px solid {BORDER}; }}
+#headerbar QLabel {{ background: transparent; }}
+#headerbar QPushButton, #headerbar QToolButton, #headerbar QComboBox {{
+    background: transparent; border: 1px solid transparent;
+    border-radius: {RADIUS_CONTROL}px;
+}}
+#headerbar QPushButton:hover, #headerbar QToolButton:hover, #headerbar QComboBox:hover {{
+    background: {SURFACE_HI}; border-color: {BORDER_HI};
+}}
+#headerbar QPushButton:pressed, #headerbar QComboBox:on {{ background: {SURFACE_ALT}; }}
+#headerbar QPushButton:focus, #headerbar QComboBox:focus {{
+    border: {FOCUS_W}px solid {FOCUS};
+}}
+/* toast: one line over the content, in the OSD pair in both modes */
+#toast {{
+    background: {OSD}; color: {ON_OSD}; border: 1px solid {BORDER_HI};
+    border-radius: {BUTTON_H}px; padding: 8px 20px;
+}}
 QToolTip {{
     background: {SURFACE_HI}; color: {TEXT}; border: 1px solid {BORDER_HI};
     padding: 5px 7px; border-radius: {RADIUS_CONTROL}px;
 }}
 
-QScrollBar:vertical {{ background: transparent; width: 11px; margin: 0; }}
-QScrollBar::handle:vertical {{ background: {BORDER_HI}; border-radius: 5px; min-height: 34px; }}
-QScrollBar::handle:vertical:hover {{ background: {MUTED}; }}
-QScrollBar:horizontal {{ background: transparent; height: 11px; }}
-QScrollBar::handle:horizontal {{ background: {BORDER_HI}; border-radius: 5px; min-width: 34px; }}
-QScrollBar::handle:horizontal:hover {{ background: {MUTED}; }}
-QScrollBar::add-line, QScrollBar::sub-line {{ height: 0; width: 0; }}
-QScrollBar::add-page, QScrollBar::sub-page {{ background: transparent; }}
+/* No QScrollBar rule on purpose: the scrollbars are drawn by the style in
+   chrome.py, over the content and fading when idle. A stylesheet box on a
+   scrollbar would make Qt lay it beside the content again. */
 
 QScrollArea {{ border: none; background: transparent; }}
 """

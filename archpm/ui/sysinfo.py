@@ -18,7 +18,7 @@ from PySide6.QtWidgets import (
 from .. import sysinfo
 from ..failed import SESSION, FailedReport
 from . import theme
-from .widgets import Card, mono
+from .widgets import Card, FlowLayout, mono
 
 
 class _Gather(QThread):
@@ -42,8 +42,7 @@ class SystemView(QWidget):
         outer.setContentsMargins(*theme.page_margins())
         outer.setSpacing(theme.CARD_GAP)
 
-        head = QHBoxLayout()
-        head.setSpacing(12)
+        head = FlowLayout(spacing=12)   # wraps when the window is narrow
         title = QLabel("This machine")
         title.setFont(theme.font("title", bold=True))
         head.addWidget(title)

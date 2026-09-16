@@ -4,7 +4,6 @@ from __future__ import annotations
 import os
 import signal
 import sys
-import time
 
 from PySide6.QtCore import QSettings, Qt, QTimer
 from PySide6.QtGui import QAction, QColor, QIcon, QPainter, QPixmap
@@ -23,7 +22,8 @@ from ..actions import ActionError, get_backend
 from ..model import Snapshot
 from ..publisher import status_path
 from ..root.client import ElevatedBackend, RootClient
-from . import theme
+from . import chrome, theme
+from .chrome import HeaderBar, Toast
 from .cleanup import CleanupView
 from .dashboard import Dashboard
 from .help import HelpView
@@ -33,7 +33,7 @@ from .network import NetworkView
 from .procview import ProcessView
 from .startup import StartupView
 from .sysinfo import SystemView
-from .widgets import mono, scrolling
+from .widgets import scrolling
 from .worker import SampleWorker, run_in_thread
 
 INTERVALS = [("0.5 s", 0.5), ("1 s", 1.0), ("2 s", 2.0), ("5 s", 5.0)]
@@ -162,7 +162,7 @@ class MainWindow(QMainWindow):
         self.system.refresh_failed.connect(self.check_failed_services)
         self.dashboard.game.terminate_requested.connect(self._terminate_game)
         self._end_game_pending = False   # asked before the first sample; answered after it
-        self._build_statusbar()
+        self._build_header()
         self._build_tray()
         self._restore()
         if self.tray is not None and self.act_top.isChecked():
@@ -177,12 +177,12 @@ class MainWindow(QMainWindow):
         self._last_ts = 0.0
 
     # -- chrome -----------------------------------------------------------
-    def _build_statusbar(self) -> None:
-        sb = self.statusBar()
-        self.lbl_msg = QLabel("")
-        self.lbl_stats = QLabel("")
-        self.lbl_stats.setFont(mono("small"))
-        theme.style(self.lbl_stats, "color: {MUTED};")
+    def _build_header(self) -> None:
+        """The header bar over the pages: the page's name as the title, the
+        theme and the interval on the right. Transient messages go to a
+        toast over the content; nothing else of the old status bar remains
+        (the process count and the GPU are on the Overview)."""
+        self.header = HeaderBar()
         self.combo = QComboBox()
         for label, _ in INTERVALS:
             self.combo.addItem(label)
@@ -204,19 +204,25 @@ class MainWindow(QMainWindow):
         self.combo_theme.currentIndexChanged.connect(
             lambda i: theme.set_preference(QApplication.instance(),
                                            self.combo_theme.itemData(i), self.settings))
+        self.combo_theme.setAccessibleName("Theme")
+        self.combo.setAccessibleName("Sampling interval")
+        self.combo.setToolTip("How often the window samples the machine.")
         lbl_theme = QLabel("Theme")
-        spacer = QLabel("   ")
         lbl_interval = QLabel("Interval")
         theme.style(lbl_interval, "color: {MUTED};")
         theme.style(lbl_theme, "color: {MUTED};")
-        sb.addWidget(self.lbl_msg, 1)
-        sb.addPermanentWidget(self.lbl_stats)
-        sb.addPermanentWidget(QLabel("   "))
-        sb.addPermanentWidget(lbl_theme)
-        sb.addPermanentWidget(self.combo_theme)
-        sb.addPermanentWidget(spacer)
-        sb.addPermanentWidget(lbl_interval)
-        sb.addPermanentWidget(self.combo)
+        self.header.add_control(lbl_theme)
+        self.header.add_control(self.combo_theme)
+        self.header.add_gap()
+        self.header.add_control(lbl_interval)
+        self.header.add_control(self.combo)
+        self.shell.set_header(self.header)
+        self.shell.pages.currentChanged.connect(
+            lambda i: self.header.set_title(self.shell.label_of(i)))
+        self.header.set_title(self.shell.label_of(self.shell.current_index()))
+        # Over the content column: a child of the shell, since the stack
+        # raises each page it shows and would cover a child of its own.
+        self.toast = Toast(self.shell, left=self.shell.placeholder.width)
 
     def _build_tray(self) -> None:
         if not QSystemTrayIcon.isSystemTrayAvailable():
@@ -368,19 +374,13 @@ class MainWindow(QMainWindow):
 
     # -- data -------------------------------------------------------------
     def _on_sample(self, snap: Snapshot) -> None:
-        t0 = time.perf_counter()
         self.history.update(snap.procs)
         self.dashboard.update_view(snap)
         self.procs.update_view(snap)
         self.network.update_view(snap)
         self.startup.update_view(snap)
         self.cleanup.update_view(snap)
-        render_ms = (time.perf_counter() - t0) * 1000
         gpu = snap.system.gpu
-        bits = [f"{snap.system.proc_count} processes", f"Render {render_ms:.0f} ms"]
-        if gpu is None:
-            bits.append("No GPU")
-        self.lbl_stats.setText("  ·  ".join(bits))
         if self.tray is not None:
             s = snap.system
             cpu_temp = f" · {s.cpu_temp_c:.0f}°" if s.cpu_temp_c else ""
@@ -400,9 +400,9 @@ class MainWindow(QMainWindow):
             self._end_game_pending = False
             QTimer.singleShot(0, self.end_game)   # a modal inside the sample handler is fragile
 
-    def _flash(self, message: str, msec: int = 4000) -> None:
-        self.lbl_msg.setText(message)
-        QTimer.singleShot(msec, lambda: self.lbl_msg.setText(""))
+    def _flash(self, message: str, msec: int = chrome.TOAST_MS) -> None:
+        """A toast over the content, gone by itself after `msec`."""
+        self.toast.show_message(message, msec)
 
     def _set_interval(self, index: int) -> None:
         seconds = INTERVALS[index][1]
@@ -461,6 +461,7 @@ def main() -> int:
     app.setApplicationName(APP_NAME)
     app.setOrganizationName("archpm")
     app.setDesktopFileName("archpm")
+    chrome.install(app)    # overlay scrollbars; before the stylesheet goes on
     theme.start(app, QSettings("archpm", "ArchPM"))
     if raise_running_instance(request):
         return 0
@@ -470,7 +471,7 @@ def main() -> int:
     app.aboutToQuit.connect(server.close)
     win.show()
     win.check_failed_services()
-    win.statusBar().showMessage(f"Status for the widget: {status_path()}", 6000)
+    win.toast.show_message(f"Status for the widget: {status_path()}", 6000)
     if request == END_GAME:
         win.end_game()
     return app.exec()
