@@ -114,8 +114,12 @@ class CleanupView(QWidget):
             "compiled shaders, thumbnails, old package versions, old logs. Removing it costs "
             "you a slower first start of that program (shaders recompile, previews regenerate), "
             "never your files, saves or settings. Tick what you want gone, press the button, "
-            "and check the list once more before you confirm."
+            "and check the list once more before you confirm.<br>"
+            "The sizes are read without root. Two items, the package cache and the system "
+            "logs, need root to remove; your password is asked when you press Remove "
+            "selected with one of them ticked, not before."
         )
+        hint.setTextFormat(Qt.TextFormat.RichText)
         hint.setWordWrap(True)
         theme.style(hint, "color: {MUTED};")
         outer.addWidget(hint)
@@ -166,7 +170,9 @@ class CleanupView(QWidget):
             self.leave.emit()
             return
         self._acknowledged = True
-        self._authenticate()
+        # No password here: the scan needs none, and a prompt that arrives
+        # with the sizes already on screen reads as if asked for nothing. It
+        # comes when a root item is actually removed.
         if not self.items and self._thread is None:
             self.scan()
 
@@ -180,8 +186,9 @@ class CleanupView(QWidget):
             "old package versions and old logs. Your documents, game saves and settings are "
             "never touched.<br><br>"
             "Nothing happens until you tick items, press <b>Remove selected…</b> and confirm "
-            "the list. After this, ArchPM asks for your password once, for the two items that "
-            "need it (package cache and logs). You can cancel that and still clean the rest."
+            "the list. The sizes are read without root. Two items, the package cache and the "
+            "system logs, need root to remove: your password is asked at that moment, once, "
+            "and you can cancel it and still clean the rest."
         )
         ok = box.addButton("I understand", QMessageBox.ButtonRole.AcceptRole)
         box.addButton("Not now", QMessageBox.ButtonRole.RejectRole)
@@ -244,9 +251,11 @@ class CleanupView(QWidget):
     def _note_for(self, it: CleanupItem, root_ok: bool) -> tuple[str, str]:
         """(text, colour) for the Note column."""
         if it.needs_root:
+            if it.note:
+                return "root · " + it.note, theme.WARN
             if root_ok:
                 return "root · unlocked", theme.OK
-            return "root · " + (it.note or "locked"), theme.WARN
+            return "root · asks for your password on Remove", theme.MUTED
         owner = running_owner(it, self._procs)
         if owner:
             return f"running now: {owner}", theme.WARN
@@ -275,7 +284,9 @@ class CleanupView(QWidget):
         self.table.setRowCount(len(self.items))
         for row, it in enumerate(self.items):
             on = QTableWidgetItem()
-            usable = it.size > 0 and (not it.needs_root or (root_ok and it.helper_command))
+            # a root item can be ticked as soon as the helper is installed; the
+            # password comes at removal, through pkexec, not at page entry
+            usable = it.size > 0 and (not it.needs_root or (check().ready and it.helper_command))
             flags = Qt.ItemFlag.ItemIsSelectable
             if usable:
                 flags |= Qt.ItemFlag.ItemIsUserCheckable | Qt.ItemFlag.ItemIsEnabled

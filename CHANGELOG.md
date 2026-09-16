@@ -3,6 +3,25 @@
 All notable changes, newest first. Versions are git tags on
 [github.com/outing69/ArchPM](https://github.com/outing69/ArchPM).
 
+## 0.2.26 (2026-09-16)
+
+- Cleanup: no password at page entry. The sizes are read without root
+  (your caches by listing them, the package cache with paccache's dry run,
+  the journal with journalctl --disk-usage); only removing the package cache
+  and the system logs goes through the root helper. The page said neither and
+  asked for the password the moment you entered, with the sizes already on
+  screen, as if for nothing. Now the page and the first-visit note say which
+  is which, the two root rows read "asks for your password on Remove", they
+  can be ticked as soon as the helper is installed, and the prompt comes when
+  you press Remove selected with one of them ticked.
+- Overview scrolling was verified at window heights where the content does
+  not fit, offscreen with spontaneous wheel events over every child and by
+  hand on a 700 px window: the scroll area receives the wheel and the page
+  is set to resize. On a screen where the maximised window fits the whole
+  Overview there is nothing to scroll, and at a 1000 px window the range is
+  only a few dozen pixels, so one notch moves little; both are the whole
+  overflow, not a fault.
+
 ## 0.2.25 (2026-09-16)
 
 - Stage two of the GNOME look: shape, spacing and type, in Adwaita's
