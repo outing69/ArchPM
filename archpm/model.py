@@ -42,6 +42,7 @@ class ProcSample:
     create_time: float = 0.0
     affinity: int = 0            # number of cores this process may run on
     owned: bool = False          # runs under our own uid
+    uid: int = -1                # real uid; -1 = unknown
     app_name: str = ""           # "Cyberpunk 2077", "Brave Web Browser"; "" if unknown
     icon: str = ""               # icon theme name or file path; "" if none
     category: str = ""           # "Game", "Browser", ... for a program; "" otherwise

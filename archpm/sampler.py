@@ -16,6 +16,7 @@ from .gpu import GpuMonitor
 from .grouping import build_groups, read_pss
 from .model import ProcSample, Snapshot, SystemSample
 from .net import NetSampler
+from .sections import cgroup_path
 
 # cpu_affinity() deliberately not per tick: that is one syscall per process
 # (~430 of them) for a value only the affinity dialog needs, and it asks for it
@@ -139,6 +140,7 @@ class Sampler:
                 gpu_mem_mb=gmb,
                 create_time=info.get("create_time") or 0.0,
                 owned=owned,
+                uid=uids.real if uids else -1,
                 app_name=app.name,
                 icon=app.icon,
                 category=app.category,
@@ -209,7 +211,7 @@ class Sampler:
             return cached[0]
         try:
             with open(f"/proc/{pid}/cgroup") as fh:
-                path = fh.read().strip().rpartition(":")[2]
+                path = cgroup_path(fh.read())
         except OSError:
             path = cached[0] if cached else ""
         self._cgroups[pid] = (path, now)

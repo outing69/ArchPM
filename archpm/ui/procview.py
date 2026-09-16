@@ -31,6 +31,7 @@ from .. import signalguard
 from ..actions import ActionError, UserBackend
 from ..appinfo import CATEGORIES
 from ..model import ProcSample
+from ..sections import KEY_OF_PID, SECTION_PID, is_section
 from . import hints, theme
 from .history import ProcHistory
 from .proc_model import (
@@ -215,7 +216,8 @@ class ProcessView(QWidget):
         self.cb_all.setChecked(self.settings.value("show_all", False, type=bool))
         self.cb_all.setToolTip(
             "Off: your programs (anything with a name and icon) plus whatever is busy.\n"
-            "On: every process, including other users' and kernel threads."
+            "On: every process, including other users' and kernel threads, in three "
+            "sections: Apps, Background processes, System processes (Grouped and Flat)."
         )
         self.cb_gpu = QCheckBox("GPU only")
         self.cb_norm = QCheckBox("CPU% ÷ cores")
@@ -238,6 +240,9 @@ class ProcessView(QWidget):
         # -- tree ----------------------------------------------------------
         self.model = ProcModel(ncpu, self)
         self.model.mode = self.combo_mode.currentData()
+        self.model.sections = self.cb_all.isChecked()
+        remembered = self.settings.value("collapsed_sections", "", type=str)
+        self._collapsed_sections = {k for k in remembered.split(",") if k in SECTION_PID}
         # Connected before the proxy sees the model: Qt calls slots in
         # connection order, and the proxy would otherwise move the view's
         # current row (and re-pin the history) before we notice the removal.
@@ -251,7 +256,7 @@ class ProcessView(QWidget):
             f"QTreeView {{ border: 1px solid {theme.BORDER}; border-radius: 10px; }}"
         )
         self.table.setModel(self.proxy)
-        self.table.setRootIsDecorated(self.model.hierarchical)
+        self.table.setRootIsDecorated(self.model.hierarchical or self.model.sectioned)
         self.table.setSortingEnabled(True)
         # Sorted by name by default: sorting on a live value (CPU%) makes rows
         # trade places every tick, which is unbearable in a tree. The last
@@ -328,8 +333,8 @@ class ProcessView(QWidget):
         self.cb_gpu.toggled.connect(lambda v: self.proxy.set_flag("only_gpu", v))
         # A collapsed program row shows the totals of its tree; the model needs
         # to know which rows are open to decide that.
-        self.table.expanded.connect(lambda i: self.model.set_expanded(i.data(PID_ROLE), True))
-        self.table.collapsed.connect(lambda i: self.model.set_expanded(i.data(PID_ROLE), False))
+        self.table.expanded.connect(lambda i: self._folded(i.data(PID_ROLE), True))
+        self.table.collapsed.connect(lambda i: self._folded(i.data(PID_ROLE), False))
         self.cb_norm.toggled.connect(self.model.set_normalize)
         self.cb_freeze.toggled.connect(self._set_frozen)
 
@@ -362,6 +367,7 @@ class ProcessView(QWidget):
             return
         self._pending = None
         self.model.update(snap.procs)
+        self._expand_sections()
         if self.model.hierarchical and not self.model.frozen:
             if self.model.tree:
                 self._auto_expand()
@@ -429,6 +435,31 @@ class ProcessView(QWidget):
     def _set_show_all(self, on: bool) -> None:
         self.settings.setValue("show_all", on)
         self.proxy.set_flag("show_all", on)
+        self.model.set_sections(on)
+        self._expand_sections()
+
+    # -- sections -----------------------------------------------------------
+    def _folded(self, pid: int, expanded: bool) -> None:
+        """The view opened or closed a row; a section's state is remembered."""
+        self.model.set_expanded(pid, expanded)
+        if not is_section(pid):
+            return
+        key = KEY_OF_PID[pid]
+        before = set(self._collapsed_sections)
+        (self._collapsed_sections.discard if expanded else self._collapsed_sections.add)(key)
+        if self._collapsed_sections != before:
+            self.settings.setValue("collapsed_sections", ",".join(sorted(self._collapsed_sections)))
+
+    def _expand_sections(self) -> None:
+        """Sections open by default; one closed by hand stays closed, also next time."""
+        if not self.model.sectioned:
+            return
+        for key, pid in SECTION_PID.items():
+            if key in self._collapsed_sections:
+                continue
+            index = self.proxy.mapFromSource(self.model.index_for_pid(pid))
+            if index.isValid() and not self.table.isExpanded(index):
+                self.table.expand(index)
 
     def _remember_sort(self, column: int, order: Qt.SortOrder) -> None:
         self.settings.setValue("sort_column", column)
@@ -441,7 +472,8 @@ class ProcessView(QWidget):
         mode = self.combo_mode.itemData(index)
         self.settings.setValue("view_mode", mode)
         self.model.set_mode(mode)
-        self.table.setRootIsDecorated(mode != "flat")
+        self.table.setRootIsDecorated(mode != "flat" or self.model.sectioned)
+        self._expand_sections()
         if self.model.hierarchical and self.proxy.text:
             self._expand_matches()
 

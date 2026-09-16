@@ -38,6 +38,16 @@ GLOSSARY: tuple[Section, ...] = (
              "unique while the process runs, and may be reused by a new process later. "
              "It is how you tell two processes with the same name apart.",
              "PID column"),
+        Term("Apps, Background, System",
+             "The three sections of the list when every process is shown, in Grouped and "
+             "Flat. Apps is what you started: everything Plasma filed in an app unit when "
+             "you launched it, helpers included. Background processes is the rest of your "
+             "session: enabled services, Plasma's own parts, D-Bus helpers. System "
+             "processes is everything under the system's own tree, plus the kernel's "
+             "threads. Where a process sits in the cgroup tree decides; only when that "
+             "cannot be read does its owner decide. Not the same as the Category column, "
+             "which says what a program is for.",
+             "Processes tab, with Show all processes on"),
         Term("Parent and children",
              "Every process was started by another one, its parent. Kill a parent and its "
              "children usually keep running as orphans; that is why \"Terminate with "

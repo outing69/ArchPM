@@ -289,9 +289,13 @@ class HiddenPage(unittest.TestCase):
         view.update_view(Snapshot(system=SystemSample(), procs=newer))
         stack.setCurrentWidget(view)
         TreeSearch.app.processEvents()
-        self.assertEqual(view.model.rowCount(), len(newer), "the newest sample, applied on show")
+        # with every process shown the root rows are the three sections, so
+        # count the process rows themselves
+        def rows():
+            return len([pid for pid in view.model.pids() if pid > 0])
+        self.assertEqual(rows(), len(newer), "the newest sample, applied on show")
         view.update_view(Snapshot(system=SystemSample(), procs=PROCS))
-        self.assertEqual(view.model.rowCount(), len(PROCS), "visible again: updates apply directly")
+        self.assertEqual(rows(), len(PROCS), "visible again: updates apply directly")
 
 
 @unittest.skipUnless(QApplication, "PySide6 not installed")

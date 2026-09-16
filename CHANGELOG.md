@@ -3,6 +3,26 @@
 All notable changes, newest first. Versions are git tags on
 [github.com/outing69/ArchPM](https://github.com/outing69/ArchPM).
 
+## 0.2.21 (2026-09-16)
+
+- Processes: with "Show all processes" on, the Grouped and Flat views are
+  split into three sections with a count in each header: Apps (everything in
+  an app-… unit of your session, which is how Plasma files what you launch),
+  Background processes (the rest of your session) and System processes
+  (everything under system.slice, and the kernel's own threads). The cgroup
+  the sampler already reads decides; only when it could not be read does the
+  owner decide, a uid below UID_MIN being the system's. Section headers open
+  and close, a closed one stays closed next time, they keep their order under
+  any sort, an empty one is hidden, and they cannot be selected. Tree keeps
+  its parent hierarchy. With the box off the list is exactly as before. These
+  are not the Category column, which says what a program is for.
+- Fixed: the cgroup line was cut at its last colon, and a dbus-activated
+  unit carries a colon in its name (dbus-:1.2-org.kde.kwalletd6@0.service),
+  so kwalletd6, kdeconnectd and the accessibility registry had a broken
+  cgroup path: the Grouped view could not name their unit, and the root
+  helper's unit check could not see it either. Both now split at the second
+  colon.
+
 ## 0.2.20 (2026-09-16)
 
 - A process that its service starts again after a kill (Restart=always,

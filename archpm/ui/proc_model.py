@@ -20,11 +20,12 @@ import time
 from dataclasses import dataclass
 
 from PySide6.QtCore import QAbstractItemModel, QModelIndex, QSortFilterProxyModel, Qt
-from PySide6.QtGui import QColor
+from PySide6.QtGui import QColor, QFont
 
 from ..appinfo import describe
 from ..grouping import build_groups, summarize
 from ..model import ProcSample
+from ..sections import ABOUT, KEY_OF_PID, LABEL, RANK, SECTION_PID, is_section, section_of, uid_min
 from . import theme
 from .hints import tooltip_html
 from .widgets import app_icon, human_bytes
@@ -160,10 +161,29 @@ class ProcModel(QAbstractItemModel):
         self._expanded: set[int] = set()         # pids whose row the view shows expanded
         self.steam_pid = 0                       # the Steam client, if it runs
         self.hoisted: set[int] = set()           # pid 1 and the systemd user managers
+        # Three sections (Apps, Background, System) as root rows, in Grouped
+        # and Flat with every process shown; see sections.py. Tree keeps its
+        # parent hierarchy, which is its whole point.
+        self.sections = False
+        self._section_of: dict[int, int] = {}    # pid or group pid -> section pid, this tick
+        self._uid_min = uid_min()
+        self.fallbacks = 0                       # processes placed by owner, not by cgroup
 
     @property
     def tree(self) -> bool:
         return self.mode == "tree"
+
+    @property
+    def sectioned(self) -> bool:
+        return self.sections and self.mode != "tree"
+
+    def flags(self, index: QModelIndex):
+        # A section header cannot be selected, so no action can ever reach
+        # everything under it by accident; it opens and closes, nothing else.
+        p = self.proc_at(index)
+        if p is not None and is_section(p.pid):
+            return Qt.ItemFlag.ItemIsEnabled
+        return super().flags(index)
 
     @property
     def hierarchical(self) -> bool:
@@ -227,12 +247,20 @@ class ProcModel(QAbstractItemModel):
             return ALIGN.get(col, _LEFT)
         if role == Qt.ItemDataRole.ForegroundRole:
             return self._color(p, col, totals)
+        if role == Qt.ItemDataRole.FontRole:
+            if is_section(p.pid):
+                font = QFont()
+                font.setBold(True)
+                return font
+            return None
         if role == Qt.ItemDataRole.DecorationRole:
             if col == COL_NAME and p.icon:
                 icon = app_icon(p.icon)
                 return None if icon.isNull() else icon
             return None
         if role == Qt.ItemDataRole.ToolTipRole:
+            if is_section(p.pid):
+                return wrap_tip([ABOUT[KEY_OF_PID[p.pid]]])
             if totals and col in _SUMMED:
                 return f"Total of {totals.count} processes in this tree"
             if p.members and col == COL_MEM:
@@ -269,6 +297,8 @@ class ProcModel(QAbstractItemModel):
         return p.cpu_percent / self.ncpu if self.normalize_cpu else p.cpu_percent
 
     def _text(self, p: ProcSample, col: int, t: Totals | None = None):
+        if is_section(p.pid):
+            return f"{p.name} ({p.members})" if col == COL_NAME else ""
         cpu = t.cpu if t else p.cpu_percent
         rss = t.rss if t else p.mem_rss
         gpu_sm = t.gpu_sm if t else p.gpu_sm
@@ -307,6 +337,8 @@ class ProcModel(QAbstractItemModel):
         return None
 
     def _sort_value(self, p: ProcSample, col: int, t: Totals | None = None):
+        if is_section(p.pid):
+            return RANK[KEY_OF_PID[p.pid]]   # the proxy keeps this order under any sort
         return {
             COL_PID: p.pid, COL_NAME: p.display_name.lower(),
             COL_CPU: t.cpu if t else p.cpu_percent,
@@ -320,6 +352,8 @@ class ProcModel(QAbstractItemModel):
         }.get(col, "")
 
     def _color(self, p: ProcSample, col: int, t: Totals | None = None):
+        if is_section(p.pid):
+            return None
         if p.status == "stopped":
             return QColor(theme.WARN)
         if col == COL_CPU:
@@ -412,6 +446,12 @@ class ProcModel(QAbstractItemModel):
 
     # -- updates --------------------------------------------------------------
     def _desired_parent_pid(self, p: ProcSample, incoming: dict[int, ProcSample]) -> int:
+        if self.sectioned:
+            if is_section(p.pid):
+                return 0
+            if self.mode == "grouped" and self._group_of.get(p.pid, 0):
+                return self._group_of[p.pid]
+            return self._section_of.get(p.pid, SECTION_PID["background"])
         if self.mode == "flat":
             return 0
         if self.mode == "grouped":
@@ -470,6 +510,35 @@ class ProcModel(QAbstractItemModel):
                 self._group_of[m.pid] = gid
         return out
 
+    def _with_sections(self, incoming: dict[int, ProcSample]) -> dict[int, ProcSample]:
+        """Place every process (by cgroup, or by owner when the cgroup could not
+        be read) and every group row (where most of its members are), and add
+        the three section rows, each carrying its count of processes."""
+        self._section_of = {}
+        counts = dict.fromkeys(SECTION_PID, 0)
+        self.fallbacks = 0
+        members_of: dict[int, list[int]] = {}
+        for pid, p in incoming.items():
+            if pid <= 0:
+                continue
+            key, fell_back = section_of(p.cgroup, p.uid, self._uid_min)
+            self._section_of[pid] = SECTION_PID[key]
+            counts[key] += 1
+            self.fallbacks += fell_back
+            gid = self._group_of.get(pid, 0)
+            if gid:
+                members_of.setdefault(gid, []).append(SECTION_PID[key])
+        for gid, homes in members_of.items():
+            self._section_of[gid] = max(set(homes), key=homes.count)
+        out = dict(incoming)
+        for key, spid in SECTION_PID.items():
+            out[spid] = ProcSample(pid=spid, name=LABEL[key], members=counts[key], cgroup=key)
+        return out
+
+    def section_counts(self) -> dict[str, int]:
+        return {key: self._nodes[spid].proc.members for key, spid in SECTION_PID.items()
+                if spid in self._nodes}
+
     def _index_of(self, node: Node) -> QModelIndex:
         return QModelIndex() if node is self._root else self.createIndex(node.row, 0, node)
 
@@ -508,6 +577,8 @@ class ProcModel(QAbstractItemModel):
         self.hoisted = self.find_managers(incoming)
         if self.mode == "grouped":
             incoming = self._with_groups(incoming)
+        if self.sectioned:
+            incoming = self._with_sections(incoming)
 
         # 1. Remove what is gone, and what must move (its parent changed). A
         #    removed subtree may contain processes that still exist: they are
@@ -584,11 +655,22 @@ class ProcModel(QAbstractItemModel):
             raise ValueError(mode)
         if mode == self.mode:
             return
-        self.beginResetModel()
         self.mode = mode
+        self._rebuild()
+
+    def set_sections(self, on: bool) -> None:
+        """Sections on or off: the root rows change, so rebuild like a mode change."""
+        if on == self.sections:
+            return
+        self.sections = on
+        self._rebuild()
+
+    def _rebuild(self) -> None:
+        self.beginResetModel()
         self._root = Node(None, None)
         self._nodes = {}
         self._expanded = set()
+        self._section_of = {}
         self.endResetModel()
         if self._last:
             self.update(self._last)
@@ -641,11 +723,23 @@ class ProcFilter(QSortFilterProxyModel):
                 return QColor(theme.FAINT)
         return super().data(index, role)
 
+    def lessThan(self, left: QModelIndex, right: QModelIndex) -> bool:
+        # Section headers keep their order (Apps, Background, System) whatever
+        # column is sorted and in whichever direction.
+        model: ProcModel = self.sourceModel()
+        a, b = model.proc_at(left), model.proc_at(right)
+        if a is not None and b is not None and is_section(a.pid) and is_section(b.pid):
+            first = RANK[KEY_OF_PID[a.pid]] < RANK[KEY_OF_PID[b.pid]]
+            return first if self.sortOrder() == Qt.SortOrder.AscendingOrder else not first
+        return super().lessThan(left, right)
+
     def filterAcceptsRow(self, row: int, parent: QModelIndex) -> bool:
         model: ProcModel = self.sourceModel()
         p = model.proc_at(model.index(row, 0, parent))
         if p is None:
             return False
+        if is_section(p.pid):
+            return False   # shown through its rows (recursive filter); empty, it is hidden
         if not self.show_all:
             # A member of a group inherits the group row's verdict: opening
             # "Brave" must show all of Brave, helpers included, while a group

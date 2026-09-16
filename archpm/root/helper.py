@@ -129,14 +129,23 @@ def proc_uid(pid: int) -> int:
     raise HelperError(f"process {pid} does not exist")
 
 
+def units_in(cgroup_text: str) -> set[str]:
+    """systemd units a /proc/<pid>/cgroup path passes through, e.g. {'sddm.service'}.
+    The line is "0::/path"; split at the second colon, not the last, since a
+    dbus-activated unit carries a colon in its name."""
+    for line in cgroup_text.splitlines():
+        parts = line.split(":", 2)
+        if len(parts) == 3 and parts[0] == "0":
+            return {part for part in parts[2].split("/") if "." in part}
+    return set()
+
+
 def proc_units(pid: int) -> set[str]:
-    """systemd units the process's cgroup path passes through, e.g. {'sddm.service'}."""
     try:
         with open(f"/proc/{pid}/cgroup") as fh:
-            path = fh.read().strip().rpartition(":")[2]
+            return units_in(fh.read())
     except OSError:
         return set()
-    return {part for part in path.split("/") if "." in part}
 
 
 def check_target(pid: int) -> None:
