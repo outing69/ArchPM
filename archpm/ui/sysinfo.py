@@ -72,10 +72,12 @@ class SystemView(QWidget):
         self.lbl_failed_state = QLabel("not checked yet")
         self.lbl_failed_state.setStyleSheet(f"color: {theme.MUTED};")
         frow.addWidget(self.lbl_failed_state, 1)
-        self.btn_failed = QPushButton("Refresh")
+        # Named for what it refreshes: the page's own Refresh, next to it,
+        # rereads the machine's specs and does not touch this block.
+        self.btn_failed = QPushButton("Refresh failed services")
         self.btn_failed.setToolTip("Asks systemctl --failed and systemctl --user --failed again. "
                                    "This is the only other time the check runs; it is not on a "
-                                   "timer.")
+                                   "timer. The page's Refresh above rereads the machine's specs.")
         self.btn_failed.clicked.connect(self.refresh_failed.emit)
         frow.addWidget(self.btn_failed)
         self.failed_card.body.addLayout(frow)

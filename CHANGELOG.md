@@ -3,6 +3,16 @@
 All notable changes, newest first. Versions are git tags on
 [github.com/outing69/ArchPM](https://github.com/outing69/ArchPM).
 
+## 0.2.23 (2026-09-16)
+
+- Overview: "N services failed" now reads as the link it is: pointer cursor,
+  underline on hover, reachable with Tab, a focus outline, and Enter or
+  Space opens the System page. "No failed services" stays plain text that
+  takes no focus, not a button.
+- System page: the button on the failed-services block is "Refresh failed
+  services", so it no longer sits next to the page's own Refresh with the
+  same label and a different effect.
+
 ## 0.2.22 (2026-09-16)
 
 - Failed services, read-only. Once, when the window starts, ArchPM asks

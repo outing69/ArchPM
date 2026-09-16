@@ -274,8 +274,9 @@ GLOSSARY: tuple[Section, ...] = (
              "systemctl --user --failed once, when the window starts, and shows the count "
              "next to Root tasks on the Overview; the System page lists each one with the "
              "last lines of its log. That is a snapshot taken at start: a service that "
-             "fails while the window is open shows up after Refresh on the System page, "
-             "the only other time the check runs. Read-only; ArchPM starts or stops no "
+             "fails while the window is open shows up after \"Refresh failed services\" on "
+             "the System page, the only other time the check runs. Read-only; ArchPM "
+             "starts or stops no "
              "system service.",
              "Overview next to Root tasks, System page"),
         Term("Service that comes back",

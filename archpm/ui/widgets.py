@@ -4,7 +4,7 @@ from __future__ import annotations
 from collections import deque
 from dataclasses import dataclass, field
 
-from PySide6.QtCore import QPointF, QRectF, Qt
+from PySide6.QtCore import QPointF, QRectF, Qt, Signal
 from PySide6.QtGui import (
     QBrush,
     QColor,
@@ -344,3 +344,86 @@ class StatTile(QFrame):
         self._sub.setText(sub)
         if color:
             self._value.setStyleSheet(f"color: {color};")
+
+
+class TextLink(QLabel):
+    """A line of text that is a link when it has somewhere to go, and plain
+    text otherwise. As a link it shows a pointer, underlines on hover, takes
+    focus with Tab, paints a focus outline and fires on Enter or Space. As
+    plain text it does none of that, so a state with nothing to do stays
+    quiet text and never looks like a button."""
+
+    activated = Signal()
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._text = ""
+        self._color = theme.ACCENT
+        self._link = False
+        self._hover = False
+        self.setTextFormat(Qt.TextFormat.RichText)
+        self.setOpenExternalLinks(False)
+        self.linkActivated.connect(lambda _: self.activated.emit())
+        self.set_plain("", theme.MUTED)
+
+    def set_plain(self, text: str, color: str) -> None:
+        self._link = False
+        self._text = text
+        self.setStyleSheet(f"color: {color};")
+        self.setText(text)
+        self.setCursor(Qt.CursorShape.ArrowCursor)
+        self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
+        self.update()
+
+    def set_link(self, text: str, color: str) -> None:
+        self._link = True
+        self._text, self._color = text, color
+        self.setStyleSheet("")
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setFocusPolicy(Qt.FocusPolicy.TabFocus)
+        self.setTextInteractionFlags(Qt.TextInteractionFlag.LinksAccessibleByMouse
+                                     | Qt.TextInteractionFlag.LinksAccessibleByKeyboard)
+        self._render()
+
+    def _render(self) -> None:
+        deco = "underline" if (self._hover or self.hasFocus()) else "none"
+        self.setText(f'<a href="#go" style="color: {self._color}; text-decoration: {deco};">'
+                     f"{self._text}</a>")
+
+    def enterEvent(self, event) -> None:
+        super().enterEvent(event)
+        if self._link:
+            self._hover = True
+            self._render()
+
+    def leaveEvent(self, event) -> None:
+        super().leaveEvent(event)
+        if self._link:
+            self._hover = False
+            self._render()
+
+    def focusInEvent(self, event) -> None:
+        super().focusInEvent(event)
+        if self._link:
+            self._render()
+
+    def focusOutEvent(self, event) -> None:
+        super().focusOutEvent(event)
+        if self._link:
+            self._render()
+
+    def keyPressEvent(self, event) -> None:
+        if self._link and event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter, Qt.Key.Key_Space):
+            self.activated.emit()
+            event.accept()
+            return
+        super().keyPressEvent(event)
+
+    def paintEvent(self, event) -> None:
+        super().paintEvent(event)
+        if self._link and self.hasFocus():
+            p = QPainter(self)
+            p.setPen(QPen(QColor(self._color), 1, Qt.PenStyle.DashLine))
+            p.drawRoundedRect(self.rect().adjusted(0, 0, -1, -1), 3, 3)
+            p.end()

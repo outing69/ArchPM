@@ -24,7 +24,7 @@ from ..sysinfo import cpu_model, short_cpu_name
 from . import hints, theme
 from .history import ProcHistory
 from .proc_model import age_text
-from .widgets import Card, CoreGrid, Graph, StatTile, app_icon, human_bytes, mono
+from .widgets import Card, CoreGrid, Graph, StatTile, TextLink, app_icon, human_bytes, mono
 
 
 class GameCard(Card):
@@ -259,10 +259,8 @@ class Dashboard(QWidget):
         # Failed services: a snapshot taken at start (and on Refresh on the
         # System page). Plain muted text when there are none, a link when
         # there are; never a button, never on the sampling cycle.
-        self.lbl_failed = QLabel("")
-        self.lbl_failed.setTextFormat(Qt.TextFormat.RichText)
-        self.lbl_failed.setOpenExternalLinks(False)
-        self.lbl_failed.linkActivated.connect(lambda _: self.failed_clicked.emit())
+        self.lbl_failed = TextLink()
+        self.lbl_failed.activated.connect(self.failed_clicked.emit)
         head.addWidget(self.lbl_failed)
         self.btn_root = QPushButton("Root tasks")
         self.btn_root.setToolTip(
@@ -385,18 +383,15 @@ class Dashboard(QWidget):
 
     def set_failed(self, count: int) -> None:
         if count == 0:
-            self.lbl_failed.setStyleSheet(f"color: {theme.MUTED};")
-            self.lbl_failed.setText("No failed services")
+            self.lbl_failed.set_plain("No failed services", theme.MUTED)
             self.lbl_failed.setToolTip(
                 "systemctl --failed and systemctl --user --failed listed nothing when the "
-                "window started. Refresh on the System page looks again.")
+                "window started. \"Refresh failed services\" on the System page looks again.")
             return
         noun = "service" if count == 1 else "services"
-        self.lbl_failed.setStyleSheet("")
-        self.lbl_failed.setText(f'<a href="#failed" style="color: {theme.WARN}; '
-                                f'text-decoration: none;">{count} {noun} failed</a>')
-        self.lbl_failed.setToolTip("Click for the list and the last log lines of each, "
-                                   "on the System page.")
+        self.lbl_failed.set_link(f"{count} {noun} failed", theme.WARN)
+        self.lbl_failed.setToolTip("Opens the System page: the list, and the last log lines "
+                                   "of each. Enter works too.")
 
     def game_name(self) -> str:
         """The running game's name, "" without one; for the tray."""
