@@ -18,12 +18,23 @@ import re
 import signal
 import subprocess
 from dataclasses import dataclass
+from typing import NamedTuple
 
 import psutil
 
 
 class ActionError(Exception):
     """Action refused or failed; the message is meant for the user."""
+
+
+class Service(NamedTuple):
+    unit: str
+    description: str = ""     # empty when systemd has none beyond the unit name
+
+    @property
+    def label(self) -> str:
+        """What a person can recognise: the description, with the unit after it."""
+        return f"{self.description}  ({self.unit})" if self.description else self.unit
 
 
 class PermissionDenied(ActionError):
@@ -88,6 +99,11 @@ class UserBackend:
 
     # -- checks ------------------------------------------------------------
     def _proc(self, pid: int) -> psutil.Process:
+        if pid <= 0:
+            # A group row in the process list carries a negative pid; the view
+            # expands it into its members before it gets here. Say so rather
+            # than let psutil's ValueError escape.
+            raise ActionError(f"{pid} is not a process.")
         try:
             p = psutil.Process(pid)
         except psutil.NoSuchProcess:
@@ -222,10 +238,20 @@ class UserBackend:
         systemctl_user(*argv[2:])
         return systemctl_user("show", "-p", "ActiveState", "--value", "--", argv[-1])
 
-    def list_services(self) -> list[str]:
-        """Unit names of your own session's services, as systemctl lists them."""
+    def list_services(self) -> list[Service]:
+        """Your own session's services, as systemctl lists them, each with its
+        description: the unit names Plasma gives launched apps
+        (app-brave\\x2dbrowser@89185f01fb3e42e38b610935c88efd87.service) say
+        nothing to a person; "Brave - Web Browser" does."""
         out = systemctl_user("list-units", "--type=service", "--no-legend", "--plain", "--no-pager")
-        return [line.split()[0] for line in out.splitlines() if line.strip()]
+        services = []
+        for line in out.splitlines():
+            parts = line.split()
+            if not parts:
+                continue
+            unit, description = parts[0], " ".join(parts[4:])
+            services.append(Service(unit, description if description != unit else ""))
+        return services
 
 
 def get_backend() -> UserBackend:

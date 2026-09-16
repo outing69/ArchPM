@@ -3,6 +3,21 @@
 All notable changes, newest first. Versions are git tags on
 [github.com/outing69/ArchPM](https://github.com/outing69/ArchPM).
 
+## 0.2.16 (2026-09-16)
+
+- Fixed: Priority, Disk priority and CPU affinity on a group row (a browser
+  and its helpers, say) did nothing and said nothing. The row carries a
+  negative pid that no kernel call can take; psutil raised a ValueError that
+  nothing caught, and Qt dropped it on stderr. The view now expands a group
+  row into the processes shown under it, so "Low" on Brave goes to every
+  Brave process, and the status bar counts them. And whatever goes wrong
+  inside an action is shown in the failure box, never swallowed; with nothing
+  selected the status bar says so.
+- Root tasks: the service list shows the unit's description before its name,
+  "Brave - Web Browser  (app-brave\x2dbrowser@8918….service)", sorted by that
+  description, so the opaque names Plasma gives launched apps can be told
+  apart. A typed unit name still works.
+
 ## 0.2.15 (2026-09-16)
 
 - Security (root helper): nice, affinity and IO class now get the target

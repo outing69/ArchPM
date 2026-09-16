@@ -99,12 +99,37 @@ class ServiceRun(unittest.TestCase):
                             lambda: actions.UserBackend().service("stop", "wireplumber"))
         self.assertEqual(calls, [])
 
-    def test_list_services_parses_plain_output(self):
+    def test_list_services_parses_plain_output_with_descriptions(self):
         out = ("archpm-agent.service loaded active running ArchPM agent\n"
-               "plasma-plasmashell.service loaded active running KDE Plasma Workspace\n\n")
+               "app-brave\\x2dbrowser@89185f01fb3e42e38b610935c88efd87.service loaded active "
+               "running Brave - Web Browser\n"
+               "dbus-:1.2-org.kde.kwalletd6@0.service loaded active running "
+               "dbus-:1.2-org.kde.kwalletd6@0.service\n\n")
         units = self._with_fake(lambda *a, timeout=30: out,
                                 lambda: actions.UserBackend().list_services())
-        self.assertEqual(units, ["archpm-agent.service", "plasma-plasmashell.service"])
+        self.assertEqual(units, [
+            actions.Service("archpm-agent.service", "ArchPM agent"),
+            actions.Service("app-brave\\x2dbrowser@89185f01fb3e42e38b610935c88efd87.service",
+                            "Brave - Web Browser"),
+            actions.Service("dbus-:1.2-org.kde.kwalletd6@0.service", ""),
+        ], "a description equal to the unit name is no description")
+
+    def test_service_label_is_what_a_person_recognises(self):
+        unit = "app-brave\\x2dbrowser@89185f01fb3e42e38b610935c88efd87.service"
+        self.assertEqual(actions.Service(unit, "Brave - Web Browser").label,
+                         f"Brave - Web Browser  ({unit})")
+        self.assertEqual(actions.Service(unit).label, unit)
+
+
+class GroupRows(unittest.TestCase):
+    def test_a_negative_pid_is_refused_as_not_a_process(self):
+        """A group row carries a negative pid. psutil raises ValueError for
+        it, which is not an ActionError and used to escape the view unseen."""
+        backend = actions.UserBackend()
+        for pid in (-18, 0):
+            with self.subTest(pid=pid), self.assertRaises(actions.ActionError) as ctx:
+                backend.set_nice(pid, 0)
+            self.assertIn("not a process", str(ctx.exception))
 
     def test_elevated_backend_retries_only_a_permission_refusal_as_root(self):
         """A refusal meant as final (ArchPM itself, a process that is gone, bad

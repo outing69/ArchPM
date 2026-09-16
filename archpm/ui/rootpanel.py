@@ -206,11 +206,24 @@ class RootPanel(QDialog):
         except ActionError as exc:
             self._say(f"services: {exc}")
             return
-        current = self.combo_service.currentText()
+        current = self.chosen_unit()
         self.combo_service.clear()
-        self.combo_service.addItems(units)
+        for svc in sorted(units, key=lambda s: s.label.lower()):
+            self.combo_service.addItem(svc.label, svc.unit)
         if current:
-            self.combo_service.setCurrentText(current)
+            index = self.combo_service.findData(current)
+            if index >= 0:
+                self.combo_service.setCurrentIndex(index)
+            else:
+                self.combo_service.setCurrentText(current)
+
+    def chosen_unit(self) -> str:
+        """The unit behind the chosen entry, or what was typed in the box."""
+        combo = self.combo_service
+        i = combo.currentIndex()
+        if i >= 0 and combo.currentText() == combo.itemText(i):
+            return combo.itemData(i) or ""
+        return combo.currentText().strip()
 
     # -- execution ---------------------------------------------------------
     def _run_service(self, action: str) -> None:
@@ -219,7 +232,7 @@ class RootPanel(QDialog):
             self._say("An action is already running.")
             return
         try:
-            argv = self.backend.service_argv(action, self.combo_service.currentText())
+            argv = self.backend.service_argv(action, self.chosen_unit())
         except ActionError as exc:
             self._say(f"  ✗ {exc}")
             return

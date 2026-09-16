@@ -511,6 +511,19 @@ class ProcessView(QWidget):
                 out.append(p)
         return out
 
+    def _selected_real(self) -> list[ProcSample]:
+        """Selected processes, with a group row standing for its members. A
+        group row has a negative pid that no kernel call can take; acting on
+        it means acting on every process shown under it."""
+        seen: set[int] = set()
+        out: list[ProcSample] = []
+        for p in self._selected():
+            for q in ([p] if p.pid > 0 else self.model.procs_under(p.pid)):
+                if q.pid not in seen:
+                    seen.add(q.pid)
+                    out.append(q)
+        return out
+
     def _selected_trees(self) -> list[ProcSample]:
         """Selected processes plus every descendant (or group member), children
         first, no duplicates, real processes only."""
@@ -578,6 +591,10 @@ class ProcessView(QWidget):
 
     # -- actions ----------------------------------------------------------
     def _run(self, fn, procs: list[ProcSample], verb: str) -> None:
+        """Every outcome is shown: a count for what was done, a box for what
+        was not. An action that silently does nothing is worse than an error,
+        so even a fault in our own code lands in the box instead of in a
+        traceback on stderr that nobody sees."""
         done, errors = 0, []
         for p in procs:
             try:
@@ -585,8 +602,12 @@ class ProcessView(QWidget):
                 done += 1
             except ActionError as exc:
                 errors.append(f"{p.display_name} ({p.pid}): {exc}")
+            except Exception as exc:  # noqa: BLE001 - reported, never swallowed
+                errors.append(f"{p.display_name} ({p.pid}): {type(exc).__name__}: {exc}")
         if done:
             self.status.emit(f"{verb}: {done} process(es)")
+        elif not procs:
+            self.status.emit(f"{verb}: nothing selected")
         if errors:
             box = QMessageBox(self)
             box.setIcon(QMessageBox.Icon.Warning)
@@ -640,19 +661,25 @@ class ProcessView(QWidget):
 
     def _set_nice(self, value: int) -> None:
         self._run(lambda p: self.backend.set_nice(p.pid, value),
-                  self._selected(), f"nice {value}")
+                  self._selected_real(), f"nice {value}")
 
     def _set_ionice(self, klass, value: int = 4) -> None:
         self._run(lambda p: self.backend.set_ionice(p.pid, klass, value),
-                  self._selected(), "disk priority")
+                  self._selected_real(), "disk priority")
 
     def _affinity(self, proc: ProcSample) -> None:
-        current = self.backend.get_affinity(proc.pid) or list(range(self.ncpu))
+        """For a group row the dialog starts from the first member's mask and
+        the choice goes to every member."""
+        targets = [proc] if proc.pid > 0 else self.model.procs_under(proc.pid)
+        if not targets:
+            self.status.emit("affinity: nothing selected")
+            return
+        current = self.backend.get_affinity(targets[0].pid) or list(range(self.ncpu))
         dlg = AffinityDialog(proc, current, self.ncpu, self)
         if dlg.exec() != QDialog.DialogCode.Accepted:
             return
         self._run(lambda p: self.backend.set_affinity(p.pid, dlg.selection()),
-                  [proc], "affinity")
+                  targets, "affinity")
 
     @staticmethod
     def _copy(text: str) -> None:
