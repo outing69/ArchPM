@@ -3,6 +3,19 @@
 All notable changes, newest first. Versions are git tags on
 [github.com/outing69/ArchPM](https://github.com/outing69/ArchPM).
 
+## 0.2.17 (2026-09-16)
+
+- Tests: the PSS cadence test no longer depends on what happens to be running.
+  It needed a steady application with several processes and failed in a clean
+  build chroot, which made the package's check() fail. It now starts a few
+  sleep children of its own, which form a group, and checks the cadence on
+  those. Two helper tests had the same flaw: they took pid 2 (kthreadd) as a
+  root process that exists everywhere, and a chroot with its own pid
+  namespace has none. They now make the helper see the test's own process
+  as root's, or nobody's, and the kthreadd check runs only where pid 2 is
+  really root's. Verified in an empty pid namespace and in a clean
+  container build of the package.
+
 ## 0.2.16 (2026-09-16)
 
 - Fixed: Priority, Disk priority and CPU affinity on a group row (a browser

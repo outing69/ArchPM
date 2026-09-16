@@ -56,6 +56,20 @@ def regular() -> bool:
     return helper.is_regular_uid(os.getuid())
 
 
+@contextlib.contextmanager
+def target_uid(uid: int):
+    """Make the helper see every target as running under `uid`. The tests
+    then use their own pid, which exists everywhere; a real root process
+    such as kthreadd is not there in a build chroot with its own pid
+    namespace, and a test must not hope for one."""
+    original = helper.proc_uid
+    helper.proc_uid = lambda pid: uid
+    try:
+        yield
+    finally:
+        helper.proc_uid = original
+
+
 class RegularUsers(unittest.TestCase):
     """Who the helper acts for: UID_MIN to UID_MAX, nothing below, nothing above."""
 
@@ -143,15 +157,41 @@ class Pinning(unittest.TestCase):
             helper.proc_units = original
 
     def test_all_four_process_commands_go_through_the_same_check(self):
-        """pid 2 (kthreadd) runs as root everywhere: every command must refuse
-        it because of who it is, before doing anything."""
-        for name, a in (("nice", args(pid="2", value="0")),
-                        ("affinity", args(pid="2", cores="0")),
-                        ("ionice", args(pid="2", klass="2", value="4")),
-                        ("signal", args(pid="2", signal="CONT"))):
-            with self.subTest(name), self.assertRaises(helper.HelperError) as ctx:
-                getattr(helper, f"cmd_proc_{name}")(a)
-            self.assertIn("not a regular user", str(ctx.exception))
+        """A process seen as root's: every command must refuse it because of
+        who it is, before doing anything."""
+        me = str(os.getpid())
+        before = os.getpriority(os.PRIO_PROCESS, 0)
+        with target_uid(0):
+            for name, a in (("nice", args(pid=me, value="19")),
+                            ("affinity", args(pid=me, cores="0")),
+                            ("ionice", args(pid=me, klass="3", value="0")),
+                            ("signal", args(pid=me, signal="CONT"))):
+                with self.subTest(name), self.assertRaises(helper.HelperError) as ctx:
+                    getattr(helper, f"cmd_proc_{name}")(a)
+                self.assertIn("not a regular user", str(ctx.exception))
+        self.assertEqual(os.getpriority(os.PRIO_PROCESS, 0), before, "nothing was applied")
+
+    def test_nobody_and_dynamic_users_are_refused_by_every_command(self):
+        me = str(os.getpid())
+        for uid in (65534, 61184):
+            with target_uid(uid), self.subTest(uid=uid), \
+                    self.assertRaises(helper.HelperError) as ctx:
+                helper.cmd_proc_nice(args(pid=me, value="19"))
+            self.assertIn(f"uid {uid}", str(ctx.exception))
+
+    def test_kthreadd_is_refused_where_it_exists(self):
+        """The same on a real root process, on a machine that shows one. In a
+        build chroot or a fresh pid namespace pid 2 is missing, or is not
+        root's; then there is nothing to test here and the fake-uid tests
+        above carry the rule."""
+        try:
+            if helper.proc_uid(2) != 0:
+                self.skipTest("pid 2 is not a root process in this pid namespace")
+        except helper.HelperError:
+            self.skipTest("no pid 2 in this pid namespace")
+        with self.assertRaises(helper.HelperError) as ctx:
+            helper.cmd_proc_signal(args(pid="2", signal="CONT"))
+        self.assertIn("not a regular user", str(ctx.exception))
 
     def test_nice_affinity_ionice_refuse_a_protected_unit(self):
         original = helper.proc_units
@@ -192,10 +232,10 @@ class ProcCommands(unittest.TestCase):
             helper.cmd_proc_signal(args(pid="1", signal="TERM"))
 
     def test_signal_refuses_system_account_processes(self):
-        # pid 2 (kthreadd) runs as root on every Linux system; it must be refused
-        # because of *who* it is, not because it is missing.
-        with self.assertRaises(helper.HelperError) as ctx:
-            helper.cmd_proc_signal(args(pid="2", signal="CONT"))
+        # Refused because of *who* it is, not because it is missing: the
+        # target exists (it is this test) and is seen as root's.
+        with target_uid(0), self.assertRaises(helper.HelperError) as ctx:
+            helper.cmd_proc_signal(args(pid=str(os.getpid()), signal="CONT"))
         self.assertIn("not a regular user", str(ctx.exception))
 
     def test_target_check_accepts_a_regular_user_process(self):
