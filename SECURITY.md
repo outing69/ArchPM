@@ -19,13 +19,25 @@ session** and treats every argument as hostile. It defends against:
 - **Arbitrary actions.** Only a fixed set of subcommands exists. Signals are
   limited to an allow-list and every numeric value has explicit bounds. The
   helper does not manage services at all (see below).
-- **Breaking your session.** Two rules:
-  - Signals go only to processes of regular users (uid 1000 and up) that are
-    not inside a protected unit's cgroup (dbus, logind, journald, udev, polkit,
-    oomd, the common display managers and their sockets). Root daemons,
-    polkitd, dbus, the display manager and their children cannot be signalled
-    by pid at all. The check runs on a pidfd, so a pid recycled mid-call cannot
-    receive the signal.
+- **Breaking your session.** Two rules, the same for all four process
+  commands (signal, nice, affinity, IO class):
+  - The target must be a regular user's process, as `/etc/login.defs` defines
+    a regular user: `UID_MIN` to `UID_MAX`, 1000 to 60000 on Arch and most
+    distributions. System accounts below that range are refused, and so are
+    `nobody` (65534) and systemd's `DynamicUser` accounts (61184 to 65519)
+    above it. And it must not sit inside a protected unit's cgroup (dbus,
+    logind, journald, udev, polkit, oomd, the common display managers and
+    their sockets). So root daemons, polkitd, dbus, the display manager and
+    their children cannot be signalled, reniced, pinned to a core or given a
+    realtime IO class by pid at all.
+  - Every command pins the target with a pidfd before it looks at who it is. A
+    signal is delivered through that pidfd, so a pid recycled mid-call cannot
+    receive it. Nice, affinity and IO class have to address a pid, so after
+    the change the helper checks that the pinned process is still alive; a pid
+    is only handed out again once its process has exited, so a live pidfd
+    means the pid named the same process throughout. If it did exit, the
+    helper reports that the change may have reached a newcomer instead of
+    reporting success.
   - PID 1 and below are always refused for everything.
 - **Loading attacker-controlled code.** The helper is stdlib-only, imports
   nothing from this repository, and lives in a directory a normal user cannot
@@ -68,9 +80,6 @@ The helper does **not** defend against:
     Polkit picks the change up immediately. Syntax checked against the
     polkit(8) manual page of polkit 127.
 - Malicious software already running as root. That is game over regardless.
-- Renice, affinity and ionice have no owner check and are subject to the usual
-  pid-reuse race. The worst case is a wrong process getting a different
-  priority, which is why these three are not gated the way signals are.
 - The last line of ionice's, paccache's or journalctl's stderr is passed back
   to the caller in the JSON error. That can name paths; it cannot leak secrets.
 
@@ -78,7 +87,18 @@ This helper was reviewed once by an independent automated adversarial pass on
 13 September 2026, which found the signal-by-pid bypass described above and two
 gaps in the service subcommand that existed at the time. The bypass is fixed
 and pinned by tests; the service subcommand has since been removed altogether.
-It has not yet been reviewed by a second person.
+A second outside review on 16 September 2026 found that nice, affinity and IO
+class still checked only that the pid existed, so with root a user could renice
+journald or the display manager, and that the system-account bound stopped at
+uid 999, which treated `nobody` and `DynamicUser` accounts as regular users.
+Both are fixed as described above and pinned by tests.
+
+**The user side retries only for lack of privileges.** The window first tries
+every process action as you. Before 0.2.15 the elevated backend retried any
+refusal through the helper, so a refusal meant as final, ArchPM's own process
+for instance, came back as a root action. Now only a refusal for lack of
+privileges (another user's process, a nice value below the current one, a
+realtime IO class) goes through `pkexec`; every other refusal stands.
 
 ## Services
 
@@ -157,7 +177,10 @@ pids are gone. Both are the safe failure. Reinstall the widgets with
 ## What the tests cover
 
 `tests/test_helper.py` pins every refusal rule above so that a later change
-cannot silently loosen it, including that the `service` subcommand stays gone.
+cannot silently loosen it: the uid range with `nobody` and `DynamicUser`
+refused, the protected units, the pidfd pin for all four process commands,
+and that the `service` subcommand stays gone. `tests/test_actions.py` pins
+that the elevated backend retries only a permission refusal through the helper.
 `tests/test_actions.py` pins the session guard and that services never go
 through `pkexec`. `tests/test_publisher_agent.py` pins the directory check (a
 foreign owner, a world-writable directory, a symlink and a plain file are all

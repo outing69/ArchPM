@@ -26,6 +26,14 @@ class ActionError(Exception):
     """Action refused or failed; the message is meant for the user."""
 
 
+class PermissionDenied(ActionError):
+    """Refused for lack of privileges only: another user's process, a nice
+    value below the current one, a realtime IO class. The elevated backend
+    retries exactly these through the root helper, and nothing else: a
+    refusal for any other reason (ArchPM itself, a process that is gone, bad
+    input) is final and must not come back as root."""
+
+
 # -- your own session's services ----------------------------------------------
 SERVICE_ACTIONS = ("start", "stop", "restart")
 # An ordinary first character (a leading "-" would look like an option to
@@ -85,7 +93,7 @@ class UserBackend:
         except psutil.NoSuchProcess:
             raise ActionError(f"Process {pid} no longer exists.") from None
         if not self.owns(p):
-            raise ActionError(
+            raise PermissionDenied(
                 f"Process {pid} ({p.name()}) does not run under your account. "
                 "Enable root actions via Overview → Root tasks."
             )
@@ -119,7 +127,7 @@ class UserBackend:
         except psutil.NoSuchProcess:
             pass
         except psutil.AccessDenied:
-            raise ActionError(f"No permission to send {sig.name} to {pid}.") from None
+            raise PermissionDenied(f"No permission to send {sig.name} to {pid}.") from None
 
     def terminate(self, pid: int) -> None:
         self.send_signal(pid, signal.SIGTERM)
@@ -140,14 +148,14 @@ class UserBackend:
         except psutil.Error:
             current = 0
         if value < current and self.uid != 0:
-            raise ActionError(
+            raise PermissionDenied(
                 f"Raising priority (nice {current} → {value}) is not possible without "
                 "root privileges. Enable that via Overview → Root tasks."
             )
         try:
             p.nice(value)
         except psutil.AccessDenied:
-            raise ActionError(f"No permission to change the nice value of {pid}.") from None
+            raise PermissionDenied(f"No permission to change the nice value of {pid}.") from None
         except psutil.NoSuchProcess:
             raise ActionError(f"Process {pid} no longer exists.") from None
 
@@ -158,7 +166,7 @@ class UserBackend:
         try:
             p.cpu_affinity(sorted(set(cores)))
         except psutil.AccessDenied:
-            raise ActionError(f"No permission to change the affinity of {pid}.") from None
+            raise PermissionDenied(f"No permission to change the affinity of {pid}.") from None
         except (psutil.NoSuchProcess, ValueError) as exc:
             raise ActionError(str(exc)) from None
 
@@ -176,7 +184,7 @@ class UserBackend:
             else:
                 p.ionice(klass, value)
         except psutil.AccessDenied:
-            raise ActionError(
+            raise PermissionDenied(
                 "This IO class requires root privileges (realtime), or the process is not yours."
             ) from None
         except psutil.Error as exc:

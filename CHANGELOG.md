@@ -3,6 +3,26 @@
 All notable changes, newest first. Versions are git tags on
 [github.com/outing69/ArchPM](https://github.com/outing69/ArchPM).
 
+## 0.2.15 (2026-09-16)
+
+- Security (root helper): nice, affinity and IO class now get the target
+  check that signals had. Before, they only checked that the pid existed and
+  was above 1, so with root a user could renice journald or the display
+  manager, pin it to one core or give it realtime IO. All four process
+  commands now refuse anything but a regular user's process outside the
+  protected units, and pin the target with a pidfd: a signal goes through the
+  pidfd, and for the other three the helper checks afterwards that the pinned
+  process is still alive, so a pid recycled mid-call is reported instead of
+  changed in silence.
+- Security (root helper): a regular user is now what /etc/login.defs says,
+  UID_MIN to UID_MAX (1000 to 60000), instead of "above 999". That closes
+  nobody (65534) and systemd's DynamicUser accounts (61184 to 65519), which
+  were treated as regular users.
+- Security (window): the elevated backend retries only a refusal for lack of
+  privileges through the helper. Every other refusal from the user backend,
+  ArchPM's own process or a process that is gone for instance, is final and
+  no longer comes back as a root action.
+
 ## 0.2.14 (2026-09-16)
 
 - Security: the widgets no longer run anything that comes out of status.json.

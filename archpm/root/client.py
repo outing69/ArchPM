@@ -14,7 +14,7 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
-from ..actions import ActionError, UserBackend
+from ..actions import ActionError, PermissionDenied, UserBackend
 
 # The distribution package installs the helper under /usr/lib, install.sh under
 # /usr/local/lib. Prefer the package if both exist; report the manual path when neither does.
@@ -133,8 +133,10 @@ class ElevatedBackend(UserBackend):
     """Same interface as UserBackend, but falls back to the root helper.
 
     Try without privileges first: that is faster and most actions on your own
-    processes need no root at all. Only when the kernel or UserBackend says no
-    does it go through pkexec.
+    processes need no root at all. Only a refusal for lack of privileges goes
+    through pkexec. Every other refusal (ArchPM itself, a process that is
+    gone, bad input) stands: root would not make it right, it would make it
+    happen.
     """
 
     name = "root"
@@ -150,7 +152,7 @@ class ElevatedBackend(UserBackend):
     def _fallback(self, fn, *args: str):
         try:
             return fn()
-        except ActionError:
+        except PermissionDenied:
             return self.client.call(*args)
 
     def send_signal(self, pid, sig):

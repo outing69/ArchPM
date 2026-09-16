@@ -13,6 +13,8 @@ import contextlib
 import io
 import json
 import os
+import subprocess
+import tempfile
 import unittest
 from contextlib import redirect_stdout
 from types import SimpleNamespace
@@ -50,15 +52,124 @@ class AsInt(unittest.TestCase):
         self.assertEqual(helper.as_int("-10", -20, 19, "nice"), -10)
 
 
-class CheckPid(unittest.TestCase):
-    def test_protects_pid_1_and_below(self):
-        for pid in (1, 0, -1):
-            with self.subTest(pid=pid), self.assertRaises(helper.HelperError):
-                helper.check_pid(pid)
+def regular() -> bool:
+    return helper.is_regular_uid(os.getuid())
 
-    def test_rejects_nonexistent_pid(self):
+
+class RegularUsers(unittest.TestCase):
+    """Who the helper acts for: UID_MIN to UID_MAX, nothing below, nothing above."""
+
+    RANGE = (1000, 60000)
+
+    def test_system_accounts_nobody_and_dynamic_users_are_not_regular(self):
+        for uid in (0, 1, 81, 999, 60001, 61184, 63000, 65519, 65534, 4294967294):
+            with self.subTest(uid=uid):
+                self.assertFalse(helper.is_regular_uid(uid, self.RANGE))
+
+    def test_the_range_itself_is_regular_inclusive(self):
+        for uid in (1000, 1001, 59999, 60000):
+            with self.subTest(uid=uid):
+                self.assertTrue(helper.is_regular_uid(uid, self.RANGE))
+
+    def test_range_read_from_login_defs(self):
+        with tempfile.NamedTemporaryFile("w", suffix=".defs", delete=False) as fh:
+            fh.write("# comment\nUID_MIN\t\t 500\nUID_MAX\t\t60000\nSYS_UID_MAX 499\n")
+            path = fh.name
+        try:
+            self.assertEqual(helper.regular_uid_range(path), (500, 60000))
+        finally:
+            os.unlink(path)
+
+    def test_missing_or_odd_login_defs_gives_the_usual_range(self):
+        self.assertEqual(helper.regular_uid_range("/nonexistent/login.defs"), (1000, 60000))
+        for text in ("UID_MIN 70000\nUID_MAX 60000\n", "UID_MIN 0\n", "UID_MIN abc\n"):
+            with tempfile.NamedTemporaryFile("w", delete=False) as fh:
+                fh.write(text)
+                path = fh.name
+            try:
+                with self.subTest(text=text):
+                    self.assertEqual(helper.regular_uid_range(path), (1000, 60000))
+            finally:
+                os.unlink(path)
+
+    def test_this_machine_has_a_sane_range(self):
+        lo, hi = helper.regular_uid_range()
+        self.assertGreaterEqual(lo, 1)
+        self.assertLess(hi, 61184, "DynamicUser range must stay outside")
+
+
+class Pinning(unittest.TestCase):
+    """Every process command opens a pidfd first and reports a target that
+    exited mid-change instead of pretending the change landed."""
+
+    def test_pin_refuses_a_missing_pid(self):
         with self.assertRaises(helper.HelperError):
-            helper.check_pid(2**22)
+            helper.pin(2**22)
+
+    def test_change_runs_apply_on_a_live_regular_process(self):
+        if not regular():
+            self.skipTest("test itself runs as a system account")
+        child = subprocess.Popen(["sleep", "30"])
+        try:
+            seen = []
+            out = helper.change(child.pid, lambda: seen.append(child.pid) or {"ok": 1})
+            self.assertEqual((seen, out), ([child.pid], {"ok": 1}))
+        finally:
+            child.kill()
+            child.wait()
+
+    def test_change_reports_a_target_that_ended_during_the_change(self):
+        if not regular():
+            self.skipTest("test itself runs as a system account")
+        child = subprocess.Popen(["sleep", "30"])
+
+        def apply():
+            child.kill()
+            child.wait()      # exited and reaped: the pid is free for reuse
+            return {"ok": 1}
+        with self.assertRaises(helper.HelperError) as ctx:
+            helper.change(child.pid, apply)
+        self.assertIn("reused", str(ctx.exception))
+
+    def test_change_checks_the_target_before_apply(self):
+        original = helper.proc_units
+        helper.proc_units = lambda pid: {"systemd-journald.service"}
+        try:
+            if not regular():
+                self.skipTest("test itself runs as a system account")
+            with self.assertRaises(helper.HelperError):
+                helper.change(os.getpid(), lambda: self.fail("apply must not run"))
+        finally:
+            helper.proc_units = original
+
+    def test_all_four_process_commands_go_through_the_same_check(self):
+        """pid 2 (kthreadd) runs as root everywhere: every command must refuse
+        it because of who it is, before doing anything."""
+        for name, a in (("nice", args(pid="2", value="0")),
+                        ("affinity", args(pid="2", cores="0")),
+                        ("ionice", args(pid="2", klass="2", value="4")),
+                        ("signal", args(pid="2", signal="CONT"))):
+            with self.subTest(name), self.assertRaises(helper.HelperError) as ctx:
+                getattr(helper, f"cmd_proc_{name}")(a)
+            self.assertIn("not a regular user", str(ctx.exception))
+
+    def test_nice_affinity_ionice_refuse_a_protected_unit(self):
+        original = helper.proc_units
+        helper.proc_units = lambda pid: {"sddm.service"}
+        try:
+            if not regular():
+                self.skipTest("test itself runs as a system account")
+            me = str(os.getpid())
+            before = os.getpriority(os.PRIO_PROCESS, 0)
+            for name, a in (("nice", args(pid=me, value="19")),
+                            ("affinity", args(pid=me, cores="0")),
+                            ("ionice", args(pid=me, klass="3", value="0"))):
+                with self.subTest(name), self.assertRaises(helper.HelperError) as ctx:
+                    getattr(helper, f"cmd_proc_{name}")(a)
+                self.assertIn("protected", str(ctx.exception))
+            self.assertEqual(os.getpriority(os.PRIO_PROCESS, 0), before, "nothing was applied")
+        finally:
+            helper.proc_units = original
 
 
 class ProcCommands(unittest.TestCase):
@@ -85,21 +196,21 @@ class ProcCommands(unittest.TestCase):
         # because of *who* it is, not because it is missing.
         with self.assertRaises(helper.HelperError) as ctx:
             helper.cmd_proc_signal(args(pid="2", signal="CONT"))
-        self.assertIn("system account", str(ctx.exception))
+        self.assertIn("not a regular user", str(ctx.exception))
 
-    def test_signal_target_check_accepts_a_regular_user_process(self):
-        if os.getuid() <= helper.SYSTEM_UID_MAX:
+    def test_target_check_accepts_a_regular_user_process(self):
+        if not regular():
             self.skipTest("test itself runs as a system account")
-        helper.check_signal_target(os.getpid())  # must not raise
+        helper.check_target(os.getpid())  # must not raise
 
-    def test_signal_target_check_refuses_protected_cgroup(self):
+    def test_target_check_refuses_protected_cgroup(self):
         original = helper.proc_units
         helper.proc_units = lambda pid: {"sddm.service", "system.slice"}
         try:
-            if os.getuid() <= helper.SYSTEM_UID_MAX:
+            if not regular():
                 self.skipTest("test itself runs as a system account")
             with self.assertRaises(helper.HelperError) as ctx:
-                helper.check_signal_target(os.getpid())
+                helper.check_target(os.getpid())
             self.assertIn("protected", str(ctx.exception))
         finally:
             helper.proc_units = original

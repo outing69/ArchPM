@@ -106,6 +106,35 @@ class ServiceRun(unittest.TestCase):
                                 lambda: actions.UserBackend().list_services())
         self.assertEqual(units, ["archpm-agent.service", "plasma-plasmashell.service"])
 
+    def test_elevated_backend_retries_only_a_permission_refusal_as_root(self):
+        """A refusal meant as final (ArchPM itself, a process that is gone, bad
+        input) must not come back as a root action."""
+        import os
+
+        from archpm.root.client import ElevatedBackend
+
+        class Client:
+            calls: list = []
+
+            def call(self, *a):
+                self.calls.append(a)
+                return {}
+        client = Client()
+        backend = ElevatedBackend(client)
+        # ArchPM's own pid: the user backend refuses it for what it is, not for privileges.
+        with self.assertRaises(actions.ActionError) as ctx:
+            backend.send_signal(os.getpid(), __import__("signal").SIGTERM)
+        self.assertNotIsInstance(ctx.exception, actions.PermissionDenied)
+        with self.assertRaises(actions.ActionError):
+            backend.set_affinity(os.getpid(), [])
+        with self.assertRaises(actions.ActionError):
+            backend.set_nice(2**22, 5)      # no such process
+        self.assertEqual(client.calls, [], "none of these may reach the helper")
+        # And only PermissionDenied does.
+        backend._fallback(lambda: (_ for _ in ()).throw(actions.PermissionDenied("no")),
+                          "proc-nice", "1234", "-5")
+        self.assertEqual(client.calls, [("proc-nice", "1234", "-5")])
+
     def test_elevated_backend_never_routes_services_through_the_helper(self):
         from archpm.root.client import ElevatedBackend, RootClient
         argv = ElevatedBackend(RootClient()).service_argv("stop", "archpm-agent")
