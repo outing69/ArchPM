@@ -3,6 +3,19 @@
 All notable changes, newest first. Versions are git tags on
 [github.com/outing69/ArchPM](https://github.com/outing69/ArchPM).
 
+## 0.2.20 (2026-09-16)
+
+- A process that its service starts again after a kill (Restart=always,
+  on-failure and the like) is now named as such in the Terminate and Force
+  kill question, with the unit, and with where to stop the service instead:
+  Root tasks for a service of your session, a restart hint for a piece of
+  the desktop, sudo systemctl stop for a system service. Where no question
+  would have been asked, one is now, since ending it would change nothing for
+  long. The setting is read from systemctl only when the question is about to
+  open, one call per service unit among the targets, 4 ms each; nothing is
+  read on the sampling cycle. Helpers of a service, whose end the service does
+  not notice, get no such note. Help: "Service that comes back".
+
 ## 0.2.19 (2026-09-16)
 
 - Honesty, four places. The Drop caches tooltip now says what the Help page

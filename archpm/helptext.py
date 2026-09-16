@@ -258,6 +258,13 @@ GLOSSARY: tuple[Section, ...] = (
              "under the autostart entries: they start at login just the same, but from a "
              "different place. Switch one off with systemctl --user disable in a terminal.",
              "Startup tab"),
+        Term("Service that comes back",
+             "A unit can carry Restart=always or Restart=on-failure, and then systemd "
+             "starts the program again the moment it ends, so ending it changes nothing "
+             "for long. ArchPM reads that setting when you are about to end such a "
+             "process and says so in the question, naming the unit; to end it for good, "
+             "stop the service instead, under Root tasks for a service of your session.",
+             "Terminate and Force kill dialogs"),
         Term("Log (journal)",
              "What programs and the kernel write about what they did and what went wrong, "
              "kept by systemd in the journal. journalctl reads it; journalctl -b -1 shows "

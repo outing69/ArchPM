@@ -10,17 +10,25 @@ acts on unit names; both read the desktop session's pieces from session.py.
 from __future__ import annotations
 
 import os
+import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
 import psutil
 
+from .grouping import unit_of
 from .model import ProcSample
-from .session import process_loss
+from .session import process_loss, unit_loss
 
 SESSIONS_DIR = Path("/run/systemd/sessions")
+RESTART_TIMEOUT = 2   # seconds for one systemctl show; measured at 4 ms, 7 ms worst
 MAX_LISTED = 6
 MAX_COMMAND = 120
+
+def short(sig_name: str) -> str:
+    """"SIGTERM", "sigterm" and "TERM" are the same signal here."""
+    return sig_name.upper().removeprefix("SIG")
+
 
 VERBS = {
     "TERM": ("Ask {} to quit?", "Quit"),
@@ -97,6 +105,7 @@ def check(procs: list[ProcSample], sig_name: str, tree: bool = False,
 
     list_all names every process, one short line each, for a group row that
     stands for all of them; otherwise the first few are described in full."""
+    sig_name = short(sig_name)
     self_pid = os.getpid() if self_pid is None else self_pid
     above = ancestors(self_pid) if above is None else above
     leaders = session_leaders() if leaders is None else leaders
@@ -160,3 +169,86 @@ def check(procs: list[ProcSample], sig_name: str, tree: bool = False,
         notes.append(f"{p.name} is part of your desktop session. {verb} it takes {loss} with it.")
     v.text = "\n\n".join(parts + notes)
     return v
+
+
+# -- a service that starts the process again -----------------------------------
+# A process inside a unit with Restart= other than "no" comes back after it is
+# ended; the dialog says so, and where to stop the service instead. The
+# setting is read from systemctl only when a dialog is about to open, one
+# call per service unit among the targets, never on the sampling cycle.
+# Measured on this machine: 4 ms median, 7 ms worst, for user and system units.
+
+def unit_of_process(p: ProcSample) -> tuple[str, bool]:
+    """(unit, run by your own user manager?) from the cgroup path; ("", False) if none."""
+    return unit_of(p.cgroup), "/user@" in p.cgroup
+
+
+def restart_policy(unit: str, user: bool, run=subprocess.run) -> tuple[str, int]:
+    """(Restart=, MainPID) of a unit. ("", 0) when systemctl cannot say, and for
+    a scope, which has no Restart= at all."""
+    argv = ["systemctl", *(["--user"] if user else []), "show",
+            "-p", "Restart", "-p", "MainPID", "--value", "--", unit]
+    try:
+        proc = run(argv, capture_output=True, text=True, timeout=RESTART_TIMEOUT, check=False)
+    except (OSError, subprocess.TimeoutExpired):
+        return "", 0
+    lines = proc.stdout.splitlines()
+    if proc.returncode != 0 or len(lines) < 2:
+        return "", 0
+    restart, main = lines[0].strip(), lines[1].strip()
+    return restart, int(main) if main.isdigit() else 0
+
+
+def comes_back(restart: str, sig_name: str) -> str:
+    """How a unit with this Restart= answers this signal; "" when it stays down."""
+    if restart in ("", "no"):
+        return ""
+    if restart == "always":
+        return "starts it again right away, whatever happens"
+    if restart == "on-success":
+        # a forced kill is not a clean exit; asking to quit usually is
+        return "starts it again after a clean exit, which asking it to quit usually is" \
+            if sig_name == "TERM" else ""
+    if restart in ("on-failure", "on-abnormal", "on-abort"):
+        if sig_name == "KILL":
+            return "starts it again: a forced kill counts as a failure"
+        return ("starts it again if the program exits with an error; a program asked to "
+                "quit usually exits cleanly and stays down")
+    if restart == "on-watchdog":
+        return ""
+    return f"has Restart={restart} and may start it again"
+
+
+def where_to_stop(unit: str, user: bool) -> str:
+    if not user:
+        return (f"It is a system service, which ArchPM does not manage; stopping it needs "
+                f"root: sudo systemctl stop {unit}")
+    loss = unit_loss(unit)
+    if loss:
+        return (f"It is part of your desktop session ({loss}); if it misbehaves, restart it "
+                "under Root tasks → your session's services rather than ending it.")
+    return (f"To end it for good, stop the service instead: Root tasks → your session's "
+            f"services → {unit}.")
+
+
+def restart_note(procs: list[ProcSample], sig_name: str, policy=restart_policy) -> str:
+    """One paragraph per service unit whose main process is among the targets
+    and which would start it again after this signal; "" when none."""
+    sig_name = short(sig_name)
+    if sig_name not in ("TERM", "KILL"):
+        return ""
+    by_unit: dict[tuple[str, bool], list[ProcSample]] = {}
+    for p in procs:
+        unit, user = unit_of_process(p)
+        if unit.endswith(".service"):
+            by_unit.setdefault((unit, user), []).append(p)
+    notes = []
+    for (unit, user), members in by_unit.items():
+        restart, main_pid = policy(unit, user)
+        answer = comes_back(restart, sig_name)
+        if not answer or not main_pid or main_pid not in {p.pid for p in members}:
+            continue   # stays down, or only a helper of the service is targeted
+        main = next(p for p in members if p.pid == main_pid)
+        notes.append(f"{main.display_name} runs as the service {unit}, which has "
+                     f"Restart={restart} and {answer}. {where_to_stop(unit, user)}")
+    return "\n\n".join(notes)

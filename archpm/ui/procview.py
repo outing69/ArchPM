@@ -626,13 +626,21 @@ class ProcessView(QWidget):
             # A group row stands for all its processes: signal every one of
             # them, and always ask first, naming each.
             procs = self._selected_trees()
-            verdict = signalguard.check(procs, sig.name, tree=True, always_ask=True,
-                                        list_all=True)
+            kw = {"tree": True, "always_ask": True, "list_all": True}
         else:
-            verdict = signalguard.check(procs, sig.name, tree=tree, always_ask=confirm)
+            kw = {"tree": tree, "always_ask": confirm}
+        verdict = signalguard.check(procs, sig.name, **kw)
         if verdict.refused:
             self._notice("Not done", verdict.refused)
             return
+        # Only now, with a dialog about to open: does a service start the
+        # process again? One systemctl call per service unit, about 4 ms each.
+        note = signalguard.restart_note(procs, sig.name)
+        if note:
+            if not verdict.confirm:
+                # ending it would change nothing for long: that is worth asking
+                verdict = signalguard.check(procs, sig.name, **{**kw, "always_ask": True})
+            verdict.text = f"{verdict.text}\n\n{note}".strip()
         if verdict.confirm and not self._confirm(verdict):
             return
         self._run(lambda p: self.backend.send_signal(p.pid, sig), procs, sig.name)
