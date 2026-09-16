@@ -33,7 +33,7 @@ from .network import NetworkView
 from .procview import ProcessView
 from .startup import StartupView
 from .sysinfo import SystemView
-from .widgets import mono
+from .widgets import mono, scrolling
 from .worker import SampleWorker, run_in_thread
 
 INTERVALS = [("0.5 s", 0.5), ("1 s", 1.0), ("2 s", 2.0), ("5 s", 5.0)]
@@ -134,7 +134,10 @@ class MainWindow(QMainWindow):
         self.procs = ProcessView(ncpu, self.backend, self.history)
         self.startup = StartupView()
         self.system = SystemView()
-        self.shell.add_page(self.dashboard, "Overview")
+        # The Overview is the tallest page; with Adwaita's air it would set
+        # the window's minimum height above a 1080p screen with a panel, so it
+        # scrolls when the window is shorter than its content.
+        self.shell.add_page(scrolling(self.dashboard), "Overview")
         self.shell.add_page(self.procs, "Processes")
         self.network = NetworkView(self.worker_services)
         self.shell.add_page(self.network, "Network")
@@ -178,7 +181,7 @@ class MainWindow(QMainWindow):
         sb = self.statusBar()
         self.lbl_msg = QLabel("")
         self.lbl_stats = QLabel("")
-        self.lbl_stats.setFont(mono(8))
+        self.lbl_stats.setFont(mono("small"))
         theme.style(self.lbl_stats, "color: {MUTED};")
         self.combo = QComboBox()
         for label, _ in INTERVALS:

@@ -133,12 +133,12 @@ class HistoryPanel(QWidget):
         self.lbl_icon.setFixedSize(18, 18)
         head.addWidget(self.lbl_icon)
         self.lbl = QLabel("Select a process to see its last minutes")
-        self.lbl.setFont(mono(9, bold=True))
+        self.lbl.setFont(mono("body", bold=True))
         self.lbl.setTextFormat(Qt.TextFormat.RichText)
         head.addWidget(self.lbl, 1)
         lay.addLayout(head)
         graphs = QHBoxLayout()
-        graphs.setSpacing(10)
+        graphs.setSpacing(theme.CARD_GAP)
         self.g_cpu = Graph([("CPU", "CPU"), ("GPU", "GPU")], maximum=None, fill=False)
         self.g_mem = Graph([("Memory", "MEM")], maximum=None, fill=True)
         self.g_mem.set_formatter(human_bytes)
@@ -182,8 +182,8 @@ class ProcessView(QWidget):
         self.settings = QSettings("archpm", "ArchPM")
 
         outer = QVBoxLayout(self)
-        outer.setContentsMargins(12, 10, 12, 12)
-        outer.setSpacing(8)
+        outer.setContentsMargins(*theme.page_margins())
+        outer.setSpacing(theme.CARD_GAP)
 
         # -- toolbar -------------------------------------------------------
         bar = QHBoxLayout()
@@ -252,8 +252,8 @@ class ProcessView(QWidget):
         self.proxy.setSourceModel(self.model)
         self.table = QTreeView()
         # Breeze paints its own frame over the app-wide rule; state the border here.
-        theme.style(
-            self.table, "QTreeView {{ border: 1px solid {BORDER}; border-radius: 10px; }}"
+        theme.style(self.table, "QTreeView {{ border: 1px solid {BORDER};"
+                                " border-radius: {RADIUS_CARD}px; }}"
         )
         self.table.setModel(self.proxy)
         self.table.setRootIsDecorated(self.model.hierarchical or self.model.sectioned)

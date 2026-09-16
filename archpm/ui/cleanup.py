@@ -84,23 +84,20 @@ class CleanupView(QWidget):
         self._rescan_pending = False
 
         outer = QVBoxLayout(self)
-        outer.setContentsMargins(12, 10, 12, 12)
-        outer.setSpacing(8)
+        outer.setContentsMargins(*theme.page_margins())
+        outer.setSpacing(theme.CARD_GAP)
 
         head = QHBoxLayout()
         head.setSpacing(12)
         title = QLabel("Free up space")
-        f = title.font()
-        f.setPointSize(11)
-        f.setBold(True)
-        title.setFont(f)
+        title.setFont(theme.font("title", bold=True))
         head.addWidget(title)
         self.lbl_state = QLabel("")
         theme.style(self.lbl_state, "color: {MUTED};")
         head.addWidget(self.lbl_state)
         head.addStretch(1)
         self.lbl_total = QLabel("")
-        self.lbl_total.setFont(mono(9, bold=True))
+        self.lbl_total.setFont(mono("body", bold=True))
         head.addWidget(self.lbl_total)
         self.btn_scan = QPushButton("Scan again")
         self.btn_scan.clicked.connect(self.scan)
@@ -131,7 +128,7 @@ class CleanupView(QWidget):
         self.table.setAlternatingRowColors(True)
         self.table.setShowGrid(False)
         self.table.verticalHeader().setVisible(False)
-        self.table.verticalHeader().setDefaultSectionSize(26)
+        self.table.verticalHeader().setDefaultSectionSize(theme.ROW_H)
         header = self.table.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         header.setSectionResizeMode(COL_DESC, QHeaderView.ResizeMode.Stretch)
@@ -146,10 +143,10 @@ class CleanupView(QWidget):
         self.log = QPlainTextEdit()
         self.log.setReadOnly(True)
         self.log.setMaximumHeight(110)
-        self.log.setFont(mono(8))
+        self.log.setFont(mono("small"))
         theme.style(
             self.log, "QPlainTextEdit {{ background: {SURFACE}; border: 1px solid {BORDER};"
-            " border-radius: 8px; color: {ACCENT}; padding: 6px; }}"
+            " border-radius: {RADIUS_CONTROL}px; color: {ACCENT}; padding: 6px; }}"
         )
         outer.addWidget(self.log)
 
@@ -293,7 +290,7 @@ class CleanupView(QWidget):
             desc.setForeground(QColor(theme.MUTED))
             self.table.setItem(row, COL_DESC, desc)
             size = QTableWidgetItem(human(it.size) if it.size else "-")
-            size.setFont(mono(9))
+            size.setFont(mono("body"))
             size.setTextAlignment(int(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter))
             self.table.setItem(row, COL_SIZE, size)
             text, colour = self._note_for(it, root_ok)

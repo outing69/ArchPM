@@ -55,6 +55,21 @@ LIGHT = {
     "OK": "#15803d", "WARN": "#b45309", "CRIT": "#c81e1e",
 }
 TOKENS = tuple(DARK)
+# Shape and type, the same in both modes, in Adwaita's proportions: 12 px
+# cards and popovers, 9 px controls, 34 px buttons and fields with 16 px of
+# horizontal padding, air in multiples of 6. One type scale: title, body,
+# small. The font family is never named; the system's own font wins, from
+# QFontDatabase (Noto Sans and Noto Sans Mono on the development machine).
+# Data tables stay dense on purpose: a process list is a data view, so its
+# row height follows readability, not Adwaita's row spacing.
+SHAPE = {
+    "RADIUS_CARD": 12, "RADIUS_CONTROL": 9, "RADIUS_SMALL": 6, "RADIUS_TAG": 5,
+    "BUTTON_H": 34, "BUTTON_PAD_X": 16, "FIELD_PAD_X": 10,
+    "PAGE_MARGIN": 18, "CARD_GAP": 12, "CARD_PAD": 18, "CARD_PAD_Y": 14, "TILE_PAD": 12,
+    "ROW_H": 26, "RAIL_ITEM_H": 44,
+    "FONT_TITLE": 12, "FONT_BODY": 10, "FONT_SMALL": 8.5,
+}
+SHAPE_TOKENS = tuple(SHAPE)
 MODES = ("dark", "light")
 PREFERENCES = ("system", "light", "dark")
 SETTINGS_KEY = "theme"
@@ -89,6 +104,25 @@ WARN = DARK["WARN"]
 CRIT = DARK["CRIT"]
 
 
+RADIUS_CARD = SHAPE["RADIUS_CARD"]
+RADIUS_CONTROL = SHAPE["RADIUS_CONTROL"]
+RADIUS_SMALL = SHAPE["RADIUS_SMALL"]
+RADIUS_TAG = SHAPE["RADIUS_TAG"]
+BUTTON_H = SHAPE["BUTTON_H"]
+BUTTON_PAD_X = SHAPE["BUTTON_PAD_X"]
+FIELD_PAD_X = SHAPE["FIELD_PAD_X"]
+PAGE_MARGIN = SHAPE["PAGE_MARGIN"]
+CARD_GAP = SHAPE["CARD_GAP"]
+CARD_PAD = SHAPE["CARD_PAD"]
+CARD_PAD_Y = SHAPE["CARD_PAD_Y"]
+TILE_PAD = SHAPE["TILE_PAD"]
+ROW_H = SHAPE["ROW_H"]
+RAIL_ITEM_H = SHAPE["RAIL_ITEM_H"]
+FONT_TITLE = SHAPE["FONT_TITLE"]
+FONT_BODY = SHAPE["FONT_BODY"]
+FONT_SMALL = SHAPE["FONT_SMALL"]
+
+
 class _State:
     mode = "dark"
     preference = "system"
@@ -105,8 +139,28 @@ signals = _Signals()
 _styled: weakref.WeakKeyDictionary = weakref.WeakKeyDictionary()
 
 
-def current() -> dict[str, str]:
-    return {t: globals()[t] for t in TOKENS}
+def current() -> dict:
+    """Every token the stylesheet template can name: the mode's colours and
+    the shape, plus the button's inner height (the border takes the rest)."""
+    out = {t: globals()[t] for t in TOKENS}
+    out.update(SHAPE)
+    out["BUTTON_INNER"] = SHAPE["BUTTON_H"] - 2
+    return out
+
+
+def page_margins() -> tuple[int, int, int, int]:
+    """A page's outer margins: a little less at the top, under the window's title."""
+    return PAGE_MARGIN, PAGE_MARGIN - 4, PAGE_MARGIN, PAGE_MARGIN
+
+
+def font(role: str = "body", bold: bool = False, mono: bool = False):
+    """The system's own font at one of the three sizes of the scale."""
+    from PySide6.QtGui import QFontDatabase
+    kind = QFontDatabase.SystemFont.FixedFont if mono else QFontDatabase.SystemFont.GeneralFont
+    f = QFontDatabase.systemFont(kind)
+    f.setPointSizeF(float({"title": FONT_TITLE, "body": FONT_BODY, "small": FONT_SMALL}[role]))
+    f.setBold(bold)
+    return f
 
 
 def resolve(value: str) -> str:
@@ -272,13 +326,13 @@ def preference() -> str:
 
 
 STYLE_TEMPLATE = """
-QWidget {{ color: {TEXT}; font-size: 10pt; }}
+QWidget {{ color: {TEXT}; font-size: {FONT_BODY}pt; }}
 QMainWindow, QDialog {{ background: {BG}; }}
 
 /* tables: blue selects, yellow marks the sorted column */
 QTableView {{
     background: {SURFACE}; alternate-background-color: {SURFACE_ALT};
-    gridline-color: {BORDER}; border: 1px solid {BORDER}; border-radius: 10px;
+    gridline-color: {BORDER}; border: 1px solid {BORDER}; border-radius: {RADIUS_CARD}px;
     selection-background-color: {SELECT}; selection-color: {ON_SELECT};
     outline: none;
 }}
@@ -289,15 +343,17 @@ QHeaderView {{ background: transparent; }}
 QHeaderView::section {{
     background: {SURFACE_ALT}; color: {MUTED}; border: none;
     border-bottom: 1px solid {BORDER}; padding: 7px 8px;
-    font-size: 9pt; font-weight: 700;
+    font-size: {FONT_SMALL}pt; font-weight: 700;
 }}
 QHeaderView::section:hover {{ color: {TEXT}; background: {SURFACE_HI}; }}
 QHeaderView::section:checked {{ color: {ACCENT}; }}
 QHeaderView::down-arrow, QHeaderView::up-arrow {{ width: 9px; height: 9px; }}
 
 QLineEdit, QComboBox, QSpinBox, QAbstractSpinBox {{
-    background: {SURFACE}; border: 1px solid {BORDER}; border-radius: 7px;
-    padding: 6px 10px; selection-background-color: {SELECT}; selection-color: {ON_SELECT};
+    background: {SURFACE}; border: 1px solid {BORDER}; border-radius: {RADIUS_CONTROL}px;
+    padding: 0 {FIELD_PAD_X}px; min-height: {BUTTON_INNER}px;
+    selection-background-color: {SELECT};
+    selection-color: {ON_SELECT};
 }}
 QLineEdit:hover, QComboBox:hover, QSpinBox:hover {{ border-color: {BORDER_HI}; }}
 QLineEdit:focus, QComboBox:focus, QSpinBox:focus, QAbstractSpinBox:focus {{
@@ -305,13 +361,13 @@ QLineEdit:focus, QComboBox:focus, QSpinBox:focus, QAbstractSpinBox:focus {{
 }}
 QComboBox::drop-down {{ border: none; width: 20px; }}
 QComboBox QAbstractItemView {{
-    background: {SURFACE_ALT}; border: 1px solid {BORDER}; border-radius: 8px;
+    background: {SURFACE_ALT}; border: 1px solid {BORDER}; border-radius: {RADIUS_CONTROL}px;
     selection-background-color: {SELECT}; padding: 4px;
 }}
 
 QPushButton {{
-    background: {SURFACE_ALT}; border: 1px solid {BORDER}; border-radius: 7px;
-    padding: 7px 15px; font-weight: 600;
+    background: {SURFACE_ALT}; border: 1px solid {BORDER}; border-radius: {RADIUS_CONTROL}px;
+    padding: 0 {BUTTON_PAD_X}px; min-height: {BUTTON_INNER}px; font-weight: 600;
 }}
 QPushButton:hover {{ background: {SURFACE_HI}; border-color: {BORDER_HI}; }}
 QPushButton:pressed {{ background: {SURFACE}; }}
@@ -334,7 +390,7 @@ QCheckBox, QRadioButton {{ spacing: 8px; color: {MUTED}; }}
 QCheckBox:hover, QRadioButton:hover {{ color: {TEXT}; }}
 QCheckBox::indicator, QRadioButton::indicator {{
     width: 15px; height: 15px;
-    border: 1px solid {BORDER_HI}; border-radius: 4px; background: {SURFACE};
+    border: 1px solid {BORDER_HI}; border-radius: {RADIUS_TAG}px; background: {SURFACE};
 }}
 QRadioButton::indicator {{ border-radius: 8px; }}
 QCheckBox::indicator:hover, QRadioButton::indicator:hover {{ border-color: {ACCENT}; }}
@@ -352,27 +408,28 @@ QSlider::handle:horizontal {{
 QSlider::handle:horizontal:hover {{ background: {ACCENT}; }}
 
 QMenu {{
-    background: {SURFACE_ALT}; border: 1px solid {BORDER}; border-radius: 9px; padding: 6px;
+    background: {SURFACE_ALT}; border: 1px solid {BORDER};
+    border-radius: {RADIUS_CARD}px; padding: 6px;
 }}
-QMenu::item {{ padding: 7px 24px 7px 14px; border-radius: 6px; }}
+QMenu::item {{ padding: 7px 24px 7px 14px; border-radius: {RADIUS_SMALL}px; }}
 QMenu::item:selected {{ background: {SELECT}; color: {ON_SELECT}; }}
 QMenu::item:disabled {{ color: {FAINT}; }}
 QMenu::separator {{ height: 1px; background: {BORDER}; margin: 5px 8px; }}
 
 QGroupBox {{
-    border: 1px solid {BORDER}; border-radius: 10px; margin-top: 14px;
-    padding: 12px; background: {SURFACE};
+    border: 1px solid {BORDER}; border-radius: {RADIUS_CARD}px; margin-top: 14px;
+    padding: {CARD_PAD_Y}px; background: {SURFACE};
 }}
 QGroupBox::title {{
     subcontrol-origin: margin; left: 12px; padding: 0 6px;
-    color: {MUTED}; font-size: 8pt; font-weight: 700;
+    color: {MUTED}; font-size: {FONT_SMALL}pt; font-weight: 700;
 }}
 
 QStatusBar {{ color: {MUTED}; border-top: 1px solid {BORDER}; }}
 QStatusBar::item {{ border: none; }}
 QToolTip {{
     background: {SURFACE_HI}; color: {TEXT}; border: 1px solid {BORDER_HI};
-    padding: 5px 7px; border-radius: 6px;
+    padding: 5px 7px; border-radius: {RADIUS_CONTROL}px;
 }}
 
 QScrollBar:vertical {{ background: transparent; width: 11px; margin: 0; }}

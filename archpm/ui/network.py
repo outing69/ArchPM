@@ -43,16 +43,13 @@ class NetworkView(QWidget):
         self._expanded: set[str] = set()
 
         outer = QVBoxLayout(self)
-        outer.setContentsMargins(12, 10, 12, 12)
-        outer.setSpacing(8)
+        outer.setContentsMargins(*theme.page_margins())
+        outer.setSpacing(theme.CARD_GAP)
 
         head = QHBoxLayout()
         head.setSpacing(12)
         title = QLabel("Who is talking to the network")
-        f = title.font()
-        f.setPointSize(11)
-        f.setBold(True)
-        title.setFont(f)
+        title.setFont(theme.font("title", bold=True))
         head.addWidget(title)
         self.lbl_state = QLabel("")
         theme.style(self.lbl_state, "color: {MUTED};")
@@ -97,8 +94,8 @@ class NetworkView(QWidget):
 
         self.tree = QTreeWidget()
         self.tree.setHeaderLabels(HEADERS)
-        theme.style(
-            self.tree, "QTreeWidget {{ border: 1px solid {BORDER}; border-radius: 10px; }}"
+        theme.style(self.tree, "QTreeWidget {{ border: 1px solid {BORDER};"
+                               " border-radius: {RADIUS_CARD}px; }}"
         )
         self.tree.setAlternatingRowColors(True)
         self.tree.setUniformRowHeights(True)
@@ -156,17 +153,17 @@ class NetworkView(QWidget):
                 item.widget().deleteLater()
         for r, i in enumerate(net.interfaces):
             name = QLabel(i.name)
-            name.setFont(mono(9, bold=True))
+            name.setFont(mono("body", bold=True))
             theme.text(name, "NET" if i.up else "FAINT")
             state = QLabel(("up" if i.up else "down") + ("  ·  VPN" if i.vpn else ""))
             theme.text(state, "OK" if i.up else "FAINT")
             addr = QLabel(i.addr)
             theme.style(addr, "color: {MUTED};")
-            addr.setFont(mono(8.5))
+            addr.setFont(mono("small"))
             rx = QLabel(f"↓ {_rate(i.rx_bps) or '0 B/s'}" if i.up else "")
             tx = QLabel(f"↑ {_rate(i.tx_bps) or '0 B/s'}" if i.up else "")
             for lbl in (rx, tx):
-                lbl.setFont(mono(9))
+                lbl.setFont(mono("body"))
             for col, w in enumerate((name, state, addr, rx, tx)):
                 self.grid_if.addWidget(w, r, col)
         self.grid_if.setColumnStretch(2, 1)
@@ -276,7 +273,7 @@ class NetworkView(QWidget):
                 continue
             child = QTreeWidgetItem(["", "", "", "", "", self._describe(c)])
             child.setForeground(COL_INFO, QColor(theme.WARN if c.exposed else theme.TEXT))
-            child.setFont(COL_INFO, mono(9))
+            child.setFont(COL_INFO, mono("body"))
             parent.addChild(child)
 
     def _matches(self, q: str, p: ProcNet, name: str) -> bool:

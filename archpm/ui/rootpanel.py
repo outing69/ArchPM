@@ -48,8 +48,9 @@ class RootPanel(QDialog):
         self._on_done = None
 
         lay = QVBoxLayout(self)
-        lay.setContentsMargins(16, 14, 16, 14)
-        lay.setSpacing(12)
+        lay.setContentsMargins(theme.PAGE_MARGIN, theme.PAGE_MARGIN - 4, theme.PAGE_MARGIN,
+                               theme.PAGE_MARGIN - 4)
+        lay.setSpacing(theme.CARD_GAP)
 
         lay.addWidget(self._header())
         lay.addWidget(self._proc_group())
@@ -59,10 +60,10 @@ class RootPanel(QDialog):
         self.log = QPlainTextEdit()
         self.log.setReadOnly(True)
         self.log.setMaximumHeight(120)
-        self.log.setFont(mono(8))
+        self.log.setFont(mono("small"))
         theme.style(
             self.log, "QPlainTextEdit {{ background: {SURFACE}; border: 1px solid {BORDER};"
-            " border-radius: 8px; color: {MUTED}; padding: 6px; }}"
+            " border-radius: {RADIUS_CONTROL}px; color: {MUTED}; padding: 6px; }}"
         )
         lay.addWidget(self.log)
         lay.addStretch(1)
@@ -165,9 +166,7 @@ class RootPanel(QDialog):
         lbl = QLabel(text)
         lbl.setWordWrap(True)
         theme.style(lbl, "color: {FAINT};")
-        f = lbl.font()
-        f.setPointSize(8)
-        lbl.setFont(f)
+        lbl.setFont(theme.font("small"))
         return lbl
 
     # -- status ------------------------------------------------------------

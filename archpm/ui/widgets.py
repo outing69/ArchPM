@@ -9,23 +9,20 @@ from PySide6.QtGui import (
     QBrush,
     QColor,
     QFont,
-    QFontDatabase,
     QIcon,
     QLinearGradient,
     QPainter,
     QPainterPath,
     QPen,
 )
-from PySide6.QtWidgets import QFrame, QLabel, QSizePolicy, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QFrame, QLabel, QScrollArea, QSizePolicy, QVBoxLayout, QWidget
 
 from . import theme
 
 
-def mono(size: float = 9, bold: bool = False) -> QFont:
-    f = QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont)
-    f.setPointSizeF(float(size))
-    f.setBold(bold)
-    return f
+def mono(role: str = "body", bold: bool = False) -> QFont:
+    """The system's fixed font at a size of the scale: title, body or small."""
+    return theme.font(role, bold=bold, mono=True)
 
 
 _ICONS: dict[str, QIcon] = {}
@@ -59,15 +56,13 @@ class Card(QFrame):
         super().__init__(parent)
         self.setObjectName("card")
         theme.style(self, "#card {{ background: {SURFACE}; border: 1px solid {BORDER};"
-                          " border-radius: 10px; }}")
+                          " border-radius: {RADIUS_CARD}px; }}")
         lay = QVBoxLayout(self)
-        lay.setContentsMargins(14, 11, 14, 12)
+        lay.setContentsMargins(theme.CARD_PAD, theme.CARD_PAD_Y, theme.CARD_PAD, theme.CARD_PAD_Y)
         lay.setSpacing(8)
         if title:
             lbl = QLabel(title.upper())
-            f = lbl.font()
-            f.setPointSize(8)
-            f.setBold(True)
+            f = theme.font("small", bold=True)
             f.setLetterSpacing(QFont.SpacingType.AbsoluteSpacing, 1.1)
             lbl.setFont(f)
             # The title takes the colour of the data it frames (CPU yellow, GPU
@@ -184,7 +179,7 @@ class Graph(QWidget):
 
         # scale top right: without it you cannot tell for network and disk
         # whether that peak is 2 KB/s or 200 MB/s.
-        p.setFont(mono(8))
+        p.setFont(mono("small"))
         p.setPen(QColor(theme.FAINT))
         p.drawText(
             QRectF(rect.right() - 110, rect.top(), 108, top),
@@ -193,7 +188,7 @@ class Graph(QWidget):
         )
 
         # legend with current values
-        p.setFont(mono(9, bold=True))
+        p.setFont(mono("body", bold=True))
         x = rect.left() + 2
         for s in self.series:
             cur = s.values[-1] if s.values else 0.0
@@ -248,7 +243,7 @@ class CoreGrid(QWidget):
         w = (self.width() - gap * (n - 1)) / n
         label_h = 13.0
         h = self.height() - label_h
-        p.setFont(mono(7))
+        p.setFont(mono("small"))
         for i, v in enumerate(self.values):
             x = i * (w + gap)
             track = QRectF(x, 0, w, h)
@@ -300,10 +295,10 @@ class Ring(QWidget):
         p.drawArc(rect, 225 * 16, int(-270 * 16 * self.value / 100.0))
 
         p.setPen(QColor(theme.TEXT))
-        p.setFont(mono(13, bold=True))
+        p.setFont(mono("title", bold=True))
         p.drawText(rect.adjusted(0, -6, 0, -6), Qt.AlignmentFlag.AlignCenter, f"{self.value:.0f}%")
         p.setPen(QColor(theme.MUTED))
-        p.setFont(mono(7))
+        p.setFont(mono("small"))
         p.drawText(rect.adjusted(0, 20, 0, 20), Qt.AlignmentFlag.AlignCenter,
                    self.caption or self.label)
         p.end()
@@ -315,21 +310,19 @@ class StatTile(QFrame):
     def __init__(self, title: str, color: str = "TEXT", parent: QWidget | None = None) -> None:
         super().__init__(parent)
         theme.style(self, "QFrame {{ background: {SURFACE}; border: 1px solid {BORDER};"
-                          " border-radius: 9px; }} QLabel {{ border: none; }}")
+                          " border-radius: {RADIUS_CARD}px; }} QLabel {{ border: none; }}")
         lay = QVBoxLayout(self)
-        lay.setContentsMargins(12, 9, 12, 10)
+        lay.setContentsMargins(theme.TILE_PAD, theme.TILE_PAD - 2,
+                               theme.TILE_PAD, theme.TILE_PAD - 2)
         lay.setSpacing(1)
         self._title = QLabel(title.upper())
-        tf = self._title.font()
-        tf.setPointSize(8)
-        tf.setBold(True)
-        self._title.setFont(tf)
+        self._title.setFont(theme.font("small", bold=True))
         theme.text(self._title, color if color != "TEXT" else "LABEL")
         self._value = QLabel("--")
-        self._value.setFont(mono(15, bold=True))
+        self._value.setFont(mono("title", bold=True))
         theme.text(self._value, color)
         self._sub = QLabel("")
-        self._sub.setFont(mono(8))
+        self._sub.setFont(mono("small"))
         theme.style(self._sub, "color: {MUTED};")
         lay.addWidget(self._title)
         lay.addWidget(self._value)
@@ -426,3 +419,15 @@ class TextLink(QLabel):
             p.setPen(QPen(theme.color(self._color), 1, Qt.PenStyle.DashLine))
             p.drawRoundedRect(self.rect().adjusted(0, 0, -1, -1), 3, 3)
             p.end()
+
+
+def scrolling(widget: QWidget) -> QScrollArea:
+    """A page in a frameless, transparent scroll area: it lays itself out at
+    its natural size and gains a scrollbar only when the window is shorter,
+    instead of forcing the window to grow to fit."""
+    area = QScrollArea()
+    area.setWidgetResizable(True)
+    area.setFrameShape(QScrollArea.Shape.NoFrame)
+    area.viewport().setAutoFillBackground(False)
+    area.setWidget(widget)
+    return area

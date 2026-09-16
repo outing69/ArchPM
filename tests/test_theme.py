@@ -85,6 +85,40 @@ class Tokens(unittest.TestCase):
         self.assertGreater(g, b)
 
 
+class Shape(unittest.TestCase):
+    def test_shape_tokens_exist_and_are_adwaita_sized(self):
+        for name in theme.SHAPE_TOKENS:
+            self.assertTrue(hasattr(theme, name), name)
+        self.assertEqual(theme.BUTTON_H, 34)
+        self.assertEqual(theme.BUTTON_PAD_X, 16)
+        self.assertGreaterEqual(theme.RADIUS_CARD, 12)
+        self.assertGreaterEqual(theme.CARD_PAD, 16)
+        self.assertEqual(theme.ROW_H, 26, "data tables stay dense")
+        self.assertEqual((theme.FONT_TITLE, theme.FONT_BODY, theme.FONT_SMALL), (12, 10, 8.5))
+
+    def test_no_page_sets_a_point_size_margin_or_row_height_of_its_own(self):
+        offenders = []
+        for path in (UI / "ui").glob("*.py"):
+            if path.name == "theme.py":
+                continue
+            for n, line in enumerate(path.read_text().splitlines(), 1):
+                if ("setPointSize(" in line or re.search(r"mono\(\d", line)
+                        or "setContentsMargins(12, 10" in line
+                        or "setDefaultSectionSize(26)" in line
+                        or re.search(r"border-radius: \d+px", line)):
+                    offenders.append(f"{path.name}:{n}")
+        self.assertEqual(offenders, [])
+
+    def test_font_is_the_system_font_at_the_scale(self):
+        from PySide6.QtGui import QFontDatabase
+        general = QFontDatabase.systemFont(QFontDatabase.SystemFont.GeneralFont).family()
+        fixed = QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont).family()
+        self.assertEqual(theme.font("title", bold=True).family(), general)
+        self.assertEqual(theme.font("small", mono=True).family(), fixed)
+        self.assertEqual(theme.font("title").pointSizeF(), theme.FONT_TITLE)
+        self.assertEqual(theme.font("small").pointSizeF(), theme.FONT_SMALL)
+
+
 class Preference(unittest.TestCase):
     def test_hints_first_then_portal_then_dark(self):
         def app_with(scheme):
@@ -128,6 +162,31 @@ class LiveSwitch(unittest.TestCase):
         self.assertEqual(seen, ["light"])
         self.assertEqual(self.app.palette().color(self.app.palette().ColorRole.Window).name(),
                          theme.LIGHT["BG"])
+
+    def test_buttons_and_fields_have_the_adwaita_height(self):
+        from PySide6.QtWidgets import QComboBox, QLineEdit, QPushButton
+        theme.apply(self.app, "dark")
+        b, e, c = QPushButton("Refresh"), QLineEdit(), QComboBox()
+        c.addItem("Grouped")
+        for w in (b, e, c):
+            with self.subTest(widget=type(w).__name__):
+                self.assertEqual(w.sizeHint().height(), theme.BUTTON_H)
+
+    def test_the_window_minimum_height_fits_a_small_screen(self):
+        """The Overview scrolls instead of dictating the window's height."""
+        import tempfile
+
+        from PySide6.QtCore import QSettings
+        tmp = tempfile.TemporaryDirectory()
+        for fmt in (QSettings.Format.NativeFormat, QSettings.Format.IniFormat):
+            QSettings.setPath(fmt, QSettings.Scope.UserScope, tmp.name)
+        from archpm.ui.app import MainWindow
+        win = MainWindow()
+        try:
+            self.assertLess(win.minimumSizeHint().height(), 700)
+        finally:
+            win.shutdown()
+            tmp.cleanup()
 
     def test_preference_is_stored_and_applied(self):
         store = {}

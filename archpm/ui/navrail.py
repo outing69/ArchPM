@@ -42,7 +42,6 @@ from . import theme
 
 COLLAPSED = 52      # px: icon only
 EXPANDED = 200      # px: icon and label
-ITEM_H = 44
 SLIDE_MS = 160      # the expand and collapse animation
 ICON = QSize(22, 22)
 SETTINGS_KEY = "nav_pinned"
@@ -234,7 +233,7 @@ class NavRail(QWidget):
         self.menu.setIconSize(ICON)
         self.menu.setAccessibleName("Menu")
         self.menu.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.menu.setFixedHeight(ITEM_H)
+        self.menu.setFixedHeight(theme.RAIL_ITEM_H)
         self.menu.toggled.connect(self.set_pinned)
         lay.addWidget(self.menu)
         lay.addSpacing(6)
@@ -247,7 +246,7 @@ class NavRail(QWidget):
             #navrail {{ background: {SURFACE}; border-right: 1px solid {BORDER}; }}
             #navrail QToolButton {{
                 background: transparent; color: {MUTED}; border: none;
-                border-left: 2px solid transparent; border-radius: 6px;
+                border-left: 2px solid transparent; border-radius: {RADIUS_SMALL}px;
                 padding: 0 10px; text-align: left; font-weight: 600;
             }}
             #navrail QToolButton:hover {{ color: {TEXT}; background: {SURFACE_ALT}; }}
@@ -282,7 +281,7 @@ class NavRail(QWidget):
         b.setAutoExclusive(True)
         b.setAccessibleName(label)
         b.setFocusPolicy(Qt.FocusPolicy.NoFocus)   # the rail holds the focus
-        b.setFixedHeight(ITEM_H)
+        b.setFixedHeight(theme.RAIL_ITEM_H)
         # Ignored: the rail's width decides, so while it slides the label is
         # clipped at the rail's edge instead of the button overflowing it.
         b.setSizePolicy(b.sizePolicy().horizontalPolicy().Ignored, b.sizePolicy().verticalPolicy())

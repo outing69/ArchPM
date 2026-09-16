@@ -42,16 +42,13 @@ class StartupView(QWidget):
         self._loading = False
 
         outer = QVBoxLayout(self)
-        outer.setContentsMargins(12, 10, 12, 12)
-        outer.setSpacing(8)
+        outer.setContentsMargins(*theme.page_margins())
+        outer.setSpacing(theme.CARD_GAP)
 
         head = QHBoxLayout()
         head.setSpacing(12)
         title = QLabel("What starts when you log in")
-        f = title.font()
-        f.setPointSize(11)
-        f.setBold(True)
-        title.setFont(f)
+        title.setFont(theme.font("title", bold=True))
         head.addWidget(title)
         head.addStretch(1)
         self.cb_others = QCheckBox("Show entries for other desktops")
@@ -86,7 +83,7 @@ class StartupView(QWidget):
         self.table.setAlternatingRowColors(True)
         self.table.setShowGrid(False)
         self.table.verticalHeader().setVisible(False)
-        self.table.verticalHeader().setDefaultSectionSize(26)
+        self.table.verticalHeader().setDefaultSectionSize(theme.ROW_H)
         header = self.table.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         header.setSectionResizeMode(COL_DESC, QHeaderView.ResizeMode.Stretch)
@@ -101,7 +98,7 @@ class StartupView(QWidget):
 
         # -- enabled user services: they start at login as well ---------------
         svc_title = QLabel("Services of your session that start at login")
-        svc_title.setFont(f)
+        svc_title.setFont(theme.font("title", bold=True))
         outer.addWidget(svc_title)
         self.svc_hint = QLabel(
             "These are started by systemd, not from the autostart folder, so the list above "
@@ -121,7 +118,7 @@ class StartupView(QWidget):
         self.svc_table.setAlternatingRowColors(True)
         self.svc_table.setShowGrid(False)
         self.svc_table.verticalHeader().setVisible(False)
-        self.svc_table.verticalHeader().setDefaultSectionSize(26)
+        self.svc_table.verticalHeader().setDefaultSectionSize(theme.ROW_H)
         sh = self.svc_table.horizontalHeader()
         sh.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         sh.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)

@@ -22,16 +22,13 @@ class HelpView(QWidget):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         outer = QVBoxLayout(self)
-        outer.setContentsMargins(12, 10, 12, 12)
-        outer.setSpacing(8)
+        outer.setContentsMargins(*theme.page_margins())
+        outer.setSpacing(theme.CARD_GAP)
 
         head = QHBoxLayout()
         head.setSpacing(12)
         title = QLabel("What does this mean?")
-        f = title.font()
-        f.setPointSize(11)
-        f.setBold(True)
-        title.setFont(f)
+        title.setFont(theme.font("title", bold=True))
         head.addWidget(title)
         how = QLabel("Hover over any tile, graph or column header for a one-line explanation; "
                      "right-click it to land here.")
@@ -52,7 +49,7 @@ class HelpView(QWidget):
         self.body = QWidget()
         self.body_lay = QVBoxLayout(self.body)
         self.body_lay.setContentsMargins(0, 0, 0, 0)
-        self.body_lay.setSpacing(10)
+        self.body_lay.setSpacing(theme.CARD_GAP)
         self.scroll.setWidget(self.body)
         outer.addWidget(self.scroll, 1)
         self._focus = ""
@@ -89,7 +86,7 @@ class HelpView(QWidget):
             grid.setColumnStretch(1, 1)
             for r, term in enumerate(sec.terms):
                 name = QLabel(term.name)
-                name.setFont(mono(9.5, bold=True))
+                name.setFont(mono("body", bold=True))
                 theme.style(name, "color: {ACCENT};")
                 if term.name == self._focus:
                     # Only the words get the mark, not the whole cell.
@@ -124,7 +121,7 @@ class HelpView(QWidget):
                     "Grey": "MUTED"}
         for r, (name, text) in enumerate(helptext.COLOURS):
             lbl = QLabel(name)
-            lbl.setFont(mono(9.5, bold=True))
+            lbl.setFont(mono("body", bold=True))
             theme.text(lbl, swatches.get(name, "TEXT"))
             lbl.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignTop)
             lbl.setMinimumWidth(170)
@@ -153,7 +150,7 @@ class HelpView(QWidget):
             else:
                 val = QLabel(v)
                 val.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-            val.setFont(mono(9.5))
+            val.setFont(mono("body"))
             val.setWordWrap(True)
             grid.addWidget(key, r, 0)
             grid.addWidget(val, r, 1)
@@ -165,11 +162,11 @@ class HelpView(QWidget):
         log = QPlainTextEdit()
         log.setReadOnly(True)
         log.setPlainText(helptext.changelog_text())
-        log.setFont(mono(8.5))
+        log.setFont(mono("small"))
         log.setMinimumHeight(260)
         theme.style(
             log, "QPlainTextEdit {{ background: {BG}; border: 1px solid {BORDER};"
-            " border-radius: 8px; color: {TEXT}; padding: 8px; }}"
+            " border-radius: {RADIUS_CONTROL}px; color: {TEXT}; padding: 8px; }}"
         )
         card.body.addWidget(log)
         return card

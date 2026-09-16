@@ -39,16 +39,13 @@ class SystemView(QWidget):
         self._thread: _Gather | None = None
 
         outer = QVBoxLayout(self)
-        outer.setContentsMargins(12, 10, 12, 12)
-        outer.setSpacing(8)
+        outer.setContentsMargins(*theme.page_margins())
+        outer.setSpacing(theme.CARD_GAP)
 
         head = QHBoxLayout()
         head.setSpacing(12)
         title = QLabel("This machine")
-        f = title.font()
-        f.setPointSize(11)
-        f.setBold(True)
-        title.setFont(f)
+        title.setFont(theme.font("title", bold=True))
         head.addWidget(title)
         self.lbl_state = QLabel("")
         theme.style(self.lbl_state, "color: {MUTED};")
@@ -90,7 +87,7 @@ class SystemView(QWidget):
         self.body = QWidget()
         self.body_lay = QVBoxLayout(self.body)
         self.body_lay.setContentsMargins(0, 0, 0, 0)
-        self.body_lay.setSpacing(10)
+        self.body_lay.setSpacing(theme.CARD_GAP)
         self.body_lay.addStretch(1)
         self.scroll.setWidget(self.body)
         outer.addWidget(self.scroll, 1)
@@ -114,13 +111,13 @@ class SystemView(QWidget):
             scope = "service of your session" if u.scope == SESSION else "system service"
             since = f"  ·  failed since {u.since}" if u.since else ""
             head = QLabel(f"<b>{u.title}</b>&nbsp;&nbsp;<span style='color:{theme.MUTED}; "
-                          f"font-size: 8.5pt'>{u.unit}</span><br>"
+                          f"font-size: {theme.FONT_SMALL}pt'>{u.unit}</span><br>"
                           f"<span style='color:{theme.MUTED}'>{scope}{since}</span>")
             head.setTextFormat(Qt.TextFormat.RichText)
             head.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
             self.failed_body.addWidget(head)
             body = QLabel("\n".join(u.log) if u.log else u.note)
-            body.setFont(mono(8.5))
+            body.setFont(mono("small"))
             body.setWordWrap(True)
             theme.style(body,
                         "color: {" + ("MUTED" if u.log else "WARN") + "}; padding-left: 12px;")
@@ -167,7 +164,7 @@ class SystemView(QWidget):
                 key.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignTop)
                 key.setMinimumWidth(130)  # same label column in every card
                 val = QLabel(v)
-                val.setFont(mono(9.5))
+                val.setFont(mono("body"))
                 val.setWordWrap(True)
                 val.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
                 grid.addWidget(key, r, 0)

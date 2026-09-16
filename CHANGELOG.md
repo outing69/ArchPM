@@ -3,6 +3,23 @@
 All notable changes, newest first. Versions are git tags on
 [github.com/outing69/ArchPM](https://github.com/outing69/ArchPM).
 
+## 0.2.25 (2026-09-16)
+
+- Stage two of the GNOME look: shape, spacing and type, in Adwaita's
+  proportions, as tokens in archpm/ui/theme.py next to the colours. Corners
+  are rounder: 12 px on cards, tables, menus and group boxes, 9 px on
+  buttons, fields and tooltips. More air: 18 px page margins and card
+  padding, 12 px between cards. One type scale for the whole window: title
+  12 pt, body 10 pt, small 8.5 pt, in the system's own font (never a named
+  family), so a size is no longer set per page. Buttons and fields are 34 px
+  high with 16 px of horizontal padding, as in Adwaita. Data tables stay
+  dense: the row height is 26 px and the process list's cell padding is
+  unchanged, since a process list is a data view. The colour tokens are
+  untouched. The air made the Overview 41 px taller than before, which
+  would have pushed the window's minimum height past a 1080p screen with a
+  panel; the Overview now scrolls when the window is shorter than its
+  content, so the window's minimum height no longer depends on it.
+
 ## 0.2.24 (2026-09-16)
 
 - Light mode, stage one of the GNOME look: colours only, no shape, spacing or

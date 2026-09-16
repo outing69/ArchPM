@@ -50,7 +50,7 @@ class GameCard(Card):
         name_row = QHBoxLayout()
         name_row.setSpacing(12)
         self.lbl_name = QLabel("No game running")
-        self.lbl_name.setFont(mono(12, bold=True))
+        self.lbl_name.setFont(mono("title", bold=True))
         self.lbl_name.setTextFormat(Qt.TextFormat.RichText)
         # Expanding: with the tiles hidden nothing else in this column wants
         # width, and the layout would shrink it to the label's minimum.
@@ -67,11 +67,11 @@ class GameCard(Card):
                               "the moment it starts.")
         self.lbl_sub.setWordWrap(True)
         theme.style(self.lbl_sub, "color: {MUTED};")
-        self.lbl_sub.setFont(mono(8))
+        self.lbl_sub.setFont(mono("small"))
         self.lbl_sub.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         left.addWidget(self.lbl_sub)
         self.tiles = QHBoxLayout()
-        self.tiles.setSpacing(8)
+        self.tiles.setSpacing(theme.CARD_GAP)
         self.t_cpu = StatTile("cpu", "CPU")
         self.t_gpu = StatTile("gpu", "GPU")
         self.t_vram = StatTile("vram", "GPU")
@@ -204,7 +204,7 @@ class TopProcList(QWidget):
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         h = self.height() / max(self.rows, 1)
-        p.setFont(mono(9))
+        p.setFont(mono("body"))
         val_w = 74.0
         for i, (name, _pid, value, icon_key) in enumerate(self.items):
             y = i * h
@@ -241,19 +241,19 @@ class Dashboard(QWidget):
         self.ncpu = ncpu
         self.history = history
         outer = QVBoxLayout(self)
-        outer.setContentsMargins(12, 10, 12, 12)
-        outer.setSpacing(10)
+        outer.setContentsMargins(*theme.page_margins())
+        outer.setSpacing(theme.CARD_GAP)
 
         # -- header: what machine is this, and the entry point to root -----
         head = QHBoxLayout()
         head.setSpacing(12)
         self.lbl_machine = QLabel()
-        self.lbl_machine.setFont(mono(10.5))
+        self.lbl_machine.setFont(mono("body"))
         self.lbl_machine.setTextFormat(Qt.TextFormat.RichText)
         head.addWidget(self.lbl_machine)
         head.addStretch(1)
         self.lbl_root_state = QLabel()
-        self.lbl_root_state.setFont(mono(8))
+        self.lbl_root_state.setFont(mono("small"))
         theme.style(self.lbl_root_state, "color: {MUTED};")
         head.addWidget(self.lbl_root_state)
         # Failed services: a snapshot taken at start (and on Refresh on the
@@ -281,7 +281,7 @@ class Dashboard(QWidget):
 
         # -- tiles ---------------------------------------------------------
         tiles = QHBoxLayout()
-        tiles.setSpacing(10)
+        tiles.setSpacing(theme.CARD_GAP)
         self.t_cpu = StatTile("cpu", "CPU")
         self.t_cputemp = StatTile("cpu temp", "CPU")
         self.t_gpu = StatTile("gpu", "GPU")
@@ -296,7 +296,7 @@ class Dashboard(QWidget):
         outer.addLayout(tiles)
 
         grid = QGridLayout()
-        grid.setSpacing(10)
+        grid.setSpacing(theme.CARD_GAP)
         outer.addLayout(grid, 1)
 
         # -- CPU -----------------------------------------------------------
@@ -315,7 +315,7 @@ class Dashboard(QWidget):
         gpu_card.body.addWidget(self.g_gpu, 1)
         hints.attach(self.g_gpu, "graph.gpu", self.help_requested.emit)
         self.gpu_sub = QLabel("--")
-        self.gpu_sub.setFont(mono(8))
+        self.gpu_sub.setFont(mono("small"))
         theme.style(self.gpu_sub, "color: {MUTED};")
         gpu_card.body.addWidget(self.gpu_sub)
         grid.addWidget(gpu_card, 0, 1)
@@ -326,7 +326,7 @@ class Dashboard(QWidget):
         mem_card.body.addWidget(self.g_mem, 1)
         hints.attach(self.g_mem, "graph.mem", self.help_requested.emit)
         self.mem_sub = QLabel("--")
-        self.mem_sub.setFont(mono(8))
+        self.mem_sub.setFont(mono("small"))
         theme.style(self.mem_sub, "color: {MUTED};")
         mem_card.body.addWidget(self.mem_sub)
         grid.addWidget(mem_card, 1, 0)
@@ -405,7 +405,7 @@ class Dashboard(QWidget):
         up = (f"{int(uptime_s // 86400)}d "
               f"{int(uptime_s % 86400 // 3600):02d}:{int(uptime_s % 3600 // 60):02d}")
         self.lbl_machine.setText(
-            f"<span style='color:{theme.ACCENT}; font-size:11pt; font-weight:700'>"
+            f"<span style='color:{theme.ACCENT}; font-size:{theme.FONT_TITLE}pt; font-weight:700'>"
             f"{node}</span>{sep}"
             f"<span style='color:{theme.TEXT}'>{release}</span>{sep}"
             f"<span style='color:{theme.MEM}'>{cores}</span>{sep}"
@@ -427,10 +427,7 @@ class Dashboard(QWidget):
     @staticmethod
     def _sublabel(text: str, color: str = "LABEL") -> QLabel:
         lbl = QLabel(text.upper())
-        f = lbl.font()
-        f.setPointSize(7)
-        f.setBold(True)
-        lbl.setFont(f)
+        lbl.setFont(theme.font("small", bold=True))
         theme.text(lbl, color)
         return lbl
 
