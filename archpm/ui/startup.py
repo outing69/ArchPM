@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ..actions import ActionError, UserBackend
 from ..autostart import Autostart, StartupEntry, running_pids, tilde
 from . import hints, theme
 from .widgets import app_icon
@@ -64,9 +65,10 @@ class StartupView(QWidget):
         outer.addLayout(head)
 
         hint = QLabel(
-            "Untick an entry and it will not start at your next login. Nothing is closed now, "
-            "nothing is deleted, and you can tick it back any time; ArchPM only writes in your "
-            f"own folder ({tilde(self.auto.user_dir)}).<br>"
+            "Autostart entries: untick one and it will not start at your next login. Nothing "
+            "is closed now, nothing is deleted, and you can tick it back any time; ArchPM only "
+            f"writes in your own folder ({tilde(self.auto.user_dir)}). Services of your "
+            "session that start at login are listed further down.<br>"
             f"<span style='color:{theme.WARN}'>Rows marked <b>Desktop · keep on</b> are parts of "
             "your desktop itself (panels, shortcuts, password prompts, power management). "
             "Switching those off gives you a broken login, not a faster one.</span>"
@@ -95,7 +97,38 @@ class StartupView(QWidget):
         hints.header_tooltips(self.table, HINT_KEYS)
         hints.attach_header(header, HINT_KEYS, self.help_requested.emit)
         self.table.itemChanged.connect(self._toggled)
-        outer.addWidget(self.table, 1)
+        outer.addWidget(self.table, 3)
+
+        # -- enabled user services: they start at login as well ---------------
+        svc_title = QLabel("Services of your session that start at login")
+        svc_title.setFont(f)
+        outer.addWidget(svc_title)
+        self.svc_hint = QLabel(
+            "These are started by systemd, not from the autostart folder, so the list above "
+            "does not show them; without them the picture would look complete while it is "
+            "not. Switch one off with <code>systemctl --user disable</code> in a terminal, "
+            "and start, stop or restart it under Root tasks."
+        )
+        self.svc_hint.setTextFormat(Qt.TextFormat.RichText)
+        self.svc_hint.setWordWrap(True)
+        self.svc_hint.setStyleSheet(f"color: {theme.MUTED};")
+        outer.addWidget(self.svc_hint)
+        self.svc_table = QTableWidget(0, 3)
+        self.svc_table.setHorizontalHeaderLabels(["Service", "What it does", "Status"])
+        self.svc_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.svc_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.svc_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.svc_table.setAlternatingRowColors(True)
+        self.svc_table.setShowGrid(False)
+        self.svc_table.verticalHeader().setVisible(False)
+        self.svc_table.verticalHeader().setDefaultSectionSize(26)
+        sh = self.svc_table.horizontalHeader()
+        sh.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        sh.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        sh.setHighlightSections(False)
+        self.svc_table.setColumnWidth(0, 250)
+        self.svc_table.setColumnWidth(2, 170)
+        outer.addWidget(self.svc_table, 1)
 
     # -- data -----------------------------------------------------------------
     def showEvent(self, event) -> None:
@@ -117,6 +150,26 @@ class StartupView(QWidget):
                                     e.name.lower()))
         self.entries = entries
         self._fill()
+        self._fill_services()
+
+    def _fill_services(self) -> None:
+        try:
+            services = UserBackend().enabled_services()
+        except ActionError as exc:
+            self.svc_table.setRowCount(0)
+            self.svc_hint.setText(f"Could not read your session's services: {exc}")
+            return
+        self.svc_table.setRowCount(len(services))
+        for row, svc in enumerate(services):
+            unit = QTableWidgetItem(svc.unit)
+            unit.setToolTip(f"systemctl --user status {svc.unit}")
+            self.svc_table.setItem(row, 0, unit)
+            desc = QTableWidgetItem(svc.description)
+            desc.setForeground(QColor(theme.MUTED))
+            self.svc_table.setItem(row, 1, desc)
+            state = QTableWidgetItem("Running" if svc.active else "Not running")
+            state.setForeground(QColor(theme.OK if svc.active else theme.MUTED))
+            self.svc_table.setItem(row, 2, state)
 
     def _fill(self) -> None:
         self._loading = True

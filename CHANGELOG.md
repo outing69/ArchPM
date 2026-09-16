@@ -3,6 +3,20 @@
 All notable changes, newest first. Versions are git tags on
 [github.com/outing69/ArchPM](https://github.com/outing69/ArchPM).
 
+## 0.2.19 (2026-09-16)
+
+- Honesty, four places. The Drop caches tooltip now says what the Help page
+  said all along: the memory only looks free, the kernel would have freed it
+  itself, and the system is slower for a moment afterwards. The swappiness
+  tooltip says the value lasts until the next restart. The journal cleanup
+  says before the action, in the row and in the confirmation, that logs older
+  than the newest 100 MB go for good, including those of an earlier crash
+  you might still want to look up. And the Startup tab lists the services of
+  your session that systemd starts at login, read-only, under the autostart
+  entries, so the page no longer looks complete while it is not.
+- Help: Service (and the difference between a service of your session and one
+  of the system), Unit, Enabled service and Log (journal).
+
 ## 0.2.18 (2026-09-16)
 
 - The desktop session's pieces live in one list, archpm/session.py, read by

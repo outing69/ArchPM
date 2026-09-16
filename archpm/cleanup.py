@@ -277,8 +277,9 @@ class Cleaner:
         keep = 100 << 20
         return [CleanupItem(
             id="journal", name="System logs (journal)",
-            description=f"Logs older than the most recent 100 MB. The journal takes "
-                        f"{human(size)}; recent logs stay for troubleshooting.",
+            description=f"Removes, for good, every log older than the newest 100 MB, "
+                        f"including those of an earlier crash you might still want to look "
+                        f"up. The journal takes {human(size)}.",
             size=max(0, size - keep), needs_root=True, helper_command="journal-vacuum")]
 
     # -- deleting (user items only) ----------------------------------------------

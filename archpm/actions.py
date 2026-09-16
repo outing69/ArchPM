@@ -29,6 +29,31 @@ class ActionError(Exception):
     """Action refused or failed; the message is meant for the user."""
 
 
+class EnabledService(NamedTuple):
+    """A service of your session that systemd starts at every login."""
+    unit: str
+    description: str = ""
+    active: bool = False
+
+
+def parse_enabled_services(unit_files: str, units: str) -> list[EnabledService]:
+    """`list-unit-files --state=enabled` names them; `list-units --all` adds the
+    description and whether each one is running right now."""
+    info: dict[str, tuple[str, bool]] = {}
+    for line in units.splitlines():
+        parts = line.split()
+        if len(parts) >= 4:
+            desc = " ".join(parts[4:])
+            info[parts[0]] = (desc if desc != parts[0] else "", parts[2] == "active")
+    out = []
+    for line in unit_files.splitlines():
+        parts = line.split()
+        if len(parts) >= 2 and parts[1] == "enabled":
+            desc, active = info.get(parts[0], ("", False))
+            out.append(EnabledService(parts[0], desc, active))
+    return sorted(out, key=lambda e: (e.description or e.unit).lower())
+
+
 class Service(NamedTuple):
     unit: str
     description: str = ""     # empty when systemd has none beyond the unit name
@@ -230,6 +255,17 @@ class UserBackend:
         argv = self.service_argv(action, unit)
         systemctl_user(*argv[2:])
         return systemctl_user("show", "-p", "ActiveState", "--value", "--", argv[-1])
+
+    def enabled_services(self) -> list[EnabledService]:
+        """The services of your session that start at every login. All unit
+        files are asked for and the parser keeps the enabled ones: with
+        --state=enabled systemctl exits 1 when there are none, and that is an
+        answer, not an error."""
+        files = systemctl_user("list-unit-files", "--type=service",
+                               "--no-legend", "--plain", "--no-pager")
+        units = systemctl_user("list-units", "--all", "--type=service",
+                               "--no-legend", "--plain", "--no-pager")
+        return parse_enabled_services(files, units)
 
     def list_services(self) -> list[Service]:
         """Your own session's services, as systemctl lists them, each with its

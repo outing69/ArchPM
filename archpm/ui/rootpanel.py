@@ -138,7 +138,9 @@ class RootPanel(QDialog):
         self.spin_swap.setRange(0, 200)
         self.spin_swap.setToolTip(
             "How eagerly the kernel resorts to swap. CachyOS sets this high because "
-            "zram is fast; lower keeps more in RAM."
+            "zram is fast; lower keeps more in RAM.\n"
+            "Applies now and lasts until the next restart, when the system's own "
+            "setting comes back."
         )
         grid.addWidget(self.spin_swap, 0, 1, Qt.AlignmentFlag.AlignLeft)
         self.btn_swap = QPushButton("Apply")
@@ -148,7 +150,12 @@ class RootPanel(QDialog):
         grid.addWidget(self.btn_swap, 0, 2, Qt.AlignmentFlag.AlignLeft)
 
         self.btn_caches = QPushButton("Drop caches")
-        self.btn_caches.setToolTip("sync + drop_caches 3: frees the page cache.")
+        self.btn_caches.setToolTip(
+            "sync + drop_caches 3: asks the kernel to forget the files it kept in RAM for "
+            "speed.\nThe memory shows as free, but the kernel would have freed it itself "
+            "the moment a program needed it, and everything is read from disk again "
+            "afterwards, so the system is slower for a moment. Rarely helps."
+        )
         self.btn_caches.clicked.connect(lambda: self._run("drop-caches", "3"))
         grid.addWidget(self.btn_caches, 1, 0, 1, 2, Qt.AlignmentFlag.AlignLeft)
         return box

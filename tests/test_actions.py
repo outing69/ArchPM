@@ -6,6 +6,7 @@ that keeps the desktop session itself from being stopped.
 """
 from __future__ import annotations
 
+import subprocess
 import unittest
 
 from archpm import actions
@@ -119,6 +120,34 @@ class ServiceRun(unittest.TestCase):
                             "Brave - Web Browser"),
             actions.Service("dbus-:1.2-org.kde.kwalletd6@0.service", ""),
         ], "a description equal to the unit name is no description")
+
+    def test_enabled_services_come_from_unit_files_with_state_from_list_units(self):
+        files = ("archpm-agent.service  enabled enabled\n"
+                 "wireplumber.service   enabled enabled\n"
+                 "ydotool.service       enabled enabled\n"
+                 "foo.service           disabled enabled\n")
+        units = ("archpm-agent.service loaded active   running ArchPM sampler (feeds the widget)\n"
+                 "wireplumber.service  loaded active   running Multimedia Service Session Manager\n"
+                 "ydotool.service      loaded inactive dead    ydotool.service\n")
+        got = actions.parse_enabled_services(files, units)
+        self.assertEqual(got, [
+            actions.EnabledService("archpm-agent.service",
+                                   "ArchPM sampler (feeds the widget)", True),
+            actions.EnabledService("wireplumber.service",
+                                   "Multimedia Service Session Manager", True),
+            actions.EnabledService("ydotool.service", "", False),
+        ], "sorted by description, a description equal to the name dropped, disabled left out")
+
+    def test_enabled_services_on_this_machine_match_systemctl(self):
+        try:
+            got = actions.UserBackend().enabled_services()
+        except actions.ActionError as exc:
+            self.skipTest(f"no user systemd here: {exc}")
+        expected = subprocess.run(
+            ["systemctl", "--user", "list-unit-files", "--type=service", "--state=enabled",
+             "--no-legend", "--plain"], capture_output=True, text=True, check=False).stdout
+        names = sorted(line.split()[0] for line in expected.splitlines() if line.split())
+        self.assertEqual(sorted(e.unit for e in got), names)
 
     def test_service_label_is_what_a_person_recognises(self):
         unit = "app-brave\\x2dbrowser@89185f01fb3e42e38b610935c88efd87.service"

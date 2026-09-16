@@ -169,12 +169,14 @@ GLOSSARY: tuple[Section, ...] = (
              "Overview memory card, System tab"),
         Term("Swappiness",
              "How eagerly the kernel uses swap, 0 to 200. Higher with zram is fine; lower "
-             "keeps more in RAM. Changing it needs root.",
+             "keeps more in RAM. Changing it needs root, applies at once and lasts until "
+             "the next restart, when the system's own setting comes back.",
              "Root tasks"),
         Term("Drop caches",
              "Asks the kernel to forget files it kept in RAM for speed. It frees memory on "
              "paper; the kernel would have done it itself the moment a program needed the "
-             "RAM. Harmless, rarely useful.",
+             "RAM, and everything is read from disk again afterwards, so the system is "
+             "slower for a moment. Harmless, rarely useful.",
              "Root tasks"),
     )),
     Section("GPU", (
@@ -232,6 +234,37 @@ GLOSSARY: tuple[Section, ...] = (
              "session bus, pipewire, wireplumber and the desktop portal. Restarting them is "
              "allowed, that is how you recover them.",
              "Root tasks → your session's services"),
+    )),
+    Section("Services, units and logs", (
+        Term("Service",
+             "A program the system starts and looks after for you, usually without a "
+             "window: the sound server, the sampler that feeds ArchPM's widget, a VPN. "
+             "There are two kinds. A service of your session runs as you, starts when you "
+             "log in and ends when you log out; you manage it yourself with "
+             "systemctl --user, and ArchPM can start, stop and restart it without a "
+             "password. A service of the system runs as root or a system account, starts "
+             "at boot for every user, and needs root to touch; ArchPM leaves those alone.",
+             "Root tasks → your session's services, Startup tab"),
+        Term("Unit",
+             "systemd's word for one thing it manages, named by its file: "
+             "archpm-agent.service is a service, pipewire.socket a socket that starts one "
+             "on demand, a .timer runs one on a schedule. Plasma gives each program it "
+             "launches a unit too, named app-…@….service, which is why such names appear "
+             "in the service list.",
+             "Root tasks → your session's services"),
+        Term("Enabled service",
+             "A service of your session that systemd starts at every login, because you or "
+             "an installer ran systemctl --user enable on it. The Startup tab lists them "
+             "under the autostart entries: they start at login just the same, but from a "
+             "different place. Switch one off with systemctl --user disable in a terminal.",
+             "Startup tab"),
+        Term("Log (journal)",
+             "What programs and the kernel write about what they did and what went wrong, "
+             "kept by systemd in the journal. journalctl reads it; journalctl -b -1 shows "
+             "the previous boot, which is where the story of a crash is. The Cleanup tab "
+             "can remove everything older than the newest 100 MB, for good, so look first "
+             "if you still have a problem to chase.",
+             "Cleanup tab"),
     )),
     Section("Startup and Cleanup", (
         Term("Autostart entry",

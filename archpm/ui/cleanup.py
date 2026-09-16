@@ -347,6 +347,12 @@ class CleanupView(QWidget):
                        "program that is running. That is not dangerous, but the program may "
                        "stumble for a moment and starts refilling the cache right away. "
                        "Closing it first is cleaner.</span>")
+        if any(i.id == "journal" for i in sel):
+            caution += (f"<br><br><span style='color:{theme.WARN}'>System logs: everything "
+                        "older than the newest 100 MB is removed for good, including the logs "
+                        "of an earlier crash you might still want to look up "
+                        "(<code>journalctl -b -1</code> shows the previous boot). If you are "
+                        "chasing a problem, keep them for now.</span>")
         answer = QMessageBox.question(
             self, "Remove these?",
             f"This frees about <b>{human(total)}</b> by emptying:<br><br>{names}{caution}"
