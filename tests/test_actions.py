@@ -46,11 +46,17 @@ class ServiceArgv(unittest.TestCase):
 
     def test_refuses_to_stop_the_desktop_session_itself(self):
         for unit in ("plasma-plasmashell", "plasma-plasmashell.service",
+                     "plasma-kwin_wayland.service", "plasma-kwin_x11", "plasma-ksmserver.service",
+                     "dbus-broker.service", "dbus.service",
                      "pipewire", "pipewire-pulse.service", "pipewire.socket",
                      "wireplumber", "xdg-desktop-portal", "xdg-desktop-portal-kde.service"):
             with self.subTest(unit=unit), self.assertRaises(actions.ActionError) as ctx:
                 self.b.service_argv("stop", unit)
             self.assertIn("desktop session", str(ctx.exception))
+
+    def test_a_dbus_activated_program_may_be_stopped(self):
+        unit = "dbus-:1.2-org.kde.kwalletd6@0.service"
+        self.assertEqual(self.b.service_argv("stop", unit)[-1], unit)
 
     def test_restart_of_the_desktop_session_is_allowed(self):
         argv = self.b.service_argv("restart", "plasma-plasmashell")

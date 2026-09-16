@@ -228,8 +228,9 @@ GLOSSARY: tuple[Section, ...] = (
         Term("Protected services",
              "ArchPM only manages the services of your own login session (systemctl --user), "
              "which needs no root; system services are left alone. It refuses to stop the "
-             "ones your desktop itself runs on: plasmashell, pipewire, wireplumber and the "
-             "desktop portal. Restarting them is allowed, that is how you recover them.",
+             "ones your desktop itself runs on: plasmashell, kwin, the session manager, the "
+             "session bus, pipewire, wireplumber and the desktop portal. Restarting them is "
+             "allowed, that is how you recover them.",
              "Root tasks → your session's services"),
     )),
     Section("Startup and Cleanup", (

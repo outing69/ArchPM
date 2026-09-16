@@ -5,7 +5,7 @@ outright, what needs a confirmation, and what the dialog should say in plain
 language. No Qt in this file, so every rule is testable.
 
 This guard acts on pids and process names. The service guard in actions.py
-acts on unit names and does not cover this path.
+acts on unit names; both read the desktop session's pieces from session.py.
 """
 from __future__ import annotations
 
@@ -16,15 +16,8 @@ from pathlib import Path
 import psutil
 
 from .model import ProcSample
+from .session import process_loss
 
-# Processes the desktop session itself runs on, with what ending one costs you.
-SESSION_PROCESSES = {
-    "plasmashell": "the panel, the desktop and its widgets",
-    "kwin": "the window borders and window switching, and on Wayland the whole screen",
-    "pipewire": "all sound",
-    "wireplumber": "all sound",
-    "xdg-desktop-portal": "file dialogs and screen sharing for sandboxed apps",
-}
 SESSIONS_DIR = Path("/run/systemd/sessions")
 MAX_LISTED = 6
 MAX_COMMAND = 120
@@ -46,19 +39,9 @@ class Verdict:
     button: str = ""         # label of the button that goes ahead
 
 
-def session_loss(name: str) -> str:
-    """What you lose when a process with this name ends; empty if nothing special.
-
-    Matches the name itself and its variants (pipewire-pulse, kwin_wayland,
-    xdg-desktop-portal-kde). /proc truncates names to 15 characters, so
-    "xdg-desktop-por" must match too.
-    """
-    for key, loss in SESSION_PROCESSES.items():
-        if name == key or name.startswith(key + "-") or name.startswith(key + "_"):
-            return loss
-        if len(name) == 15 and key.startswith(name):
-            return loss
-    return ""
+# What you lose when a process of the desktop session ends: the shared list
+# in session.py, which the service guard in actions.py reads as well.
+session_loss = process_loss
 
 
 def ancestors(pid: int | None = None) -> set[int]:

@@ -306,8 +306,9 @@ for something you were already allowed to do.
 **System services are deliberately left out.** The helper no longer manages
 services at all. ArchPM only starts, stops and restarts the services of your
 own login session, which needs no password, and it refuses to stop the ones
-your desktop itself runs on (plasmashell, pipewire, wireplumber, the desktop
-portal). System-wide services are not touched.
+your desktop itself runs on (plasmashell, kwin, the session manager, the
+session bus, pipewire, wireplumber, the desktop portal). System-wide services
+are not touched.
 
 **GPU tuning is deliberately left out.** Power limit, clock cap and persistence
 mode used to be here and were removed: it is not process management. The helper

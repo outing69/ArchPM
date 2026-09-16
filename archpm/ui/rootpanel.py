@@ -122,8 +122,8 @@ class RootPanel(QDialog):
         lay.addLayout(row)
         lay.addWidget(self._hint(
             "These run as you, so no password is asked. The ones your desktop itself "
-            "runs on (plasmashell, pipewire, wireplumber, the desktop portal) cannot "
-            "be stopped from here, only restarted."
+            "runs on (plasmashell, kwin, ksmserver, the session bus, pipewire, wireplumber, "
+            "the desktop portal) cannot be stopped from here, only restarted."
         ))
         return box
 

@@ -27,7 +27,8 @@ def verdict(procs, sig="TERM", **kw):
 
 class SessionNames(unittest.TestCase):
     def test_desktop_pieces_and_their_variants_match(self):
-        for name in ("plasmashell", "kwin_wayland", "kwin_x11", "kwin_wayland_wr", "pipewire",
+        for name in ("plasmashell", "kwin_wayland", "kwin_x11", "kwin_wayland_wr", "ksmserver",
+                     "dbus-broker", "dbus-daemon", "pipewire",
                      "pipewire-pulse", "wireplumber", "xdg-desktop-portal",
                      "xdg-desktop-portal-kde", "xdg-desktop-por"):
             with self.subTest(name=name):

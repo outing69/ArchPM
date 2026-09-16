@@ -112,11 +112,15 @@ services are never started, stopped or restarted by ArchPM.
 Two things remain guarded on the client side. Only `start`, `stop` and
 `restart` exist, with a unit-name check and `--` before the name so nothing
 can be read as an option. And a unit your desktop session itself runs on
-(plasma-plasmashell, pipewire, wireplumber, xdg-desktop-portal, including
-variants such as pipewire-pulse and xdg-desktop-portal-kde) is refused for
-`stop`, with a message saying what you would lose; restarting it stays allowed,
-because that is how you recover it. This guard protects you from a mistake,
-not from an attacker: anything running as you can run `systemctl --user` itself.
+(plasma-plasmashell, plasma-kwin_wayland, plasma-ksmserver, dbus-broker,
+pipewire, wireplumber, xdg-desktop-portal, including variants such as
+pipewire-pulse and xdg-desktop-portal-kde) is refused for `stop`, with a
+message saying what you would lose; restarting it stays allowed, because that
+is how you recover it. That list lives in `archpm/session.py` and is the same
+one the signal guard reads by process name, so the two cannot drift apart; a
+dbus-activated program's unit (`dbus-:1.2-…@0.service`) is that program, not
+the bus, and may be stopped. This guard protects you from a mistake, not from
+an attacker: anything running as you can run `systemctl --user` itself.
 
 An old client that still sends `service` to the helper gets a JSON refusal and
 no command is run.

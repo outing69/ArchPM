@@ -3,6 +3,23 @@
 All notable changes, newest first. Versions are git tags on
 [github.com/outing69/ArchPM](https://github.com/outing69/ArchPM).
 
+## 0.2.18 (2026-09-16)
+
+- The desktop session's pieces live in one list, archpm/session.py, read by
+  both the signal guard (by process name) and the service guard (by unit
+  name). The two lists had drifted: the service guard did not know
+  plasma-kwin_wayland, plasma-ksmserver or dbus-broker, so Stop on them went
+  through without a word, while the signal guard knew kwin. Both now know
+  plasmashell, kwin, ksmserver, the session bus, pipewire, wireplumber and
+  the desktop portal; a dbus-activated program's unit (dbus-:1.2-…@0.service)
+  is that program, not the bus, and may be stopped.
+- install.sh no longer dies when kpackagetool6 is missing. It used to stop
+  with exit 127 at the widget step, so the menu entry and the desktop
+  shortcut were never written, and with --all the root part was skipped too.
+  As the README says, other desktops get the GUI but not the widgets: the
+  widgets are skipped with a line saying so, and the rest goes on. The same
+  for --uninstall.
+
 ## 0.2.17 (2026-09-16)
 
 - Tests: the PSS cadence test no longer depends on what happens to be running.

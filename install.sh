@@ -38,6 +38,8 @@ case "$ROOT" in
 esac
 LAUNCH="/usr/bin/python3 $ROOT/main.py"
 
+have_plasma() { command -v kpackagetool6 >/dev/null 2>&1; }
+
 desktop_dir() {
     local desk
     desk="$(xdg-user-dir DESKTOP 2>/dev/null || true)"
@@ -63,20 +65,26 @@ install_user() {
     systemctl --user enable --now archpm-agent.service
 
     echo "→ Plasma widgets"
-    WIDGET_TMP="$(mktemp -d)"
-    local pkg
-    for pkg in plasmoid/package plasmoid/network; do
-        local id rendered
-        id=$(sed -n 's/.*"Id": "\(.*\)".*/\1/p' "$pkg/metadata.json")
-        rendered="$WIDGET_TMP/$(basename "$pkg")"
-        cp -r "$pkg" "$rendered"
-        sed -i "s|@LAUNCH@|$LAUNCH|" "$rendered/contents/ui/main.qml"
-        if kpackagetool6 -t Plasma/Applet -l 2>/dev/null | grep -qx "$id"; then
-            kpackagetool6 -t Plasma/Applet -u "$rendered"
-        else
-            kpackagetool6 -t Plasma/Applet -i "$rendered"
-        fi
-    done
+    # Other desktops get the GUI but not the widgets: no kpackagetool6 means
+    # no Plasma 6, so the widgets are skipped and the rest goes on.
+    if ! have_plasma; then
+        echo "   kpackagetool6 not found: no Plasma 6 here, widgets skipped"
+    else
+        WIDGET_TMP="$(mktemp -d)"
+        local pkg
+        for pkg in plasmoid/package plasmoid/network; do
+            local id rendered
+            id=$(sed -n 's/.*"Id": "\(.*\)".*/\1/p' "$pkg/metadata.json")
+            rendered="$WIDGET_TMP/$(basename "$pkg")"
+            cp -r "$pkg" "$rendered"
+            sed -i "s|@LAUNCH@|$LAUNCH|" "$rendered/contents/ui/main.qml"
+            if kpackagetool6 -t Plasma/Applet -l 2>/dev/null | grep -qx "$id"; then
+                kpackagetool6 -t Plasma/Applet -u "$rendered"
+            else
+                kpackagetool6 -t Plasma/Applet -i "$rendered"
+            fi
+        done
+    fi
 
     echo "→ menu entry"
     mkdir -p "$(dirname "$MENU_DST")"
@@ -142,15 +150,19 @@ uninstall_user() {
     fi
 
     echo "→ Plasma widgets"
-    local pkg id
-    for pkg in plasmoid/package plasmoid/network; do
-        id=$(sed -n 's/.*"Id": "\(.*\)".*/\1/p' "$pkg/metadata.json")
-        if kpackagetool6 -t Plasma/Applet -l 2>/dev/null | grep -qx "$id"; then
-            kpackagetool6 -t Plasma/Applet -r "$id"
-        else
-            echo "   $id: not installed"
-        fi
-    done
+    if ! have_plasma; then
+        echo "   kpackagetool6 not found: no Plasma 6 here, nothing to remove"
+    else
+        local pkg id
+        for pkg in plasmoid/package plasmoid/network; do
+            id=$(sed -n 's/.*"Id": "\(.*\)".*/\1/p' "$pkg/metadata.json")
+            if kpackagetool6 -t Plasma/Applet -l 2>/dev/null | grep -qx "$id"; then
+                kpackagetool6 -t Plasma/Applet -r "$id"
+            else
+                echo "   $id: not installed"
+            fi
+        done
+    fi
 
     echo "→ menu entry and desktop shortcut"
     rm -f "$MENU_DST" "$(desktop_dir)/archpm.desktop"
@@ -174,6 +186,7 @@ cat <<MSG
 Done.
   Start the GUI:    python3 -m archpm      (or from the menu: ArchPM)
   Agent status:     systemctl --user status archpm-agent
-  Place the widget: right-click your desktop → Add Widgets → 'ArchPM Monitor'
+$(have_plasma && echo "  Place the widget: right-click your desktop → Add Widgets → 'ArchPM Monitor'" \
+              || echo "  Widgets:          not installed, this desktop is not Plasma 6")
   Root tasks:       Overview → 'Root tasks' button
 MSG

@@ -22,6 +22,8 @@ from typing import NamedTuple
 
 import psutil
 
+from .session import unit_loss
+
 
 class ActionError(Exception):
     """Action refused or failed; the message is meant for the user."""
@@ -53,16 +55,8 @@ SERVICE_ACTIONS = ("start", "stop", "restart")
 # gives launched apps (app-brave\x2dbrowser@....service); there is no shell
 # for it to matter. Matched with fullmatch so nothing trails the name.
 UNIT_RE = re.compile(r"[A-Za-z0-9@_][A-Za-z0-9@._:\\-]{0,127}\.(service|socket|timer|path)")
-# Units the desktop session itself runs on, with what stopping them costs you.
-# Matched on the unit's base name and its variants (pipewire-pulse,
-# xdg-desktop-portal-kde). Restart stays allowed: that is how you recover them.
-SESSION_UNITS = {
-    "plasma-plasmashell": "your panel, desktop and widgets",
-    "pipewire": "all sound",
-    "wireplumber": "all sound",
-    "xdg-desktop-portal": "file dialogs, screen sharing and the rest of the desktop "
-                          "integration of sandboxed apps",
-}
+# Units the desktop session itself runs on come from session.py, the list
+# the signal guard reads too. Restart stays allowed: that is how you recover them.
 
 
 def systemctl_user(*args: str, timeout: int = 30) -> str:
@@ -222,14 +216,13 @@ class UserBackend:
             unit = f"{unit}.service"
         if not UNIT_RE.fullmatch(unit):
             raise ActionError(f"{unit!r} is not a valid unit name.")
-        base = unit.rsplit(".", 1)[0]
         if action == "stop":
-            for name, effect in SESSION_UNITS.items():
-                if base == name or base.startswith(name + "-"):
-                    raise ActionError(
-                        f"{unit} is part of your desktop session: stopping it takes "
-                        f"{effect} down with it. Use Restart if it misbehaves."
-                    )
+            effect = unit_loss(unit)
+            if effect:
+                raise ActionError(
+                    f"{unit} is part of your desktop session: stopping it takes "
+                    f"{effect} down with it. Use Restart if it misbehaves."
+                )
         return ["systemctl", "--user", action, "--", unit]
 
     def service(self, action: str, unit: str) -> str:
