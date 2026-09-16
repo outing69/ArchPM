@@ -40,7 +40,8 @@ def pick_game(procs: list[ProcSample], current_pid: int = 0) -> ProcSample | Non
 
 
 def game_summary(game: ProcSample, procs: list[ProcSample], ncpu: int) -> dict:
-    """Compact numbers for the status file and the widget."""
+    """Compact numbers for the status file and the widget. Numbers and a name
+    only: the widget acts on none of it, and the window computes its own tree."""
     tree = game_tree(game, procs)
     cpu = sum(p.cpu_percent for p in tree)
     return {
@@ -53,5 +54,4 @@ def game_summary(game: ProcSample, procs: list[ProcSample], ncpu: int) -> dict:
         "vram": round(sum(p.gpu_mem_mb for p in tree)),
         "rss": sum(p.mem_rss for p in tree),
         "since": game.create_time,
-        "pids": [p.pid for p in tree if p.pid != game.pid] + [game.pid],   # children first
     }

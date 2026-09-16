@@ -67,14 +67,24 @@ PlasmoidItem {
         if (root.panelMode === 2) return pct(g.util) + " " + deg(g.temp)
         return pct(g.util)
     }
-    function shellQuote(s) { return "'" + String(s).replace(/'/g, "'\\''") + "'" }
+    // How ArchPM is started: a command fixed when the widget is installed
+    // (install.sh and the PKGBUILD fill in the placeholder), never anything
+    // read from status.json. An unrendered copy, as from kpackagetool6 on the
+    // checkout, falls back to "archpm" on PATH.
+    readonly property string launchTemplate: "@LAUNCH@"
+    readonly property string launchCommand:
+        launchTemplate.charAt(0) === "@" ? "archpm" : launchTemplate
 
-    // "Open ArchPM": the agent tells us how it is started (checkout or package);
     // setsid detaches the window from the data engine, which would otherwise
     // wait for it to exit. The single-instance socket raises an open window.
     function openArchPM() {
-        if (!root.stats.launch) return
-        launcher.connectSource("setsid -f sh -c " + shellQuote(root.stats.launch) + " >/dev/null 2>&1")
+        launcher.connectSource("setsid -f " + root.launchCommand + " >/dev/null 2>&1")
+    }
+    // "End game" hands the request to ArchPM: the window asks, runs its
+    // signal guard and sends, exactly as from its own button. The widget
+    // sends no signal itself and takes no pid from the file.
+    function endGame() {
+        launcher.connectSource("setsid -f " + root.launchCommand + " --end-game >/dev/null 2>&1")
     }
 
     // In a panel (horizontal or vertical form factor) show the strip and open
@@ -175,7 +185,6 @@ PlasmoidItem {
                 Text {
                     // acts as a link: the app opens, or comes to the front
                     text: "Open ArchPM"
-                    visible: !!root.stats.launch
                     color: "#f5c542"
                     font: Kirigami.Theme.smallFont
                     MouseArea {
@@ -218,26 +227,16 @@ PlasmoidItem {
                         font.bold: true
                         font.pointSize: Kirigami.Theme.smallFont.pointSize
                     }
-                    // Ends the game from the widget: first click asks, second
-                    // click within five seconds sends SIGTERM to its whole
-                    // tree (own processes, so no root involved).
+                    // Ends the game through ArchPM: the window comes to the
+                    // front and asks first, so one click is enough here.
                     Text {
-                        id: endGame
-                        property bool armed: false
-                        text: armed ? "Sure? Click again" : "End game"
+                        text: "End game…"
                         color: root.hotColor
-                        font.bold: armed
                         font.pointSize: Kirigami.Theme.smallFont.pointSize
-                        Timer { id: disarm; interval: 5000; onTriggered: endGame.armed = false }
                         MouseArea {
                             anchors.fill: parent
                             cursorShape: Qt.PointingHandCursor
-                            onClicked: {
-                                if (!endGame.armed) { endGame.armed = true; disarm.restart(); return }
-                                endGame.armed = false
-                                if (root.game && root.game.pids && root.game.pids.length)
-                                    launcher.connectSource("kill -TERM " + root.game.pids.join(" "))
-                            }
+                            onClicked: root.endGame()
                         }
                     }
                 }

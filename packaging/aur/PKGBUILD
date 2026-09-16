@@ -49,11 +49,15 @@ package() {
     sed -e '/^Path=/d' -e 's|^Exec=.*|Exec=archpm|' archpm.desktop \
         | install -Dm644 /dev/stdin "$pkgdir/usr/share/applications/archpm.desktop"
 
-    # Plasma widgets
+    # Plasma widgets. They start ArchPM by this fixed path and run nothing
+    # that comes out of status.json.
     install -d "$pkgdir/usr/share/plasma/plasmoids/$_plasmoid"
     cp -r plasmoid/package/. "$pkgdir/usr/share/plasma/plasmoids/$_plasmoid/"
     install -d "$pkgdir/usr/share/plasma/plasmoids/$_plasmoid.network"
     cp -r plasmoid/network/. "$pkgdir/usr/share/plasma/plasmoids/$_plasmoid.network/"
+    sed -i 's|@LAUNCH@|/usr/bin/archpm|' \
+        "$pkgdir/usr/share/plasma/plasmoids/$_plasmoid/contents/ui/main.qml" \
+        "$pkgdir/usr/share/plasma/plasmoids/$_plasmoid.network/contents/ui/main.qml"
 
     install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
     install -Dm644 README.md "$pkgdir/usr/share/doc/$pkgname/README.md"

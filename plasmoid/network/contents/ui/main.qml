@@ -42,10 +42,12 @@ PlasmoidItem {
         return (i === 0 ? n.toFixed(0) : n.toFixed(1)) + " " + units[i]
     }
     function rate(n) { return root.fmtBytes(n || 0) + "/s" }
-    function shellQuote(s) { return "'" + String(s).replace(/'/g, "'\\''") + "'" }
+    // How ArchPM is started: fixed at install time, see the Monitor widget.
+    readonly property string launchTemplate: "@LAUNCH@"
+    readonly property string launchCommand:
+        launchTemplate.charAt(0) === "@" ? "archpm" : launchTemplate
     function openArchPM() {
-        if (!root.stats.launch) return
-        launcher.connectSource("setsid -f sh -c " + shellQuote(root.stats.launch) + " >/dev/null 2>&1")
+        launcher.connectSource("setsid -f " + root.launchCommand + " >/dev/null 2>&1")
     }
 
     readonly property bool inPanel: Plasmoid.formFactor === PlasmaCore.Types.Horizontal
@@ -148,7 +150,6 @@ PlasmoidItem {
                 }
                 Text {
                     text: "Open ArchPM"
-                    visible: !!root.stats.launch
                     color: "#f5c542"
                     font: Kirigami.Theme.smallFont
                     MouseArea {

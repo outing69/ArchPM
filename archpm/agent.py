@@ -13,8 +13,10 @@ import sys
 import time
 
 from .gpu import GpuMonitor
-from .publisher import publish
+from .publisher import PublishError, publish
 from .sampler import Sampler
+
+NO_SAFE_DIR = 3   # exit status: the status directory is not ours; see RestartPreventExitStatus
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -45,7 +47,14 @@ def main(argv: list[str] | None = None) -> int:
     while running:
         start = time.monotonic()
         snap = sampler.sample()
-        path = publish(snap)
+        try:
+            path = publish(snap)
+        except PublishError as exc:
+            # Nowhere safe to write: say so and stop. Exit status 3 tells
+            # systemd not to restart us into the same wall.
+            print(f"archpm-agent: not publishing: {exc}", file=sys.stderr)
+            gpu.stop()
+            return NO_SAFE_DIR
         if args.once:
             print(path)
             print(path.read_text())

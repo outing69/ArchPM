@@ -110,12 +110,60 @@ two of each package are kept) and archived journal files beyond 100 MB. Nothing
 else on the Cleanup tab needs root; the user-level items are emptied by the GUI
 inside the user's own cache folders, symlinks never followed.
 
+## The status file and the widgets
+
+The agent (or the window, when the agent service is not running) writes
+`status.json` for the two Plasma widgets. That file is **data only**. Since
+0.2.14 the widgets run nothing that comes out of it:
+
+- **Open ArchPM** starts ArchPM by a command fixed when the widget is
+  installed. `install.sh` renders the checkout's `main.py` path into the QML,
+  the package renders `/usr/bin/archpm`. Nothing in the file says how to start
+  anything.
+- **End game** starts ArchPM the same way with `--end-game`, or hands that
+  request to the running window over its instance socket, which only the same
+  user can reach. The window then does exactly what its own End game button
+  does: it asks, runs the signal guard in `archpm/signalguard.py` (ArchPM's
+  own ancestors, your session leader, plasmashell, kwin and the sound stack
+  are refused or warned about) and sends through the active backend. The
+  process tree comes from the window's own sample, never from the file.
+
+Before 0.2.14 the file carried a `launch` command line and the game's pids,
+and the widget ran them through the shell. Anything that could write the file
+as you, a sandboxed app with access to your home folder for instance, could run
+a command inside plasmashell that way, and the guard above never saw the pids.
+
+**Where the file goes.** `$XDG_RUNTIME_DIR/archpm/status.json`, with a symlink
+from `~/.cache/archpm/status.json` because that is the path the widget can
+predict. Without a runtime directory the file goes into `~/.cache/archpm`
+itself. It never goes into a shared temporary directory: a directory another
+user can create first is a directory another user can replace the file in, and
+before 0.2.14 that was the fallback. Every write opens the directory first and
+checks the open descriptor with `fstat`, not the path, so the directory cannot
+be swapped between the check and the write: it must be a real directory and
+not a symlink, owned by the current user, with no write bit for group or
+others. The file is then written through that descriptor with `openat` and
+renamed into place. If the check fails, nothing is written. The agent prints
+the reason and exits with status 3, which the unit lists in
+`RestartPreventExitStatus` so systemd does not restart it into the same wall;
+the window shows the reason in its status bar and stops publishing for that
+run. Refusing to publish and saying so beats publishing somewhere unsafe.
+
+**An old widget with a new agent** loses both buttons: "Open ArchPM" is hidden
+because the `launch` field is gone, and "End game" does nothing because the
+pids are gone. Both are the safe failure. Reinstall the widgets with
+`./install.sh` or the package and both come back.
+
 ## What the tests cover
 
 `tests/test_helper.py` pins every refusal rule above so that a later change
 cannot silently loosen it, including that the `service` subcommand stays gone.
 `tests/test_actions.py` pins the session guard and that services never go
-through `pkexec`. Run them with:
+through `pkexec`. `tests/test_publisher_agent.py` pins the directory check (a
+foreign owner, a world-writable directory, a symlink and a plain file are all
+refused) and that the file carries no `launch` field and no pids.
+`tests/test_instance_requests.py` pins that the instance socket acts on `show`
+and `end-game` only. Run them with:
 
 ```bash
 python3 -m unittest discover tests

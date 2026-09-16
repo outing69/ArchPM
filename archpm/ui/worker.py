@@ -5,13 +5,14 @@ from PySide6.QtCore import QObject, Qt, QThread, QTimer, Signal, Slot
 
 from ..gpu import GpuMonitor
 from ..model import Snapshot
-from ..publisher import agent_service_active, publish
+from ..publisher import PublishError, agent_service_active, publish
 from ..sampler import Sampler
 
 
 class SampleWorker(QObject):
     sampled = Signal(object)
     failed = Signal(str)
+    notice = Signal(str)     # something worth a line in the status bar, not an error in sampling
 
     AGENT_CHECK_EVERY = 15   # ticks between looks at the agent service (30 s at 2 s)
 
@@ -57,8 +58,10 @@ class SampleWorker(QObject):
         if self.publish_status and not self.agent_active:
             try:
                 publish(snap)
-            except OSError:
-                pass
+            except PublishError as exc:
+                # Nowhere safe to write: say so once and stop writing for this run.
+                self.publish_status = False
+                self.notice.emit(f"Not publishing for the widgets: {exc}")
         self.sampled.emit(snap)
 
     @Slot()

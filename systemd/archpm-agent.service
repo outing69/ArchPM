@@ -8,6 +8,8 @@ WorkingDirectory=@ROOT@
 ExecStart=/usr/bin/python3 -m archpm.agent --interval 2
 Restart=on-failure
 RestartSec=5
+# Exit 3: the status directory belongs to someone else. Restarting will not change that.
+RestartPreventExitStatus=3
 Nice=10
 IOSchedulingClass=idle
 # Sampling must never cost you frames

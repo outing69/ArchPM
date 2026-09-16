@@ -336,7 +336,12 @@ writer. The agent is what keeps the widgets running with the window closed.
 The widget reads that JSON through the `executable` data engine (`cat`), not
 through `XMLHttpRequest`: Qt 6 blocks XHR on `file://` unless
 `QML_XHR_ALLOW_FILE_READ` is set, and that is an environment variable for all of
-plasmashell.
+plasmashell. The file is data only: the widgets run nothing that comes out of
+it. "Open ArchPM" uses a command fixed at install time, and "End game" asks
+the window, which confirms and runs its signal guard as for its own button.
+The file's directory is opened first and checked on the descriptor (ours, not
+a symlink, not writable by others) before anything is written through it; see
+SECURITY.md.
 
 Root runs alongside the measurement chain, not through it:
 

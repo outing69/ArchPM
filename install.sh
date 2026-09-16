@@ -16,11 +16,27 @@ POLICY_DST=/usr/share/polkit-1/actions/io.github.outing69.archpm.policy
 UNIT_DST=~/.config/systemd/user/archpm-agent.service
 MENU_DST=~/.local/share/applications/archpm.desktop
 
-# The rendered policy goes through a temporary file that is removed when the
-# script ends, whichever way it ends.
+# The rendered policy and the rendered widgets go through temporary files
+# that are removed when the script ends, whichever way it ends.
 POLICY_TMP=""
-cleanup() { [ -z "$POLICY_TMP" ] || rm -f "$POLICY_TMP"; }
+WIDGET_TMP=""
+cleanup() {
+    [ -z "$POLICY_TMP" ] || rm -f "$POLICY_TMP"
+    [ -z "$WIDGET_TMP" ] || rm -rf "$WIDGET_TMP"
+}
 trap cleanup EXIT
+
+# The widgets start ArchPM by this command, fixed here and rendered into the
+# QML; they run nothing that comes out of status.json. The checkout path ends
+# up inside a shell command line and inside a QML string, so it may not carry
+# characters that mean something to either.
+case "$ROOT" in
+    *[!A-Za-z0-9/._+@-]*)
+        echo "install.sh: the checkout path may only contain letters, digits and / . _ + @ -"
+        echo "            ($ROOT)"
+        exit 1 ;;
+esac
+LAUNCH="/usr/bin/python3 $ROOT/main.py"
 
 desktop_dir() {
     local desk
@@ -47,14 +63,18 @@ install_user() {
     systemctl --user enable --now archpm-agent.service
 
     echo "→ Plasma widgets"
+    WIDGET_TMP="$(mktemp -d)"
     local pkg
     for pkg in plasmoid/package plasmoid/network; do
-        local id
+        local id rendered
         id=$(sed -n 's/.*"Id": "\(.*\)".*/\1/p' "$pkg/metadata.json")
+        rendered="$WIDGET_TMP/$(basename "$pkg")"
+        cp -r "$pkg" "$rendered"
+        sed -i "s|@LAUNCH@|$LAUNCH|" "$rendered/contents/ui/main.qml"
         if kpackagetool6 -t Plasma/Applet -l 2>/dev/null | grep -qx "$id"; then
-            kpackagetool6 -t Plasma/Applet -u "$pkg"
+            kpackagetool6 -t Plasma/Applet -u "$rendered"
         else
-            kpackagetool6 -t Plasma/Applet -i "$pkg"
+            kpackagetool6 -t Plasma/Applet -i "$rendered"
         fi
     done
 

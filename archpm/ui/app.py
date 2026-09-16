@@ -38,39 +38,62 @@ from .worker import SampleWorker, run_in_thread
 
 INTERVALS = [("0.5 s", 0.5), ("1 s", 1.0), ("2 s", 2.0), ("5 s", 5.0)]
 
-# One instance per user. A second launch connects to this socket, asks the
-# running instance to raise its window, and exits.
+# One instance per user. A second launch connects to this socket, sends one
+# request line, and exits. The socket is only reachable by the same user.
+#
+# The widgets use the same route: "Open ArchPM" is a plain launch, "End game"
+# is a launch with --end-game. The widget itself signals nothing; the window
+# asks, runs the signal guard and sends, exactly as from its own button.
 INSTANCE_SOCKET = f"archpm-{os.getuid()}"
+SHOW, END_GAME = "show", "end-game"
+REQUESTS = (SHOW, END_GAME)
 
 
-def raise_running_instance() -> bool:
-    """True if another ArchPM is running for this user (and has been told to show itself)."""
+def parse_request(data: bytes) -> str | None:
+    """The request in the first line from the socket: exactly one of REQUESTS,
+    ended by a newline (a \\r before it is tolerated). Anything else, a word
+    with something appended included, is None and does nothing."""
+    line = data.split(b"\n", 1)[0].removesuffix(b"\r").decode("ascii", "replace")
+    return line if line in REQUESTS else None
+
+
+def raise_running_instance(request: str = SHOW, name: str = INSTANCE_SOCKET) -> bool:
+    """True if another ArchPM is running for this user (and has been handed the request)."""
     sock = QLocalSocket()
-    sock.connectToServer(INSTANCE_SOCKET)
+    sock.connectToServer(name)
     if not sock.waitForConnected(300):
         return False
-    sock.write(b"show\n")
+    sock.write(request.encode() + b"\n")
     sock.waitForBytesWritten(300)
     sock.disconnectFromServer()
     return True
 
 
-def listen_for_launches(on_launch) -> QLocalServer:
-    """Own the instance socket; call `on_launch` whenever a second launch knocks."""
-    QLocalServer.removeServer(INSTANCE_SOCKET)  # stale file from a crash
+def listen_for_launches(on_request, name: str = INSTANCE_SOCKET) -> QLocalServer:
+    """Own the instance socket; call `on_request(word)` for every request that comes in."""
+    QLocalServer.removeServer(name)  # stale file from a crash
     server = QLocalServer()
     server.setSocketOptions(QLocalServer.SocketOption.UserAccessOption)
-    server.newConnection.connect(lambda: _drain(server, on_launch))
-    server.listen(INSTANCE_SOCKET)
+    server.newConnection.connect(lambda: _drain(server, on_request))
+    server.listen(name)
     return server
 
 
-def _drain(server: QLocalServer, on_launch) -> None:
+def _drain(server: QLocalServer, on_request) -> None:
     while server.hasPendingConnections():
         conn = server.nextPendingConnection()
         conn.disconnected.connect(conn.deleteLater)
-        conn.close()
-    on_launch()
+
+        def serve(conn=conn):
+            if not conn.canReadLine():
+                return
+            request = parse_request(bytes(conn.readLine()))
+            conn.close()
+            if request is not None:
+                on_request(request)
+
+        conn.readyRead.connect(serve)
+        serve()   # the line may be there already
 
 
 def app_icon() -> QIcon:
@@ -132,6 +155,7 @@ class MainWindow(QMainWindow):
         self.system.status.connect(self._flash)
         self.dashboard.root_requested.connect(self._open_root)
         self.dashboard.game.terminate_requested.connect(self._terminate_game)
+        self._end_game_pending = False   # asked before the first sample; answered after it
         self._build_statusbar()
         self._build_tray()
         self._restore()
@@ -142,6 +166,7 @@ class MainWindow(QMainWindow):
         self.worker = SampleWorker(interval=interval)
         self.worker.sampled.connect(self._on_sample)
         self.worker.failed.connect(lambda m: self._flash(f"Sampling error: {m}"))
+        self.worker.notice.connect(lambda m: self._flash(m, 10000))
         self.thread = run_in_thread(self.worker)
         self._last_ts = 0.0
 
@@ -236,6 +261,23 @@ class MainWindow(QMainWindow):
         self.raise_()
         self.activateWindow()
 
+    def request(self, name: str) -> None:
+        """A request from a second launch or from a widget; see REQUESTS."""
+        self.present()
+        if name == END_GAME:
+            self.end_game()
+
+    def end_game(self) -> None:
+        """The same road as the button on the Overview card and the tray menu:
+        the window asks, the signal guard checks, the active backend sends. The
+        tree comes from the window's own sample, never from the status file."""
+        if self.dashboard.game_name():
+            self.dashboard.game._confirm_terminate()
+        elif self.procs.model._last:
+            self._flash("No game running")
+        else:
+            self._end_game_pending = True   # answered by the first sample
+
     # -- root ---------------------------------------------------------------
     def _open_root(self) -> None:
         if self.root_panel is None:
@@ -305,6 +347,9 @@ class MainWindow(QMainWindow):
             self.act_game.setText(name or "No game running")
             self.act_end_game.setVisible(bool(name))
             self.act_end_game.setText(f"End {name}…" if name else "End game…")
+        if self._end_game_pending:
+            self._end_game_pending = False
+            QTimer.singleShot(0, self.end_game)   # a modal inside the sample handler is fragile
 
     def _flash(self, message: str, msec: int = 4000) -> None:
         self.lbl_msg.setText(message)
@@ -360,19 +405,24 @@ class MainWindow(QMainWindow):
 
 
 def main() -> int:
+    # --end-game: what the widget's button sends. Ask the running window, or
+    # start one and ask it as soon as it knows what is running.
+    request = END_GAME if "--end-game" in sys.argv[1:] else SHOW
     app = QApplication(sys.argv)
     app.setApplicationName(APP_NAME)
     app.setOrganizationName("archpm")
     app.setDesktopFileName("archpm")
     theme.apply(app)
-    if raise_running_instance():
+    if raise_running_instance(request):
         return 0
     win = MainWindow()
-    server = listen_for_launches(win.present)  # keep a reference for the app's lifetime
+    server = listen_for_launches(win.request)  # keep a reference for the app's lifetime
     app.aboutToQuit.connect(win.shutdown)
     app.aboutToQuit.connect(server.close)
     win.show()
     win.statusBar().showMessage(f"Status for the widget: {status_path()}", 6000)
+    if request == END_GAME:
+        win.end_game()
     return app.exec()
 
 

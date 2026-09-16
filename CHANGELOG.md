@@ -3,6 +3,30 @@
 All notable changes, newest first. Versions are git tags on
 [github.com/outing69/ArchPM](https://github.com/outing69/ArchPM).
 
+## 0.2.14 (2026-09-16)
+
+- Security: the widgets no longer run anything that comes out of status.json.
+  Before, the file carried a `launch` command line that "Open ArchPM" ran
+  through the shell, and the game's pids that "End game" passed to `kill`,
+  past every check in signalguard.py. Anything that could write the file as
+  you could run a command inside plasmashell. Now "Open ArchPM" uses a command
+  fixed when the widget is installed, and "End game" hands the request to the
+  window (`archpm --end-game`, or the instance socket when it is open), which
+  asks, runs the signal guard and sends, as from its own button. One click in
+  the widget; the window's dialog is the confirmation. The `launch` field and
+  the game's `pids` are gone from the file.
+- Security: the agent no longer falls back to /tmp/archpm when there is no
+  $XDG_RUNTIME_DIR; another user could create that directory first and replace
+  the file. Without a runtime directory the file goes into ~/.cache/archpm,
+  which is the user's own. Every write opens the directory and checks it on
+  the descriptor (a real directory, ours, not writable by others) before
+  writing through it, so nothing can be swapped in between. When the check
+  fails the agent says why and exits with status 3, which the unit no longer
+  restarts; the window says why in its status bar and stops publishing.
+- An old widget with the new agent shows no "Open ArchPM" and an "End game"
+  that does nothing; reinstalling the widgets brings both back. SECURITY.md
+  describes the status file and the widgets.
+
 ## 0.2.13 (2026-09-15)
 
 - install.sh --uninstall removes everything the script installed: the root

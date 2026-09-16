@@ -1,12 +1,21 @@
-"""Writes a compact status to a JSON file for the desktop widget."""
+"""Writes a compact status to a JSON file for the desktop widgets.
+
+The file is data only. The widgets read numbers and names from it and run
+nothing that comes out of it: ArchPM is started by a path fixed when the
+widget is installed, and "End game" asks the window to do it, guards and all.
+
+Every write goes through a descriptor of the directory, checked with fstat
+after it is opened: a real directory, owned by us, writable by nobody else.
+Checking a path and opening it afterwards would leave a gap in which the
+directory can be swapped for another one.
+"""
 from __future__ import annotations
 
+import errno
 import json
 import os
-import shlex
+import stat
 import subprocess
-import sys
-import tempfile
 from pathlib import Path
 
 from . import net as netmod
@@ -14,17 +23,36 @@ from .game import game_summary, pick_game
 from .model import Snapshot
 
 _APP = "archpm"
+STATUS_NAME = "status.json"
+_TMP_NAME = "status.tmp"
+
+
+class PublishError(RuntimeError):
+    """The status file cannot be written somewhere safe. The message says where and why."""
+
+
+def runtime_dir() -> Path | None:
+    """$XDG_RUNTIME_DIR/archpm, or None when the session has no runtime directory."""
+    base = os.environ.get("XDG_RUNTIME_DIR")
+    return Path(base) / _APP if base else None
+
+
+def cache_dir() -> Path:
+    """~/.cache/archpm: the widgets read here, and it is where we write when
+    there is no runtime directory. Ours in either case."""
+    base = os.environ.get("XDG_CACHE_HOME") or os.path.expanduser("~/.cache")
+    return Path(base) / _APP
 
 
 def status_dir() -> Path:
-    base = os.environ.get("XDG_RUNTIME_DIR") or tempfile.gettempdir()
-    d = Path(base) / _APP
-    d.mkdir(parents=True, exist_ok=True)
-    return d
+    """Where status.json goes: the runtime directory, or the cache directory
+    without one. Never a shared temporary directory: a directory another user
+    can create first is a directory another user can replace the file in."""
+    return runtime_dir() or cache_dir()
 
 
 def status_path() -> Path:
-    return status_dir() / "status.json"
+    return status_dir() / STATUS_NAME
 
 
 def cache_link() -> Path:
@@ -33,29 +61,74 @@ def cache_link() -> Path:
     The widget runs inside plasmashell and does not know $XDG_RUNTIME_DIR; via
     StandardPaths it does always end up at ~/.cache.
     """
-    base = os.environ.get("XDG_CACHE_HOME") or os.path.expanduser("~/.cache")
-    d = Path(base) / _APP
-    d.mkdir(parents=True, exist_ok=True)
-    return d / "status.json"
+    return cache_dir() / STATUS_NAME
+
+
+def open_owned_dir(path: Path, uid: int | None = None) -> int:
+    """A descriptor of `path`, created if needed, after it passed the checks:
+    a directory and not a symlink, owned by `uid` (us), no write bit for group
+    or others. Raises PublishError otherwise. The caller closes it."""
+    uid = os.getuid() if uid is None else uid
+    try:
+        path.mkdir(parents=True, exist_ok=True, mode=0o700)
+    except OSError as exc:
+        raise PublishError(f"{path}: cannot create it ({exc.strerror})") from exc
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
+    except OSError as exc:
+        # O_NOFOLLOW with O_DIRECTORY: a symlink comes back as ELOOP or, on
+        # Linux when it points at a directory, as ENOTDIR.
+        why = ("a symlink or not a directory" if exc.errno in (errno.ELOOP, errno.ENOTDIR)
+               else exc.strerror or str(exc))
+        raise PublishError(f"{path}: not a directory of our own ({why})") from exc
+    try:
+        st = os.fstat(fd)
+        if not stat.S_ISDIR(st.st_mode):
+            raise PublishError(f"{path}: not a directory")
+        if st.st_uid != uid:
+            raise PublishError(f"{path}: owned by uid {st.st_uid}, not by us (uid {uid}); "
+                               "the status file is not written there")
+        if st.st_mode & 0o022:
+            raise PublishError(f"{path}: writable by others (mode {stat.S_IMODE(st.st_mode):o}); "
+                               "the status file is not written there")
+    except PublishError:
+        os.close(fd)
+        raise
+    return fd
+
+
+def _write_atomic(dir_fd: int, name: str, text: str) -> None:
+    """status.tmp then rename, both relative to the checked directory, so the
+    widget never reads a half-written file and no path is resolved twice."""
+    flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW | os.O_CLOEXEC
+    fd = os.open(_TMP_NAME, flags, 0o600, dir_fd=dir_fd)
+    with os.fdopen(fd, "w") as f:
+        f.write(text)
+    os.rename(_TMP_NAME, name, src_dir_fd=dir_fd, dst_dir_fd=dir_fd)
 
 
 def ensure_link() -> None:
-    link, target = cache_link(), status_path()
-    if link.is_symlink() and link.readlink() == target:
+    """The symlink in the cache directory, when the file lives elsewhere. With
+    the file in the cache directory itself there is nothing to link."""
+    target = status_path()
+    if target.parent == cache_dir():
         return
-    if link.exists() or link.is_symlink():
-        link.unlink()
+    dir_fd = open_owned_dir(cache_dir())
     try:
-        link.symlink_to(target)
+        try:
+            if os.readlink(STATUS_NAME, dir_fd=dir_fd) == str(target):
+                return
+        except OSError:
+            pass  # absent, or not a symlink
+        try:
+            os.unlink(STATUS_NAME, dir_fd=dir_fd)
+        except FileNotFoundError:
+            pass
+        os.symlink(str(target), STATUS_NAME, dir_fd=dir_fd)
     except OSError:
         pass
-
-
-def launch_command() -> str:
-    """How the widget starts the GUI: the interpreter this agent runs under,
-    from the directory it runs in. Works for a checkout (the unit's working
-    directory) and for the installed package (site-packages, any directory)."""
-    return f"cd {shlex.quote(os.getcwd())} && exec {shlex.quote(sys.executable)} -m archpm"
+    finally:
+        os.close(dir_fd)
 
 
 _state = {"game_pid": 0}   # the game shown last tick, so the widget does not hop
@@ -101,7 +174,6 @@ def to_payload(snap: Snapshot, top_n: int = 5) -> dict:
                     for p in top_cpu],
         "top_mem": [{"name": p.display_name, "pid": p.pid, "v": round(p.mem_mb)}
                     for p in top_mem],
-        "launch": launch_command(),
     }
     ncpu = len(s.per_core) or 1
     game = pick_game(snap.procs, _state["game_pid"])
@@ -127,11 +199,16 @@ def to_payload(snap: Snapshot, top_n: int = 5) -> dict:
 
 
 def publish(snap: Snapshot, path: Path | None = None) -> Path:
-    """Atomic write: the widget never reads a half-written file."""
+    """Write the status file. Raises PublishError when its directory is not
+    one of our own; the caller says so and stops publishing."""
     target = path or status_path()
-    tmp = target.with_suffix(".tmp")
-    tmp.write_text(json.dumps(to_payload(snap), separators=(",", ":")))
-    os.replace(tmp, target)
+    dir_fd = open_owned_dir(target.parent)
+    try:
+        _write_atomic(dir_fd, target.name, json.dumps(to_payload(snap), separators=(",", ":")))
+    except OSError as exc:
+        raise PublishError(f"{target}: cannot write it ({exc.strerror or exc})") from exc
+    finally:
+        os.close(dir_fd)
     if path is None:
         ensure_link()
     return target
