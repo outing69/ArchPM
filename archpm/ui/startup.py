@@ -75,7 +75,7 @@ class StartupView(QWidget):
         )
         hint.setTextFormat(Qt.TextFormat.RichText)
         hint.setWordWrap(True)
-        hint.setStyleSheet(f"color: {theme.MUTED};")
+        theme.style(hint, "color: {MUTED};")
         outer.addWidget(hint)
 
         self.table = QTableWidget(0, len(HEADERS))
@@ -111,7 +111,7 @@ class StartupView(QWidget):
         )
         self.svc_hint.setTextFormat(Qt.TextFormat.RichText)
         self.svc_hint.setWordWrap(True)
-        self.svc_hint.setStyleSheet(f"color: {theme.MUTED};")
+        theme.style(self.svc_hint, "color: {MUTED};")
         outer.addWidget(self.svc_hint)
         self.svc_table = QTableWidget(0, 3)
         self.svc_table.setHorizontalHeaderLabels(["Service", "What it does", "Status"])

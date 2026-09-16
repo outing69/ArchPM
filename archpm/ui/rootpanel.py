@@ -60,9 +60,9 @@ class RootPanel(QDialog):
         self.log.setReadOnly(True)
         self.log.setMaximumHeight(120)
         self.log.setFont(mono(8))
-        self.log.setStyleSheet(
-            f"QPlainTextEdit {{ background: {theme.SURFACE}; border: 1px solid {theme.BORDER};"
-            f" border-radius: 8px; color: {theme.MUTED}; padding: 6px; }}"
+        theme.style(
+            self.log, "QPlainTextEdit {{ background: {SURFACE}; border: 1px solid {BORDER};"
+            " border-radius: 8px; color: {MUTED}; padding: 6px; }}"
         )
         lay.addWidget(self.log)
         lay.addStretch(1)
@@ -164,7 +164,7 @@ class RootPanel(QDialog):
     def _hint(text: str) -> QLabel:
         lbl = QLabel(text)
         lbl.setWordWrap(True)
-        lbl.setStyleSheet(f"color: {theme.FAINT};")
+        theme.style(lbl, "color: {FAINT};")
         f = lbl.font()
         f.setPointSize(8)
         lbl.setFont(f)

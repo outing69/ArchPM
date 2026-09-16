@@ -9,6 +9,7 @@ license=('MIT')
 install=archpm.install
 depends=('python' 'pyside6' 'python-psutil' 'polkit' 'iproute2')
 optdepends=('plasma-desktop: the Monitor and Network widgets'
+            'adwaita-icon-theme: the Adwaita icons on the navigation rail'
             'pacman-contrib: clean the package cache from the Cleanup tab'
             'nvidia-utils: NVIDIA GPU telemetry via nvidia-smi'
             'hwdata: proper names for AMD GPUs')

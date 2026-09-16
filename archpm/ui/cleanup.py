@@ -96,7 +96,7 @@ class CleanupView(QWidget):
         title.setFont(f)
         head.addWidget(title)
         self.lbl_state = QLabel("")
-        self.lbl_state.setStyleSheet(f"color: {theme.MUTED};")
+        theme.style(self.lbl_state, "color: {MUTED};")
         head.addWidget(self.lbl_state)
         head.addStretch(1)
         self.lbl_total = QLabel("")
@@ -120,7 +120,7 @@ class CleanupView(QWidget):
             "and check the list once more before you confirm."
         )
         hint.setWordWrap(True)
-        hint.setStyleSheet(f"color: {theme.MUTED};")
+        theme.style(hint, "color: {MUTED};")
         outer.addWidget(hint)
 
         self.table = QTableWidget(0, len(HEADERS))
@@ -147,9 +147,9 @@ class CleanupView(QWidget):
         self.log.setReadOnly(True)
         self.log.setMaximumHeight(110)
         self.log.setFont(mono(8))
-        self.log.setStyleSheet(
-            f"QPlainTextEdit {{ background: {theme.SURFACE}; border: 1px solid {theme.BORDER};"
-            f" border-radius: 8px; color: {theme.ACCENT}; padding: 6px; }}"
+        theme.style(
+            self.log, "QPlainTextEdit {{ background: {SURFACE}; border: 1px solid {BORDER};"
+            " border-radius: 8px; color: {ACCENT}; padding: 6px; }}"
         )
         outer.addWidget(self.log)
 

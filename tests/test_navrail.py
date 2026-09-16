@@ -219,3 +219,24 @@ class Rail(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AdwaitaSet(unittest.TestCase):
+    """The rail takes the Adwaita set only when every one of the eight names
+    resolves; one missing name keeps the whole rail on Breeze."""
+
+    def test_all_or_nothing(self):
+        from archpm.ui import navrail
+        self.assertEqual(navrail.adwaita_missing(lambda n: True), [])
+        missing = navrail.adwaita_missing(lambda n: n != "computer-symbolic")
+        self.assertEqual(missing, ["computer-symbolic"])
+        self.assertEqual(len(navrail.ADWAITA_ICONS), 8)
+
+    def test_on_this_machine_the_decision_is_reported(self):
+        from archpm.ui import navrail
+        chosen = navrail.icon_set()
+        self.assertIn(chosen["name"], ("adwaita", "breeze"))
+        if chosen["name"] == "adwaita":
+            self.assertEqual(chosen["missing"], [])
+        else:
+            self.assertTrue(chosen["missing"])

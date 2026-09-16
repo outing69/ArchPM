@@ -16,6 +16,8 @@ theme that lacks one name does not leave the rail blank.
 """
 from __future__ import annotations
 
+import os
+
 from PySide6.QtCore import (
     QAbstractAnimation,
     QEasingCurve,
@@ -25,7 +27,7 @@ from PySide6.QtCore import (
     Qt,
     Signal,
 )
-from PySide6.QtGui import QColor, QIcon, QKeyEvent, QPainter, QPalette
+from PySide6.QtGui import QColor, QIcon, QKeyEvent, QPainter, QPalette, QPixmap
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QStackedWidget,
@@ -57,6 +59,23 @@ PAGE_ICONS = {
     "Help": ("help-contents", "system-help"),
 }
 MENU_ICON = ("application-menu", "open-menu-symbolic")
+# The Adwaita set, all symbolic; used only when every one of the eight
+# resolves under Adwaita (checked with QIcon.hasThemeIcon at start), else
+# the whole rail stays on the Breeze names above. Adwaita has no
+# utilities-system-monitor-symbolic; its gauge stands in for the Overview.
+ADWAITA_ICONS = {
+    "Overview": "power-profile-performance-symbolic",
+    "Processes": "view-list-bullet-symbolic",
+    "Network": "network-wired-symbolic",
+    "Startup": "system-run-symbolic",
+    "System": "computer-symbolic",
+    "Cleanup": "edit-clear-all-symbolic",
+    "Help": "help-about-symbolic",
+    "Menu": "open-menu-symbolic",
+}
+ADWAITA = "Adwaita"
+BREEZE = {"breeze", "breeze-dark"}
+_icon_set: dict = {}     # "name": "adwaita" | "breeze", "missing": [...]
 
 
 def pick_icon_name(name: str, fallback: str, has=None) -> str:
@@ -68,6 +87,97 @@ def pick_icon_name(name: str, fallback: str, has=None) -> str:
 def theme_icon(name: str, fallback: str) -> QIcon:
     """The theme's icon by name, or by the fallback name when the first is missing."""
     return QIcon.fromTheme(pick_icon_name(name, fallback))
+
+
+def icon_dirs() -> list[str]:
+    """The XDG icon directories, in lookup order."""
+    data_dirs = os.environ.get("XDG_DATA_DIRS", "/usr/local/share:/usr/share").split(":")
+    dirs = [os.path.expanduser("~/.icons"), os.path.expanduser("~/.local/share/icons")]
+    return dirs + [os.path.join(d, "icons") for d in data_dirs if d]
+
+
+def _ensure_search_paths() -> None:
+    """Without a platform theme (offscreen, some minimal sessions) Qt knows
+    only its own resources; add the XDG icon directories. Qt drops them again
+    whenever the theme name is set, so this is called before each lookup."""
+    paths = list(QIcon.themeSearchPaths())
+    extra = icon_dirs()
+    if not any(p in paths for p in extra):
+        QIcon.setThemeSearchPaths(extra + paths)
+
+
+def adwaita_missing(has=None) -> list[str]:
+    """The names of ADWAITA_ICONS that Adwaita does not resolve; empty when
+    the whole set is there. The theme name is put back afterwards."""
+    has = QIcon.hasThemeIcon if has is None else has
+    _ensure_search_paths()
+    before = QIcon.themeName()
+    QIcon.setThemeName(ADWAITA)
+    try:
+        return [name for name in ADWAITA_ICONS.values() if not has(name)]
+    finally:
+        QIcon.setThemeName(before)
+
+
+def icon_set() -> dict:
+    """Decided once per process: {"name": "adwaita"|"breeze", "missing": [...]}."""
+    if not _icon_set:
+        missing = adwaita_missing()
+        _icon_set.update({"name": "breeze" if missing else "adwaita", "missing": missing})
+    return _icon_set
+
+
+def adwaita_file(name: str) -> str:
+    """The svg of an Adwaita symbolic icon, found by hand: QIcon.fromTheme
+    resolves against the app's theme at paint time, and we do not switch
+    the app's theme for eight icons."""
+    for base in icon_dirs():
+        root = os.path.join(base, ADWAITA)
+        if not os.path.isdir(root):
+            continue
+        for sub in ("symbolic", "scalable"):
+            for ctx in sorted(os.listdir(os.path.join(root, sub))) if os.path.isdir(
+                    os.path.join(root, sub)) else []:
+                path = os.path.join(root, sub, ctx, name + ".svg")
+                if os.path.isfile(path):
+                    return path
+    return ""
+
+
+def tinted(icon: QIcon, color: str, size: QSize) -> QIcon:
+    """A symbolic icon painted in one colour: the shape from the file, the
+    colour from the theme, so it reads on a dark and on a light rail."""
+    pm = icon.pixmap(size)
+    if pm.isNull():
+        return icon
+    out = QPixmap(pm.size())
+    out.setDevicePixelRatio(pm.devicePixelRatio())
+    out.fill(Qt.GlobalColor.transparent)
+    p = QPainter(out)
+    p.drawPixmap(0, 0, pm)
+    p.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceIn)
+    p.fillRect(out.rect(), QColor(color))
+    p.end()
+    return QIcon(out)
+
+
+def page_icon(label: str, color: str) -> QIcon:
+    """The rail's icon for a page in the current mode: the Adwaita symbolic
+    file tinted with `color`, or the Breeze theme icon as the theme paints it."""
+    if icon_set()["name"] == "adwaita":
+        name = ADWAITA_ICONS.get(label, "")
+        path = adwaita_file(name)
+        if path:
+            return tinted(QIcon(path), color, ICON)
+    name, fallback = MENU_ICON if label == "Menu" else PAGE_ICONS.get(label, ("", ""))
+    return theme_icon(name, fallback)
+
+
+def match_breeze_to_mode(light: bool) -> None:
+    """Plasma's Breeze has a light and a dark icon set; when the app's icons
+    come from one of them, take the one that reads on the current mode."""
+    if QIcon.themeName() in BREEZE:
+        QIcon.setThemeName("breeze" if light else "breeze-dark")
 
 
 class NavRail(QWidget):
@@ -95,9 +205,8 @@ class NavRail(QWidget):
         # of the animation repainted the page as well. Qt then also skips its
         # own styled-background pass, so paintEvent below draws the rule.
         self.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent, True)
-        pal = self.palette()
-        pal.setColor(QPalette.ColorRole.Window, QColor(theme.SURFACE))
-        self.setPalette(pal)
+        self._apply_palette()
+        theme.signals.changed.connect(self._retheme)
         self.items: list[QToolButton] = []
         self._current = 0
         self._focused = 0
@@ -121,7 +230,7 @@ class NavRail(QWidget):
         self.anim.finished.connect(self._slide_done)
         self.menu = QToolButton()
         self.menu.setCheckable(True)
-        self.menu.setIcon(theme_icon(*MENU_ICON))
+        self.menu.setIcon(page_icon("Menu", theme.MUTED))
         self.menu.setIconSize(ICON)
         self.menu.setAccessibleName("Menu")
         self.menu.setFocusPolicy(Qt.FocusPolicy.NoFocus)
@@ -134,20 +243,34 @@ class NavRail(QWidget):
         lay.addLayout(self._items_layout)
         lay.addStretch(1)
 
-        self.setStyleSheet(f"""
-            #navrail {{ background: {theme.SURFACE}; border-right: 1px solid {theme.BORDER}; }}
+        theme.style(self, """
+            #navrail {{ background: {SURFACE}; border-right: 1px solid {BORDER}; }}
             #navrail QToolButton {{
-                background: transparent; color: {theme.MUTED}; border: none;
+                background: transparent; color: {MUTED}; border: none;
                 border-left: 2px solid transparent; border-radius: 6px;
                 padding: 0 10px; text-align: left; font-weight: 600;
             }}
-            #navrail QToolButton:hover {{ color: {theme.TEXT}; background: {theme.SURFACE_ALT}; }}
+            #navrail QToolButton:hover {{ color: {TEXT}; background: {SURFACE_ALT}; }}
             #navrail QToolButton:checked {{
-                color: {theme.ACCENT}; border-left: 2px solid {theme.ACCENT};
+                color: {ACCENT}; border-left: 2px solid {ACCENT};
             }}
-            #navrail QToolButton[cursor="true"] {{ background: {theme.SURFACE_HI}; }}
+            #navrail QToolButton[cursor="true"] {{ background: {SURFACE_HI}; }}
         """)
         self._apply_width()
+
+    def _apply_palette(self) -> None:
+        pal = self.palette()
+        pal.setColor(QPalette.ColorRole.Window, QColor(theme.SURFACE))
+        self.setPalette(pal)
+
+    def _retheme(self, mode: str) -> None:
+        """The mode changed: the opaque fill and the icons follow."""
+        self._apply_palette()
+        match_breeze_to_mode(mode == "light")
+        self.menu.setIcon(page_icon("Menu", theme.MUTED))
+        for b in self.items:
+            b.setIcon(page_icon(b.text(), theme.MUTED))
+        self.update()
 
     # -- items --------------------------------------------------------------
     def add_item(self, label: str, icon: QIcon) -> QToolButton:
@@ -312,9 +435,8 @@ class NavShell(QWidget):
         self._pinned(self.rail.pinned, persist=False)
 
     def add_page(self, widget: QWidget, label: str) -> None:
-        name, fallback = PAGE_ICONS.get(label, ("", ""))
         self.pages.addWidget(widget)
-        self.rail.add_item(label, theme_icon(name, fallback))
+        self.rail.add_item(label, page_icon(label, theme.MUTED))
         self.rail.raise_()
 
     def set_current(self, widget_or_index) -> None:

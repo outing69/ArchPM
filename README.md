@@ -128,7 +128,7 @@ yay -S --needed python pyside6 python-psutil polkit git
 
 Optional, for the full experience: `plasma-desktop` (the widgets),
 `nvidia-utils` (NVIDIA telemetry), `hwdata` (proper AMD GPU names),
-`pacman-contrib` (cleaning the package cache).
+`pacman-contrib` (cleaning the package cache), and `adwaita-icon-theme` for the Adwaita icons on the navigation rail (without it the rail uses Breeze's).
 
 **2. ArchPM itself.** The first script needs no password and puts everything
 in your home folder: the agent as a user service, both widgets, the menu entry

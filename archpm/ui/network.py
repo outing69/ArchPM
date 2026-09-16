@@ -55,7 +55,7 @@ class NetworkView(QWidget):
         title.setFont(f)
         head.addWidget(title)
         self.lbl_state = QLabel("")
-        self.lbl_state.setStyleSheet(f"color: {theme.MUTED};")
+        theme.style(self.lbl_state, "color: {MUTED};")
         head.addWidget(self.lbl_state)
         head.addStretch(1)
         self.search = QLineEdit()
@@ -73,19 +73,19 @@ class NetworkView(QWidget):
             "are shown as they are; ArchPM never looks them up anywhere."
         )
         hint.setWordWrap(True)
-        hint.setStyleSheet(f"color: {theme.MUTED};")
+        theme.style(hint, "color: {MUTED};")
         outer.addWidget(hint)
 
         top = QHBoxLayout()
         top.setSpacing(10)
-        self.card_if = Card("interfaces", color=theme.NET)
+        self.card_if = Card("interfaces", color="NET")
         self.grid_if = QGridLayout()
         self.grid_if.setHorizontalSpacing(16)
         self.grid_if.setVerticalSpacing(3)
         self.card_if.body.addLayout(self.grid_if)
         top.addWidget(self.card_if, 1)
         hints.attach(self.card_if, "net.interfaces", self.help_requested.emit)
-        self.card_doors = Card("open doors", color=theme.WARN)
+        self.card_doors = Card("open doors", color="WARN")
         self.lbl_doors = QLabel("")
         self.lbl_doors.setWordWrap(True)
         self.lbl_doors.setTextFormat(Qt.TextFormat.RichText)
@@ -97,8 +97,8 @@ class NetworkView(QWidget):
 
         self.tree = QTreeWidget()
         self.tree.setHeaderLabels(HEADERS)
-        self.tree.setStyleSheet(
-            f"QTreeWidget {{ border: 1px solid {theme.BORDER}; border-radius: 10px; }}"
+        theme.style(
+            self.tree, "QTreeWidget {{ border: 1px solid {BORDER}; border-radius: 10px; }}"
         )
         self.tree.setAlternatingRowColors(True)
         self.tree.setUniformRowHeights(True)
@@ -157,11 +157,11 @@ class NetworkView(QWidget):
         for r, i in enumerate(net.interfaces):
             name = QLabel(i.name)
             name.setFont(mono(9, bold=True))
-            name.setStyleSheet(f"color: {theme.NET if i.up else theme.FAINT};")
+            theme.text(name, "NET" if i.up else "FAINT")
             state = QLabel(("up" if i.up else "down") + ("  ·  VPN" if i.vpn else ""))
-            state.setStyleSheet(f"color: {theme.OK if i.up else theme.FAINT};")
+            theme.text(state, "OK" if i.up else "FAINT")
             addr = QLabel(i.addr)
-            addr.setStyleSheet(f"color: {theme.MUTED};")
+            theme.style(addr, "color: {MUTED};")
             addr.setFont(mono(8.5))
             rx = QLabel(f"↓ {_rate(i.rx_bps) or '0 B/s'}" if i.up else "")
             tx = QLabel(f"↑ {_rate(i.tx_bps) or '0 B/s'}" if i.up else "")

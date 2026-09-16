@@ -16,6 +16,7 @@ pkgbase = archpm
 	depends = polkit
 	depends = iproute2
 	optdepends = plasma-desktop: the Monitor and Network widgets
+	optdepends = adwaita-icon-theme: the Adwaita icons on the navigation rail
 	optdepends = pacman-contrib: clean the package cache from the Cleanup tab
 	optdepends = nvidia-utils: NVIDIA GPU telemetry via nvidia-smi
 	optdepends = hwdata: proper names for AMD GPUs

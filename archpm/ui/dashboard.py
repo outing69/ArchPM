@@ -35,7 +35,7 @@ class GameCard(Card):
     terminate_requested = Signal(list, str)   # pids (children first), game name
 
     def __init__(self, ncpu: int, parent=None) -> None:
-        super().__init__("game", parent, color=theme.ACCENT)
+        super().__init__("game", parent, color="ACCENT")
         self.ncpu = ncpu
         self.pid = 0
         self.name = ""
@@ -66,18 +66,18 @@ class GameCard(Card):
         self.lbl_sub = QLabel("A Steam game, or any program doing real GPU work, shows up here "
                               "the moment it starts.")
         self.lbl_sub.setWordWrap(True)
-        self.lbl_sub.setStyleSheet(f"color: {theme.MUTED};")
+        theme.style(self.lbl_sub, "color: {MUTED};")
         self.lbl_sub.setFont(mono(8))
         self.lbl_sub.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         left.addWidget(self.lbl_sub)
         self.tiles = QHBoxLayout()
         self.tiles.setSpacing(8)
-        self.t_cpu = StatTile("cpu", theme.CPU)
-        self.t_gpu = StatTile("gpu", theme.GPU)
-        self.t_vram = StatTile("vram", theme.GPU)
-        self.t_mem = StatTile("ram", theme.MEM)
-        self.t_thr = StatTile("threads", theme.CPU)
-        self.t_cores = StatTile("cores", theme.CPU)
+        self.t_cpu = StatTile("cpu", "CPU")
+        self.t_gpu = StatTile("gpu", "GPU")
+        self.t_vram = StatTile("vram", "GPU")
+        self.t_mem = StatTile("ram", "MEM")
+        self.t_thr = StatTile("threads", "CPU")
+        self.t_cores = StatTile("cores", "CPU")
         for t, key in ((self.t_cpu, "game.cpu"), (self.t_gpu, "game.gpu"),
                        (self.t_vram, "game.vram"), (self.t_mem, "game.ram"),
                        (self.t_thr, "game.threads"), (self.t_cores, "game.cores")):
@@ -87,7 +87,7 @@ class GameCard(Card):
         left.addStretch(1)
         row.addLayout(left, 3)
 
-        self.graph = Graph([("CPU", theme.CPU), ("GPU", theme.GPU)], maximum=None, fill=False)
+        self.graph = Graph([("CPU", "CPU"), ("GPU", "GPU")], maximum=None, fill=False)
         self.graph.setMinimumHeight(110)
         hints.attach(self.graph, "game.graph", self.help_requested.emit)
         row.addWidget(self.graph, 2)
@@ -209,7 +209,7 @@ class TopProcList(QWidget):
         for i, (name, _pid, value, icon_key) in enumerate(self.items):
             y = i * h
             frac = min(value / self.scale, 1.0) if self.scale else 0.0
-            col = QColor(self.color)
+            col = theme.color(self.color)
             col.setAlpha(46)
             p.setPen(Qt.PenStyle.NoPen)
             p.setBrush(col)
@@ -254,7 +254,7 @@ class Dashboard(QWidget):
         head.addStretch(1)
         self.lbl_root_state = QLabel()
         self.lbl_root_state.setFont(mono(8))
-        self.lbl_root_state.setStyleSheet(f"color: {theme.MUTED};")
+        theme.style(self.lbl_root_state, "color: {MUTED};")
         head.addWidget(self.lbl_root_state)
         # Failed services: a snapshot taken at start (and on Refresh on the
         # System page). Plain muted text when there are none, a link when
@@ -282,12 +282,12 @@ class Dashboard(QWidget):
         # -- tiles ---------------------------------------------------------
         tiles = QHBoxLayout()
         tiles.setSpacing(10)
-        self.t_cpu = StatTile("cpu", theme.CPU)
-        self.t_cputemp = StatTile("cpu temp", theme.CPU)
-        self.t_gpu = StatTile("gpu", theme.GPU)
-        self.t_gputemp = StatTile("gpu temp", theme.GPU)
-        self.t_mem = StatTile("memory", theme.MEM)
-        self.t_vram = StatTile("vram", theme.GPU)
+        self.t_cpu = StatTile("cpu", "CPU")
+        self.t_cputemp = StatTile("cpu temp", "CPU")
+        self.t_gpu = StatTile("gpu", "GPU")
+        self.t_gputemp = StatTile("gpu temp", "GPU")
+        self.t_mem = StatTile("memory", "MEM")
+        self.t_vram = StatTile("vram", "GPU")
         for t, key in ((self.t_cpu, "tile.cpu"), (self.t_cputemp, "tile.cpu temp"),
                        (self.t_gpu, "tile.gpu"), (self.t_gputemp, "tile.gpu temp"),
                        (self.t_mem, "tile.memory"), (self.t_vram, "tile.vram")):
@@ -300,8 +300,8 @@ class Dashboard(QWidget):
         outer.addLayout(grid, 1)
 
         # -- CPU -----------------------------------------------------------
-        cpu_card = Card("processor", color=theme.CPU)
-        self.g_cpu = Graph([("Total", theme.CPU)], maximum=100.0)
+        cpu_card = Card("processor", color="CPU")
+        self.g_cpu = Graph([("Total", "CPU")], maximum=100.0)
         cpu_card.body.addWidget(self.g_cpu, 1)
         self.cores = CoreGrid()
         cpu_card.body.addWidget(self.cores)
@@ -310,35 +310,35 @@ class Dashboard(QWidget):
         grid.addWidget(cpu_card, 0, 0)
 
         # -- GPU -----------------------------------------------------------
-        gpu_card = Card("graphics card", color=theme.GPU)
-        self.g_gpu = Graph([("GPU load", theme.GPU), ("VRAM", theme.DISK)], maximum=100.0)
+        gpu_card = Card("graphics card", color="GPU")
+        self.g_gpu = Graph([("GPU load", "GPU"), ("VRAM", "DISK")], maximum=100.0)
         gpu_card.body.addWidget(self.g_gpu, 1)
         hints.attach(self.g_gpu, "graph.gpu", self.help_requested.emit)
         self.gpu_sub = QLabel("--")
         self.gpu_sub.setFont(mono(8))
-        self.gpu_sub.setStyleSheet(f"color: {theme.MUTED};")
+        theme.style(self.gpu_sub, "color: {MUTED};")
         gpu_card.body.addWidget(self.gpu_sub)
         grid.addWidget(gpu_card, 0, 1)
 
         # -- memory --------------------------------------------------------
-        mem_card = Card("memory", color=theme.MEM)
-        self.g_mem = Graph([("RAM", theme.MEM), ("Swap", theme.SWAP)], maximum=100.0)
+        mem_card = Card("memory", color="MEM")
+        self.g_mem = Graph([("RAM", "MEM"), ("Swap", "SWAP")], maximum=100.0)
         mem_card.body.addWidget(self.g_mem, 1)
         hints.attach(self.g_mem, "graph.mem", self.help_requested.emit)
         self.mem_sub = QLabel("--")
         self.mem_sub.setFont(mono(8))
-        self.mem_sub.setStyleSheet(f"color: {theme.MUTED};")
+        theme.style(self.mem_sub, "color: {MUTED};")
         mem_card.body.addWidget(self.mem_sub)
         grid.addWidget(mem_card, 1, 0)
 
         # -- I/O -----------------------------------------------------------
-        io_card = Card("network & disk", color=theme.NET)
-        self.g_net = Graph([("Download", theme.NET), ("Upload", theme.CPU)],
+        io_card = Card("network & disk", color="NET")
+        self.g_net = Graph([("Download", "NET"), ("Upload", "CPU")],
                            maximum=None, fill=False)
         self.g_net.set_formatter(lambda v: f"{human_bytes(v)}/s")
         io_card.body.addWidget(self.g_net, 1)
         hints.attach(self.g_net, "graph.net", self.help_requested.emit)
-        self.g_disk = Graph([("Disk read", theme.DISK), ("Disk write", theme.SWAP)],
+        self.g_disk = Graph([("Disk read", "DISK"), ("Disk write", "SWAP")],
                             maximum=None, fill=False)
         self.g_disk.set_formatter(lambda v: f"{human_bytes(v)}/s")
         io_card.body.addWidget(self.g_disk, 1)
@@ -355,16 +355,16 @@ class Dashboard(QWidget):
         row = QHBoxLayout()
         row.setSpacing(18)
         cpu_col = QVBoxLayout()
-        cpu_col.addWidget(self._sublabel("cpu · of all cores", theme.CPU))
-        self.top_cpu = TopProcList(theme.CPU, "%")
+        cpu_col.addWidget(self._sublabel("cpu · of all cores", "CPU"))
+        self.top_cpu = TopProcList("CPU", "%")
         cpu_col.addWidget(self.top_cpu)
         mem_col = QVBoxLayout()
-        mem_col.addWidget(self._sublabel("memory", theme.MEM))
-        self.top_mem = TopProcList(theme.MEM, " MB")
+        mem_col.addWidget(self._sublabel("memory", "MEM"))
+        self.top_mem = TopProcList("MEM", " MB")
         mem_col.addWidget(self.top_mem)
         gpu_col = QVBoxLayout()
-        gpu_col.addWidget(self._sublabel("vram", theme.GPU))
-        self.top_gpu = TopProcList(theme.GPU, " MB")
+        gpu_col.addWidget(self._sublabel("vram", "GPU"))
+        self.top_gpu = TopProcList("GPU", " MB")
         gpu_col.addWidget(self.top_gpu)
         for col in (cpu_col, mem_col, gpu_col):
             row.addLayout(col, 1)
@@ -383,13 +383,13 @@ class Dashboard(QWidget):
 
     def set_failed(self, count: int) -> None:
         if count == 0:
-            self.lbl_failed.set_plain("No failed services", theme.MUTED)
+            self.lbl_failed.set_plain("No failed services", "MUTED")
             self.lbl_failed.setToolTip(
                 "systemctl --failed and systemctl --user --failed listed nothing when the "
                 "window started. \"Refresh failed services\" on the System page looks again.")
             return
         noun = "service" if count == 1 else "services"
-        self.lbl_failed.set_link(f"{count} {noun} failed", theme.WARN)
+        self.lbl_failed.set_link(f"{count} {noun} failed", "WARN")
         self.lbl_failed.setToolTip("Opens the System page: the list, and the last log lines "
                                    "of each. Enter works too.")
 
@@ -417,7 +417,7 @@ class Dashboard(QWidget):
         if elevated:
             self.btn_root.setObjectName("accent")
             self.lbl_root_state.setText("root actions active")
-            self.lbl_root_state.setStyleSheet(f"color: {theme.ACCENT};")
+            theme.style(self.lbl_root_state, "color: {ACCENT};")
         else:
             self.btn_root.setObjectName("")
             self.lbl_root_state.setText("")
@@ -425,13 +425,13 @@ class Dashboard(QWidget):
         self.btn_root.style().polish(self.btn_root)
 
     @staticmethod
-    def _sublabel(text: str, color: str = theme.LABEL) -> QLabel:
+    def _sublabel(text: str, color: str = "LABEL") -> QLabel:
         lbl = QLabel(text.upper())
         f = lbl.font()
         f.setPointSize(7)
         f.setBold(True)
         lbl.setFont(f)
-        lbl.setStyleSheet(f"color: {color};")
+        theme.text(lbl, color)
         return lbl
 
     # ------------------------------------------------------------------

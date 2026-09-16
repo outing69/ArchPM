@@ -35,7 +35,7 @@ class HelpView(QWidget):
         head.addWidget(title)
         how = QLabel("Hover over any tile, graph or column header for a one-line explanation; "
                      "right-click it to land here.")
-        how.setStyleSheet(f"color: {theme.MUTED};")
+        theme.style(how, "color: {MUTED};")
         head.addWidget(how)
         head.addStretch(1)
         self.search = QLineEdit()
@@ -79,7 +79,7 @@ class HelpView(QWidget):
         if not sections:
             lbl = QLabel(f"Nothing in the glossary matches \"{query.strip()}\". "
                          "Try another word, or ask on GitHub.")
-            lbl.setStyleSheet(f"color: {theme.MUTED};")
+            theme.style(lbl, "color: {MUTED};")
             self.body_lay.addWidget(lbl)
         for sec in sections:
             card = Card(sec.title)
@@ -90,7 +90,7 @@ class HelpView(QWidget):
             for r, term in enumerate(sec.terms):
                 name = QLabel(term.name)
                 name.setFont(mono(9.5, bold=True))
-                name.setStyleSheet(f"color: {theme.ACCENT};")
+                theme.style(name, "color: {ACCENT};")
                 if term.name == self._focus:
                     # Only the words get the mark, not the whole cell.
                     name.setTextFormat(Qt.TextFormat.RichText)
@@ -119,13 +119,13 @@ class HelpView(QWidget):
         grid.setHorizontalSpacing(18)
         grid.setVerticalSpacing(10)
         grid.setColumnStretch(1, 1)
-        swatches = {"Yellow": theme.ACCENT, "Blue": theme.SELECT,
-                    "Green · orange · red": theme.WARN, "Series colours": theme.GPU,
-                    "Grey": theme.MUTED}
+        swatches = {"Yellow": "ACCENT", "Blue": "SELECT",
+                    "Green · orange · red": "WARN", "Series colours": "GPU",
+                    "Grey": "MUTED"}
         for r, (name, text) in enumerate(helptext.COLOURS):
             lbl = QLabel(name)
             lbl.setFont(mono(9.5, bold=True))
-            lbl.setStyleSheet(f"color: {swatches.get(name, theme.TEXT)};")
+            theme.text(lbl, swatches.get(name, "TEXT"))
             lbl.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignTop)
             lbl.setMinimumWidth(170)
             val = QLabel(text)
@@ -143,7 +143,7 @@ class HelpView(QWidget):
         grid.setColumnStretch(1, 1)
         for r, (k, v) in enumerate(helptext.about_lines()):
             key = QLabel(k)
-            key.setStyleSheet(f"color: {theme.MUTED};")
+            theme.style(key, "color: {MUTED};")
             key.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignTop)
             key.setMinimumWidth(170)
             if v.startswith("http"):
@@ -160,16 +160,16 @@ class HelpView(QWidget):
         card.body.addLayout(grid)
 
         heading = QLabel("Changelog")
-        heading.setStyleSheet(f"color: {theme.LABEL}; font-weight: 700;")
+        theme.style(heading, "color: {LABEL}; font-weight: 700;")
         card.body.addWidget(heading)
         log = QPlainTextEdit()
         log.setReadOnly(True)
         log.setPlainText(helptext.changelog_text())
         log.setFont(mono(8.5))
         log.setMinimumHeight(260)
-        log.setStyleSheet(
-            f"QPlainTextEdit {{ background: {theme.BG}; border: 1px solid {theme.BORDER};"
-            f" border-radius: 8px; color: {theme.TEXT}; padding: 8px; }}"
+        theme.style(
+            log, "QPlainTextEdit {{ background: {BG}; border: 1px solid {BORDER};"
+            " border-radius: 8px; color: {TEXT}; padding: 8px; }}"
         )
         card.body.addWidget(log)
         return card

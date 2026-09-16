@@ -139,8 +139,8 @@ class HistoryPanel(QWidget):
         lay.addLayout(head)
         graphs = QHBoxLayout()
         graphs.setSpacing(10)
-        self.g_cpu = Graph([("CPU", theme.CPU), ("GPU", theme.GPU)], maximum=None, fill=False)
-        self.g_mem = Graph([("Memory", theme.MEM)], maximum=None, fill=True)
+        self.g_cpu = Graph([("CPU", "CPU"), ("GPU", "GPU")], maximum=None, fill=False)
+        self.g_mem = Graph([("Memory", "MEM")], maximum=None, fill=True)
         self.g_mem.set_formatter(human_bytes)
         for g in (self.g_cpu, self.g_mem):
             g.setMinimumHeight(140)
@@ -252,8 +252,8 @@ class ProcessView(QWidget):
         self.proxy.setSourceModel(self.model)
         self.table = QTreeView()
         # Breeze paints its own frame over the app-wide rule; state the border here.
-        self.table.setStyleSheet(
-            f"QTreeView {{ border: 1px solid {theme.BORDER}; border-radius: 10px; }}"
+        theme.style(
+            self.table, "QTreeView {{ border: 1px solid {BORDER}; border-radius: 10px; }}"
         )
         self.table.setModel(self.proxy)
         self.table.setRootIsDecorated(self.model.hierarchical or self.model.sectioned)

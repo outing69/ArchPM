@@ -155,6 +155,7 @@ class MainWindow(QMainWindow):
         self.system.status.connect(self._flash)
         self.dashboard.root_requested.connect(self._open_root)
         self.dashboard.failed_clicked.connect(lambda: self.shell.set_current(self.system))
+        theme.signals.changed.connect(self._retheme)
         self.system.refresh_failed.connect(self.check_failed_services)
         self.dashboard.game.terminate_requested.connect(self._terminate_game)
         self._end_game_pending = False   # asked before the first sample; answered after it
@@ -178,7 +179,7 @@ class MainWindow(QMainWindow):
         self.lbl_msg = QLabel("")
         self.lbl_stats = QLabel("")
         self.lbl_stats.setFont(mono(8))
-        self.lbl_stats.setStyleSheet(f"color: {theme.MUTED};")
+        theme.style(self.lbl_stats, "color: {MUTED};")
         self.combo = QComboBox()
         for label, _ in INTERVALS:
             self.combo.addItem(label)
@@ -187,11 +188,29 @@ class MainWindow(QMainWindow):
             next((i for i, (_, v) in enumerate(INTERVALS) if v == saved), 2)
         )
         self.combo.currentIndexChanged.connect(self._set_interval)
+        # Theme: follow the system, light, dark. Stored with the other
+        # settings and applied at once; see theme.py.
+        self.combo_theme = QComboBox()
+        for label, pref in (("Follow system", "system"), ("Light", "light"), ("Dark", "dark")):
+            self.combo_theme.addItem(label, pref)
+        self.combo_theme.setCurrentIndex(max(self.combo_theme.findData(theme.preference()), 0))
+        self.combo_theme.setToolTip(
+            "Follow system: the desktop's light or dark preference, as Qt or the desktop "
+            "portal reports it; dark when neither says. Light and Dark: always that."
+        )
+        self.combo_theme.currentIndexChanged.connect(
+            lambda i: theme.set_preference(QApplication.instance(),
+                                           self.combo_theme.itemData(i), self.settings))
+        lbl_theme = QLabel("Theme")
         spacer = QLabel("   ")
         lbl_interval = QLabel("Interval")
-        lbl_interval.setStyleSheet(f"color: {theme.MUTED};")
+        theme.style(lbl_interval, "color: {MUTED};")
+        theme.style(lbl_theme, "color: {MUTED};")
         sb.addWidget(self.lbl_msg, 1)
         sb.addPermanentWidget(self.lbl_stats)
+        sb.addPermanentWidget(QLabel("   "))
+        sb.addPermanentWidget(lbl_theme)
+        sb.addPermanentWidget(self.combo_theme)
         sb.addPermanentWidget(spacer)
         sb.addPermanentWidget(lbl_interval)
         sb.addPermanentWidget(self.combo)
@@ -262,6 +281,24 @@ class MainWindow(QMainWindow):
         self.showNormal()
         self.raise_()
         self.activateWindow()
+
+    def _retheme(self, mode: str) -> None:
+        """Rows that were painted with a colour at fill time are filled again;
+        the rest reads the tokens at paint and only needed the repaint."""
+        self.setWindowIcon(app_icon())
+        if self.tray is not None:
+            self.tray.setIcon(app_icon())
+        i = self.combo_theme.findData(theme.preference())
+        if i >= 0 and i != self.combo_theme.currentIndex():
+            self.combo_theme.blockSignals(True)
+            self.combo_theme.setCurrentIndex(i)
+            self.combo_theme.blockSignals(False)
+        if self.startup.isVisible():
+            self.startup.reload()
+        if self.system.sections:
+            self.system._loaded(self.system.sections)
+        if getattr(self.cleanup, "items", None):
+            self.cleanup._scanned(self.cleanup.items)
 
     def check_failed_services(self) -> None:
         """Once at start and on the System page's Refresh; read-only, nothing
@@ -421,7 +458,7 @@ def main() -> int:
     app.setApplicationName(APP_NAME)
     app.setOrganizationName("archpm")
     app.setDesktopFileName("archpm")
-    theme.apply(app)
+    theme.start(app, QSettings("archpm", "ArchPM"))
     if raise_running_instance(request):
         return 0
     win = MainWindow()

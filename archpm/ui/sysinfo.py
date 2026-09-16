@@ -51,7 +51,7 @@ class SystemView(QWidget):
         title.setFont(f)
         head.addWidget(title)
         self.lbl_state = QLabel("")
-        self.lbl_state.setStyleSheet(f"color: {theme.MUTED};")
+        theme.style(self.lbl_state, "color: {MUTED};")
         head.addWidget(self.lbl_state)
         head.addStretch(1)
         self.btn_copy = QPushButton("Copy as text")
@@ -70,7 +70,7 @@ class SystemView(QWidget):
         self.failed_body.setSpacing(6)
         frow = QHBoxLayout()
         self.lbl_failed_state = QLabel("not checked yet")
-        self.lbl_failed_state.setStyleSheet(f"color: {theme.MUTED};")
+        theme.style(self.lbl_failed_state, "color: {MUTED};")
         frow.addWidget(self.lbl_failed_state, 1)
         # Named for what it refreshes: the page's own Refresh, next to it,
         # rereads the machine's specs and does not touch this block.
@@ -107,7 +107,7 @@ class SystemView(QWidget):
                                                               if report.error else ""))
         if not report.units:
             line = QLabel("No failed services found.")
-            line.setStyleSheet(f"color: {theme.MUTED};")
+            theme.style(line, "color: {MUTED};")
             self.failed_body.addWidget(line)
             return
         for u in report.units:
@@ -122,8 +122,8 @@ class SystemView(QWidget):
             body = QLabel("\n".join(u.log) if u.log else u.note)
             body.setFont(mono(8.5))
             body.setWordWrap(True)
-            body.setStyleSheet(f"color: {theme.MUTED if u.log else theme.WARN}; "
-                               f"padding-left: 12px;")
+            theme.style(body,
+                        "color: {" + ("MUTED" if u.log else "WARN") + "}; padding-left: 12px;")
             body.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
             self.failed_body.addWidget(body)
 
@@ -163,7 +163,7 @@ class SystemView(QWidget):
             grid.setColumnStretch(1, 1)
             for r, (k, v) in enumerate(rows):
                 key = QLabel(k)
-                key.setStyleSheet(f"color: {theme.MUTED};")
+                theme.style(key, "color: {MUTED};")
                 key.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignTop)
                 key.setMinimumWidth(130)  # same label column in every card
                 val = QLabel(v)

@@ -3,6 +3,23 @@
 All notable changes, newest first. Versions are git tags on
 [github.com/outing69/ArchPM](https://github.com/outing69/ArchPM).
 
+## 0.2.24 (2026-09-16)
+
+- Light mode, stage one of the GNOME look: colours only, no shape, spacing or
+  font changed. Every colour is a token with a dark and a light value, and no
+  hex value lives outside archpm/ui/theme.py. The light values are chosen per
+  token, not inverted: yellow becomes amber, the pastel series colours become
+  their stronger cousins, and every text tone is checked against the light
+  surface. The mode follows the system by default, from Qt's colour scheme
+  where the platform reports it, else the desktop portal over D-Bus, else
+  dark; a Theme setting at the bottom of the window offers Follow system,
+  Light and Dark, applied at once.
+- The navigation rail uses the Adwaita symbolic icons when adwaita-icon-theme
+  is installed and all eight names resolve, tinted to the text colour; else the
+  whole rail stays on Breeze. Breeze's light and dark icon sets are matched to
+  the mode. adwaita-icon-theme is an optional dependency of the package; no
+  icon file ships with ArchPM.
+
 ## 0.2.23 (2026-09-16)
 
 - Overview: "N services failed" now reads as the link it is: pointer cursor,

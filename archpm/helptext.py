@@ -294,6 +294,23 @@ GLOSSARY: tuple[Section, ...] = (
              "if you still have a problem to chase.",
              "Cleanup tab"),
     )),
+    Section("Appearance", (
+        Term("Theme",
+             "Light or dark, chosen at the bottom of the window. \"Follow system\" takes "
+             "the desktop's preference, as Qt or the desktop portal reports it, and "
+             "switches along when it changes; dark when neither says anything. Every "
+             "colour has a value for each mode; the light ones are not the dark ones "
+             "inverted, since the yellow that glows on dark would vanish on white, so "
+             "yellow becomes amber and the pastel series colours become their stronger "
+             "cousins.",
+             "Status bar, Theme"),
+        Term("Rail icons",
+             "The navigation rail uses the Adwaita symbolic icons when the "
+             "adwaita-icon-theme package is installed and every one of its eight icons "
+             "resolves, tinted to the text colour so they read on light and dark. "
+             "Otherwise the whole rail stays on Breeze's icons; there is no mixing.",
+             "Navigation rail"),
+    )),
     Section("Startup and Cleanup", (
         Term("Autostart entry",
              "A small file that says \"start this program when I log in\". Yours live in "

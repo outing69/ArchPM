@@ -58,10 +58,8 @@ class Card(QFrame):
                  color: str | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("card")
-        self.setStyleSheet(
-            f"#card {{ background: {theme.SURFACE}; border: 1px solid {theme.BORDER};"
-            f" border-radius: 10px; }}"
-        )
+        theme.style(self, "#card {{ background: {SURFACE}; border: 1px solid {BORDER};"
+                          " border-radius: 10px; }}")
         lay = QVBoxLayout(self)
         lay.setContentsMargins(14, 11, 14, 12)
         lay.setSpacing(8)
@@ -74,7 +72,7 @@ class Card(QFrame):
             lbl.setFont(f)
             # The title takes the colour of the data it frames (CPU yellow, GPU
             # purple, ...) so the reader links the two at a glance.
-            lbl.setStyleSheet(f"color: {color or theme.LABEL};")
+            theme.text(lbl, color or "LABEL")
             lay.addWidget(lbl)
         self.body = lay
 
@@ -166,7 +164,7 @@ class Graph(QWidget):
             path = QPainterPath(pts[0])
             for pt in pts[1:]:
                 path.lineTo(pt)
-            col = QColor(s.color)
+            col = theme.color(s.color)
             if self.fill:
                 area = QPainterPath(path)
                 area.lineTo(pts[-1].x(), plot.bottom())
@@ -200,7 +198,7 @@ class Graph(QWidget):
         for s in self.series:
             cur = s.values[-1] if s.values else 0.0
             text = f"{s.name} {self._fmt(cur)}" if s.name else self._fmt(cur)
-            p.setPen(QColor(s.color))
+            p.setPen(theme.color(s.color))
             if x > rect.right() - 130:
                 break
             p.drawText(QRectF(x, rect.top(), 240, top), Qt.AlignmentFlag.AlignVCenter, text)
@@ -297,7 +295,7 @@ class Ring(QWidget):
         pen.setCapStyle(Qt.PenCapStyle.RoundCap)
         p.setPen(pen)
         p.drawArc(rect, 225 * 16, -270 * 16)
-        pen.setColor(QColor(self.color))
+        pen.setColor(theme.color(self.color))
         p.setPen(pen)
         p.drawArc(rect, 225 * 16, int(-270 * 16 * self.value / 100.0))
 
@@ -314,12 +312,10 @@ class Ring(QWidget):
 class StatTile(QFrame):
     """Compact figure tile: value large, context small."""
 
-    def __init__(self, title: str, color: str = theme.TEXT, parent: QWidget | None = None) -> None:
+    def __init__(self, title: str, color: str = "TEXT", parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self.setStyleSheet(
-            f"QFrame {{ background: {theme.SURFACE}; border: 1px solid {theme.BORDER};"
-            f" border-radius: 9px; }} QLabel {{ border: none; }}"
-        )
+        theme.style(self, "QFrame {{ background: {SURFACE}; border: 1px solid {BORDER};"
+                          " border-radius: 9px; }} QLabel {{ border: none; }}")
         lay = QVBoxLayout(self)
         lay.setContentsMargins(12, 9, 12, 10)
         lay.setSpacing(1)
@@ -328,13 +324,13 @@ class StatTile(QFrame):
         tf.setPointSize(8)
         tf.setBold(True)
         self._title.setFont(tf)
-        self._title.setStyleSheet(f"color: {color if color != theme.TEXT else theme.LABEL};")
+        theme.text(self._title, color if color != "TEXT" else "LABEL")
         self._value = QLabel("--")
         self._value.setFont(mono(15, bold=True))
-        self._value.setStyleSheet(f"color: {color};")
+        theme.text(self._value, color)
         self._sub = QLabel("")
         self._sub.setFont(mono(8))
-        self._sub.setStyleSheet(f"color: {theme.MUTED};")
+        theme.style(self._sub, "color: {MUTED};")
         lay.addWidget(self._title)
         lay.addWidget(self._value)
         lay.addWidget(self._sub)
@@ -343,7 +339,9 @@ class StatTile(QFrame):
         self._value.setText(value)
         self._sub.setText(sub)
         if color:
-            self._value.setStyleSheet(f"color: {color};")
+            # per tick: a token name, a hex, or a QColor from heat()
+            value = color.name() if isinstance(color, QColor) else theme.resolve(color)
+            self._value.setStyleSheet(f"color: {value};")
 
 
 class TextLink(QLabel):
@@ -358,18 +356,18 @@ class TextLink(QLabel):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._text = ""
-        self._color = theme.ACCENT
+        self._color = "ACCENT"
         self._link = False
         self._hover = False
         self.setTextFormat(Qt.TextFormat.RichText)
         self.setOpenExternalLinks(False)
         self.linkActivated.connect(lambda _: self.activated.emit())
-        self.set_plain("", theme.MUTED)
+        self.set_plain("", "MUTED")
 
     def set_plain(self, text: str, color: str) -> None:
         self._link = False
         self._text = text
-        self.setStyleSheet(f"color: {color};")
+        theme.text(self, color)
         self.setText(text)
         self.setCursor(Qt.CursorShape.ArrowCursor)
         self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
@@ -388,7 +386,8 @@ class TextLink(QLabel):
 
     def _render(self) -> None:
         deco = "underline" if (self._hover or self.hasFocus()) else "none"
-        self.setText(f'<a href="#go" style="color: {self._color}; text-decoration: {deco};">'
+        self.setText(f'<a href="#go" style="color: {theme.resolve(self._color)}; '
+                     f'text-decoration: {deco};">'
                      f"{self._text}</a>")
 
     def enterEvent(self, event) -> None:
@@ -424,6 +423,6 @@ class TextLink(QLabel):
         super().paintEvent(event)
         if self._link and self.hasFocus():
             p = QPainter(self)
-            p.setPen(QPen(QColor(self._color), 1, Qt.PenStyle.DashLine))
+            p.setPen(QPen(theme.color(self._color), 1, Qt.PenStyle.DashLine))
             p.drawRoundedRect(self.rect().adjusted(0, 0, -1, -1), 3, 3)
             p.end()
