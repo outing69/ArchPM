@@ -1,6 +1,6 @@
 # Maintainer: Alex <https://github.com/outing69>
 pkgname=archpm
-pkgver=0.2.13
+pkgver=0.2.14
 pkgrel=1
 pkgdesc="Process manager and monitor for a Linux gaming PC: PySide6 GUI, sampler agent and two Plasma 6 widgets"
 arch=('any')
@@ -14,7 +14,7 @@ optdepends=('plasma-desktop: the Monitor and Network widgets'
             'hwdata: proper names for AMD GPUs')
 makedepends=('python-build' 'python-installer' 'python-wheel' 'python-setuptools')
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
-sha256sums=('8be5db17edee6c961fe65a6924349b19fd033dbce168093b5c0ceceb22c5a0ad')
+sha256sums=('cec6c3149bba92fcbce7ff9c961d43af51808e19ba67a1ce0246ab807226f36c')
 
 _src="ArchPM-$pkgver"
 _helper=/usr/lib/archpm/archpm-helper
