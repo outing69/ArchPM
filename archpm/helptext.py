@@ -268,6 +268,16 @@ GLOSSARY: tuple[Section, ...] = (
              "under the autostart entries: they start at login just the same, but from a "
              "different place. Switch one off with systemctl --user disable in a terminal.",
              "Startup tab"),
+        Term("Failed services",
+             "A service that could not start, or crashed and was not started again, is "
+             "\"failed\" in systemd's books. ArchPM asks systemctl --failed and "
+             "systemctl --user --failed once, when the window starts, and shows the count "
+             "next to Root tasks on the Overview; the System page lists each one with the "
+             "last lines of its log. That is a snapshot taken at start: a service that "
+             "fails while the window is open shows up after Refresh on the System page, "
+             "the only other time the check runs. Read-only; ArchPM starts or stops no "
+             "system service.",
+             "Overview next to Root tasks, System page"),
         Term("Service that comes back",
              "A unit can carry Restart=always or Restart=on-failure, and then systemd "
              "starts the program again the moment it ends, so ending it changes nothing "

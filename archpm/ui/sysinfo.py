@@ -1,6 +1,8 @@
 """The System tab: the machine's specs as a reading card, with Copy."""
 from __future__ import annotations
 
+import time
+
 from PySide6.QtCore import Qt, QThread, Signal, Slot
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import (
@@ -14,6 +16,7 @@ from PySide6.QtWidgets import (
 )
 
 from .. import sysinfo
+from ..failed import SESSION, FailedReport
 from . import theme
 from .widgets import Card, mono
 
@@ -28,6 +31,7 @@ class _Gather(QThread):
 
 class SystemView(QWidget):
     status = Signal(str)
+    refresh_failed = Signal()    # the Refresh button on the failed-services block
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -60,6 +64,24 @@ class SystemView(QWidget):
         head.addWidget(btn)
         outer.addLayout(head)
 
+        # -- failed services, above the cards: a snapshot, read-only ---------
+        self.failed_card = Card("Failed services")
+        self.failed_body = QVBoxLayout()
+        self.failed_body.setSpacing(6)
+        frow = QHBoxLayout()
+        self.lbl_failed_state = QLabel("not checked yet")
+        self.lbl_failed_state.setStyleSheet(f"color: {theme.MUTED};")
+        frow.addWidget(self.lbl_failed_state, 1)
+        self.btn_failed = QPushButton("Refresh")
+        self.btn_failed.setToolTip("Asks systemctl --failed and systemctl --user --failed again. "
+                                   "This is the only other time the check runs; it is not on a "
+                                   "timer.")
+        self.btn_failed.clicked.connect(self.refresh_failed.emit)
+        frow.addWidget(self.btn_failed)
+        self.failed_card.body.addLayout(frow)
+        self.failed_card.body.addLayout(self.failed_body)
+        outer.addWidget(self.failed_card)
+
         self.scroll = QScrollArea()
         self.scroll.setWidgetResizable(True)
         self.scroll.setFrameShape(QScrollArea.Shape.NoFrame)
@@ -70,6 +92,38 @@ class SystemView(QWidget):
         self.body_lay.addStretch(1)
         self.scroll.setWidget(self.body)
         outer.addWidget(self.scroll, 1)
+
+    def set_failed(self, report: FailedReport) -> None:
+        """One row per failed unit with its last log lines; one line when none."""
+        while self.failed_body.count():
+            item = self.failed_body.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+        when = time.strftime("%H:%M:%S", time.localtime(report.taken_at))
+        self.lbl_failed_state.setText(
+            f"checked at {when} in {report.took_ms:.0f} ms" + (f"  ·  {report.error}"
+                                                              if report.error else ""))
+        if not report.units:
+            line = QLabel("No failed services found.")
+            line.setStyleSheet(f"color: {theme.MUTED};")
+            self.failed_body.addWidget(line)
+            return
+        for u in report.units:
+            scope = "service of your session" if u.scope == SESSION else "system service"
+            since = f"  ·  failed since {u.since}" if u.since else ""
+            head = QLabel(f"<b>{u.title}</b>&nbsp;&nbsp;<span style='color:{theme.MUTED}; "
+                          f"font-size: 8.5pt'>{u.unit}</span><br>"
+                          f"<span style='color:{theme.MUTED}'>{scope}{since}</span>")
+            head.setTextFormat(Qt.TextFormat.RichText)
+            head.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+            self.failed_body.addWidget(head)
+            body = QLabel("\n".join(u.log) if u.log else u.note)
+            body.setFont(mono(8.5))
+            body.setWordWrap(True)
+            body.setStyleSheet(f"color: {theme.MUTED if u.log else theme.WARN}; "
+                               f"padding-left: 12px;")
+            body.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+            self.failed_body.addWidget(body)
 
     def showEvent(self, event) -> None:
         super().showEvent(event)

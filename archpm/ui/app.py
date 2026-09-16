@@ -18,7 +18,7 @@ from PySide6.QtWidgets import (
     QSystemTrayIcon,
 )
 
-from .. import APP_NAME, __version__, signalguard
+from .. import APP_NAME, __version__, failed, signalguard
 from ..actions import ActionError, get_backend
 from ..model import Snapshot
 from ..publisher import status_path
@@ -154,6 +154,8 @@ class MainWindow(QMainWindow):
         self.startup.status.connect(self._flash)
         self.system.status.connect(self._flash)
         self.dashboard.root_requested.connect(self._open_root)
+        self.dashboard.failed_clicked.connect(lambda: self.shell.set_current(self.system))
+        self.system.refresh_failed.connect(self.check_failed_services)
         self.dashboard.game.terminate_requested.connect(self._terminate_game)
         self._end_game_pending = False   # asked before the first sample; answered after it
         self._build_statusbar()
@@ -260,6 +262,13 @@ class MainWindow(QMainWindow):
         self.showNormal()
         self.raise_()
         self.activateWindow()
+
+    def check_failed_services(self) -> None:
+        """Once at start and on the System page's Refresh; read-only, nothing
+        is started or stopped, and it is not on the sampling cycle."""
+        report = failed.check()
+        self.dashboard.set_failed(len(report.units))
+        self.system.set_failed(report)
 
     def request(self, name: str) -> None:
         """A request from a second launch or from a widget; see REQUESTS."""
@@ -420,6 +429,7 @@ def main() -> int:
     app.aboutToQuit.connect(win.shutdown)
     app.aboutToQuit.connect(server.close)
     win.show()
+    win.check_failed_services()
     win.statusBar().showMessage(f"Status for the widget: {status_path()}", 6000)
     if request == END_GAME:
         win.end_game()

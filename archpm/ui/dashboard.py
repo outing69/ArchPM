@@ -233,6 +233,7 @@ class TopProcList(QWidget):
 
 class Dashboard(QWidget):
     root_requested = Signal()
+    failed_clicked = Signal()     # "N services failed" was clicked: show the System page
     help_requested = Signal(str)
 
     def __init__(self, ncpu: int, history: ProcHistory | None = None, parent=None) -> None:
@@ -255,6 +256,14 @@ class Dashboard(QWidget):
         self.lbl_root_state.setFont(mono(8))
         self.lbl_root_state.setStyleSheet(f"color: {theme.MUTED};")
         head.addWidget(self.lbl_root_state)
+        # Failed services: a snapshot taken at start (and on Refresh on the
+        # System page). Plain muted text when there are none, a link when
+        # there are; never a button, never on the sampling cycle.
+        self.lbl_failed = QLabel("")
+        self.lbl_failed.setTextFormat(Qt.TextFormat.RichText)
+        self.lbl_failed.setOpenExternalLinks(False)
+        self.lbl_failed.linkActivated.connect(lambda _: self.failed_clicked.emit())
+        head.addWidget(self.lbl_failed)
         self.btn_root = QPushButton("Root tasks")
         self.btn_root.setToolTip(
             "Root actions (raising priority, memory) and your own session's services."
@@ -373,6 +382,21 @@ class Dashboard(QWidget):
         grid.setRowStretch(3, 2)
         grid.setColumnStretch(0, 1)
         grid.setColumnStretch(1, 1)
+
+    def set_failed(self, count: int) -> None:
+        if count == 0:
+            self.lbl_failed.setStyleSheet(f"color: {theme.MUTED};")
+            self.lbl_failed.setText("No failed services")
+            self.lbl_failed.setToolTip(
+                "systemctl --failed and systemctl --user --failed listed nothing when the "
+                "window started. Refresh on the System page looks again.")
+            return
+        noun = "service" if count == 1 else "services"
+        self.lbl_failed.setStyleSheet("")
+        self.lbl_failed.setText(f'<a href="#failed" style="color: {theme.WARN}; '
+                                f'text-decoration: none;">{count} {noun} failed</a>')
+        self.lbl_failed.setToolTip("Click for the list and the last log lines of each, "
+                                   "on the System page.")
 
     def game_name(self) -> str:
         """The running game's name, "" without one; for the tray."""

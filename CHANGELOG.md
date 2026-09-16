@@ -3,6 +3,21 @@
 All notable changes, newest first. Versions are git tags on
 [github.com/outing69/ArchPM](https://github.com/outing69/ArchPM).
 
+## 0.2.22 (2026-09-16)
+
+- Failed services, read-only. Once, when the window starts, ArchPM asks
+  systemctl --failed and systemctl --user --failed. The Overview says "No
+  failed services" in muted text next to Root tasks, or "N services failed"
+  as a link to the System page, which has a block above its cards with one
+  row per failed unit: the program in plain words, the unit name in smaller
+  text, whether it is a service of your session or of the system, when it
+  failed, and the last eight lines of its log from journalctl. If the system
+  log is not readable for this user the row says so. Refresh on that block is
+  the only other time the check runs; it is not on the sampling cycle and not
+  on a timer. With no failures the two calls take about 5 ms together; each
+  failed unit adds about 20 ms for its details and log. ArchPM still starts
+  or stops no system service.
+
 ## 0.2.21 (2026-09-16)
 
 - Processes: with "Show all processes" on, the Grouped and Flat views are
