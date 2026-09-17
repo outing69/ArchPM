@@ -4,7 +4,18 @@ from __future__ import annotations
 from collections import deque
 from dataclasses import dataclass, field
 
-from PySide6.QtCore import QEvent, QPoint, QPointF, QRect, QRectF, QSize, Qt, Signal
+from PySide6.QtCore import (
+    QEasingCurve,
+    QEvent,
+    QPoint,
+    QPointF,
+    QRect,
+    QRectF,
+    QSize,
+    Qt,
+    QVariantAnimation,
+    Signal,
+)
 from PySide6.QtGui import (
     QBrush,
     QColor,
@@ -18,6 +29,7 @@ from PySide6.QtGui import (
 from PySide6.QtWidgets import (
     QFrame,
     QGridLayout,
+    QHBoxLayout,
     QLabel,
     QLayout,
     QScrollArea,
@@ -356,6 +368,17 @@ class ElidedLabel(QLabel):
     def __init__(self, text: str = "", parent: QWidget | None = None) -> None:
         super().__init__(text, parent)
         self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
+        self._width_hint = 0
+
+    def set_width_hint(self, width: int) -> None:
+        """Ask for this width instead of the text's: labels in a column of
+        rows then line up, whatever each one says."""
+        self._width_hint = width
+        self.updateGeometry()
+
+    def sizeHint(self) -> QSize:
+        hint = super().sizeHint()
+        return QSize(max(hint.width(), self._width_hint), hint.height())
 
     def minimumSizeHint(self) -> QSize:
         return QSize(0, super().minimumSizeHint().height())
@@ -689,3 +712,358 @@ class TileRow(QWidget):
         super().resizeEvent(event)
         n = len(self.tiles)
         self._place(n if event.size().width() >= self._width_for(n) else (n + 1) // 2)
+
+
+class Switch(QWidget):
+    """An on/off switch: a pill with a knob that slides to the right when
+    on. It is the control for a state that holds (starts at login: yes or
+    no), where a check box would read as picking an item. On, it is the
+    selection blue, as a ticked box is; off, a grey track. Space or Enter
+    flips it, and the focus ring goes round the track."""
+
+    toggled = Signal(bool)   # only from the user, never from set_checked()
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._on = False
+        self._pos = 0.0          # the knob: 0 = left (off), 1 = right (on)
+        self._anim = QVariantAnimation(self)
+        self._anim.setDuration(120)
+        self._anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+        self._anim.valueChanged.connect(self._slide)
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        ring = theme.FOCUS_W + 1
+        self.setFixedSize(theme.SWITCH_W + 2 * ring, theme.SWITCH_H + 2 * ring)
+
+    def isChecked(self) -> bool:
+        return self._on
+
+    def set_checked(self, on: bool) -> None:
+        """The state from the data, shown at once and without a signal."""
+        self._on = bool(on)
+        self._anim.stop()
+        self._pos = 1.0 if self._on else 0.0
+        self.update()
+
+    def toggle(self) -> None:
+        """The user flipped it: slide the knob and say so."""
+        self._on = not self._on
+        self._anim.stop()
+        self._anim.setStartValue(self._pos)
+        self._anim.setEndValue(1.0 if self._on else 0.0)
+        self._anim.start()
+        self.toggled.emit(self._on)
+
+    def _slide(self, value) -> None:
+        self._pos = float(value)
+        self.update()
+
+    def mouseReleaseEvent(self, event) -> None:
+        inside = self.rect().contains(event.position().toPoint())
+        if event.button() == Qt.MouseButton.LeftButton and inside:
+            self.toggle()
+            event.accept()
+            return
+        super().mouseReleaseEvent(event)
+
+    def keyPressEvent(self, event) -> None:
+        if event.key() in (Qt.Key.Key_Space, Qt.Key.Key_Return, Qt.Key.Key_Enter):
+            self.toggle()
+            event.accept()
+            return
+        super().keyPressEvent(event)
+
+    @staticmethod
+    def _mix(a: QColor, b: QColor, t: float) -> QColor:
+        return QColor(round(a.red() + (b.red() - a.red()) * t),
+                      round(a.green() + (b.green() - a.green()) * t),
+                      round(a.blue() + (b.blue() - a.blue()) * t))
+
+    def paintEvent(self, _event) -> None:
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        ring = theme.FOCUS_W + 1
+        track = QRectF(ring, ring, theme.SWITCH_W, theme.SWITCH_H)
+        r = theme.SWITCH_H / 2
+        t = self._pos
+        if not self.isEnabled():
+            fill, knob = QColor(theme.SURFACE_ALT), QColor(theme.FAINT)
+            border = QColor(theme.BORDER)
+        else:
+            fill = self._mix(QColor(theme.SURFACE_HI), QColor(theme.SELECT), t)
+            knob = self._mix(QColor(theme.TEXT), QColor(theme.ON_SELECT), t)
+            border = self._mix(QColor(theme.BORDER_HI), QColor(theme.SELECT), t)
+        p.setPen(QPen(border, 1.0))
+        p.setBrush(fill)
+        p.drawRoundedRect(track.adjusted(0.5, 0.5, -0.5, -0.5), r, r)
+        d = theme.SWITCH_H - 6
+        x = track.left() + 3 + t * (theme.SWITCH_W - 6 - d)
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(knob)
+        p.drawEllipse(QRectF(x, track.top() + 3, d, d))
+        if self.hasFocus():
+            p.setBrush(Qt.BrushStyle.NoBrush)
+            p.setPen(QPen(theme.color("FOCUS"), theme.FOCUS_W))
+            inset = theme.FOCUS_W / 2
+            outer = QRectF(self.rect()).adjusted(inset, inset, -inset, -inset)
+            p.drawRoundedRect(outer, outer.height() / 2, outer.height() / 2)
+        p.end()
+
+
+TITLE_MIN = 96      # px: the least a row's title column keeps
+# stylesheet fonts for a boxed list's labels; see ListRow
+SMALL = "font-size: {FONT_SMALL}pt;"
+SMALL_MUTED = "color: {MUTED}; " + SMALL
+MONO = " font-family: monospace;"
+
+
+class ListRow(QFrame):
+    """One row of a boxed list: a title with a subtitle under it, an
+    optional widget in front (an icon, a check box) and any number after
+    (a status, a switch). The title column takes the width and elides; the
+    widgets after it keep theirs. A property row is the other way round,
+    for a spec sheet: the name small and dim on top, the value in full
+    underneath, wrapping and selectable. A row that does something on a
+    click is activatable: it lights on hover and fires `activated`.
+
+    Fonts in here come from stylesheets, never from setFont(): a widget put
+    into the box has its font resolved again from the stylesheet cascade,
+    and a font set on it before that is lost."""
+
+    activated = Signal()
+
+    def __init__(self, title: str = "", subtitle: str = "",
+                 prefix: QWidget | None = None, suffix: list[QWidget] | tuple = (),
+                 property: bool = False, mono: bool = False,
+                 parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setObjectName("listrow")
+        self.setProperty("first", False)
+        self.setProperty("last", False)
+        self.setProperty("activatable", False)
+        self.setMinimumHeight(theme.LIST_ROW_H)
+        lay = QHBoxLayout(self)
+        lay.setContentsMargins(theme.LIST_PAD_X, theme.LIST_PAD_Y,
+                               theme.LIST_PAD_X, theme.LIST_PAD_Y)
+        lay.setSpacing(12)
+        self.prefix = prefix
+        if prefix is not None:
+            lay.addWidget(prefix, 0, Qt.AlignmentFlag.AlignVCenter)
+        self.column = QWidget()
+        self.column.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        self.column.setMinimumWidth(TITLE_MIN)   # the title never vanishes
+        col = QVBoxLayout(self.column)
+        col.setContentsMargins(0, 0, 0, 0)
+        col.setSpacing(1)
+        self._collapsible: list[tuple[QWidget, int]] = []
+        if property:
+            self.title = QLabel(title)
+            theme.style(self.title, SMALL_MUTED)
+            self.subtitle = QLabel(subtitle)
+            self.subtitle.setWordWrap(True)
+            self.subtitle.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+            theme.style(self.subtitle, "color: {TEXT};" + (MONO if mono else ""))
+        else:
+            self.title = ElidedLabel(title)
+            self.subtitle = ElidedLabel(subtitle)
+            theme.style(self.subtitle, SMALL_MUTED)
+        col.addWidget(self.title)
+        col.addWidget(self.subtitle)
+        self.subtitle.setVisible(bool(subtitle))
+        lay.addWidget(self.column, 1, Qt.AlignmentFlag.AlignVCenter)
+        self.suffix = list(suffix)
+        for w in self.suffix:
+            lay.addWidget(w, 0, Qt.AlignmentFlag.AlignVCenter)
+
+    def set_subtitle(self, text: str) -> None:
+        self.subtitle.setText(text)
+        self.subtitle.setVisible(bool(text))
+
+    def add_body(self, widget: QWidget) -> None:
+        """More under the subtitle: a log, a note."""
+        self.column.layout().addWidget(widget)
+
+    def set_collapsible(self, widget: QWidget, min_width: int) -> None:
+        """A suffix widget that goes when the row is narrower than
+        `min_width`, so the title keeps its room; what it said is in the
+        tooltip or the note above the list."""
+        self._collapsible.append((widget, min_width))
+        widget.setVisible(self.width() >= min_width)
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        for widget, min_width in self._collapsible:
+            widget.setVisible(event.size().width() >= min_width)
+
+    def set_activatable(self, on: bool) -> None:
+        self.setProperty("activatable", bool(on))
+        self.setCursor(Qt.CursorShape.PointingHandCursor if on else Qt.CursorShape.ArrowCursor)
+        self.style().unpolish(self)
+        self.style().polish(self)
+
+    def mouseReleaseEvent(self, event) -> None:
+        if (self.property("activatable") and event.button() == Qt.MouseButton.LeftButton
+                and self.rect().contains(event.position().toPoint())):
+            self.activated.emit()
+            event.accept()
+            return
+        super().mouseReleaseEvent(event)
+
+    def dim(self, token: str = "FAINT") -> None:
+        """The whole row in one quiet colour: an entry for another desktop,
+        an item that cannot be removed."""
+        for w in (self.title, self.subtitle, *self.suffix):
+            if isinstance(w, QLabel):
+                theme.text(w, token)
+
+
+class BoxedList(QWidget):
+    """A group in GNOME's shape: a title, a description under it, room for
+    one control at the head's right, and a box of rows with a line between
+    each. The head is hidden when it has nothing, the box when it is empty."""
+
+    def __init__(self, title: str = "", description: str = "",
+                 parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(8)
+        self.head = QWidget()
+        head = QHBoxLayout(self.head)
+        head.setContentsMargins(0, 0, 0, 0)
+        head.setSpacing(12)
+        self.title = QLabel(title)
+        theme.style(self.title, "font-weight: 700;")
+        head.addWidget(self.title, 1)
+        self._suffix: QWidget | None = None
+        lay.addWidget(self.head)
+        self.description = QLabel(description)
+        self.description.setWordWrap(True)
+        self.description.setTextFormat(Qt.TextFormat.RichText)
+        theme.text(self.description, "MUTED")
+        lay.addWidget(self.description)
+        self.box = QFrame()
+        self.box.setObjectName("boxedlist")
+        self._rows = QVBoxLayout(self.box)
+        self._rows.setContentsMargins(0, 0, 0, 0)
+        self._rows.setSpacing(0)
+        lay.addWidget(self.box)
+        self._show_head()
+        self.box.hide()
+
+    def _show_head(self) -> None:
+        self.title.setVisible(bool(self.title.text()))
+        self.head.setVisible(bool(self.title.text()) or self._suffix is not None)
+        self.description.setVisible(bool(self.description.text()))
+
+    def set_title(self, text: str) -> None:
+        self.title.setText(text)
+        self._show_head()
+
+    def set_description(self, text: str) -> None:
+        self.description.setText(text)
+        self._show_head()
+
+    def set_suffix(self, widget: QWidget) -> None:
+        """The one control of the group, at the head's right."""
+        self._suffix = widget
+        self.head.layout().addWidget(widget, 0, Qt.AlignmentFlag.AlignVCenter)
+        self._show_head()
+
+    def rows(self) -> list[ListRow]:
+        return [self._rows.itemAt(i).widget() for i in range(self._rows.count())]
+
+    @staticmethod
+    def _mark(row: ListRow, first: bool, last: bool) -> None:
+        if row.property("first") == first and row.property("last") == last:
+            return
+        row.setProperty("first", first)
+        row.setProperty("last", last)
+        row.style().unpolish(row)
+        row.style().polish(row)
+
+    def add_row(self, row: ListRow) -> ListRow:
+        rows = self.rows()
+        if rows:
+            self._mark(rows[-1], len(rows) == 1, False)
+        self._rows.addWidget(row)
+        self._mark(row, not rows, True)
+        self.box.show()
+        return row
+
+    def clear(self) -> None:
+        while self._rows.count():
+            item = self._rows.takeAt(0)
+            if item.widget():
+                item.widget().hide()
+                item.widget().deleteLater()
+        self.box.hide()
+
+
+class Columns(QWidget):
+    """Groups one under the other, or in two columns side by side when the
+    width allows, the order kept: the first half of the rows on the left,
+    the rest on the right. A spec sheet in one column at full width would
+    hug the left edge and leave the right of the window empty."""
+
+    def __init__(self, gap: int, column_min: int = 360, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.gap = gap
+        self.column_min = column_min
+        self._groups: list[tuple[QWidget, int]] = []
+        self._cols = 0
+        lay = QHBoxLayout(self)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(gap)
+        lay.setSizeConstraint(QLayout.SizeConstraint.SetNoConstraint)
+        self._sides: list[QWidget] = []
+        for _ in range(2):
+            side = QWidget()
+            col = QVBoxLayout(side)
+            col.setContentsMargins(0, 0, 0, 0)
+            col.setSpacing(gap)
+            col.addStretch(1)
+            lay.addWidget(side, 1, Qt.AlignmentFlag.AlignTop)
+            self._sides.append(side)
+        self._sides[1].hide()
+
+    def set_groups(self, groups: list[tuple[QWidget, int]]) -> None:
+        """(widget, weight) per group; the weight is its number of rows."""
+        for w, _ in self._groups:
+            w.hide()
+            w.deleteLater()
+        self._groups = list(groups)
+        self._cols = 0
+        self._place(self._columns_for(self.width()))
+
+    def _columns_for(self, width: int) -> int:
+        return 2 if width >= 2 * self.column_min + self.gap else 1
+
+    def columns(self) -> int:
+        return self._cols
+
+    def _place(self, cols: int) -> None:
+        if cols == self._cols:
+            return
+        for side in self._sides:
+            col = side.layout()
+            while col.count() > 1:      # keep the trailing stretch
+                col.takeAt(0)
+        total = sum(weight for _, weight in self._groups)
+        done = 0
+        for w, weight in self._groups:
+            right = cols == 2 and done >= (total + 1) // 2
+            col = self._sides[1 if right else 0].layout()
+            col.insertWidget(col.count() - 1, w)
+            done += weight
+        self._sides[1].setVisible(cols == 2)
+        self._cols = cols
+
+    def minimumSizeHint(self) -> QSize:
+        wide = max((w.minimumSizeHint().width() for w, _ in self._groups), default=0)
+        return QSize(wide, super().minimumSizeHint().height())
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        self._place(self._columns_for(event.size().width()))

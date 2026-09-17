@@ -1,0 +1,259 @@
+"""Boxed lists, stage three of the GNOME look, second part: Startup,
+Cleanup and System show grouped information as rows in a rounded box with a
+line between them, a switch where a state is set and a check box where an
+item is picked. Offscreen; skipped where PySide6 is missing."""
+from __future__ import annotations
+
+import os
+import tempfile
+import unittest
+from pathlib import Path
+from unittest import mock
+
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+try:
+    from PySide6.QtCore import QSettings, Qt
+    from PySide6.QtTest import QTest
+    from PySide6.QtWidgets import QApplication, QCheckBox
+except ImportError:                       # pragma: no cover
+    QApplication = None
+
+from archpm.autostart import StartupEntry
+from archpm.cleanup import CleanupItem
+from archpm.failed import FailedReport, FailedUnit
+from archpm.ui import theme
+
+
+def app_and_settings():
+    tmp = tempfile.TemporaryDirectory()
+    for fmt in (QSettings.Format.NativeFormat, QSettings.Format.IniFormat):
+        QSettings.setPath(fmt, QSettings.Scope.UserScope, tmp.name)
+    app = QApplication.instance() or QApplication([])
+    theme.apply(app, "dark")
+    return app, tmp
+
+
+def entry(name, kind="App", enabled=True, this_desktop=True):
+    path = Path(f"/tmp/{name}.desktop")
+    return StartupEntry(id=name.lower(), name=name, icon="", exec=f"/usr/bin/{name.lower()}",
+                        path=path, system_path=None, user_path=path, enabled=enabled,
+                        for_this_desktop=this_desktop, description=f"{name} does things",
+                        kind=kind)
+
+
+@unittest.skipUnless(QApplication, "PySide6 not installed")
+class Widgets(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.app, cls.tmp = app_and_settings()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.tmp.cleanup()
+
+    def test_a_switch_flips_on_click_and_space_and_says_so_only_then(self):
+        from archpm.ui.widgets import Switch
+        sw = Switch()
+        sw.show()
+        heard = []
+        sw.toggled.connect(heard.append)
+        sw.set_checked(True)
+        self.assertTrue(sw.isChecked())
+        self.assertEqual(heard, [], "the data setting it is not the user flipping it")
+        QTest.mouseClick(sw, Qt.MouseButton.LeftButton)
+        self.assertFalse(sw.isChecked())
+        QTest.keyClick(sw, Qt.Key.Key_Space)
+        self.assertTrue(sw.isChecked())
+        self.assertEqual(heard, [False, True])
+        self.assertEqual(sw.focusPolicy(), Qt.FocusPolicy.StrongFocus, "Tab reaches it")
+        sw.close()
+
+    def test_rows_in_a_box_with_a_line_between_and_the_end_rows_marked(self):
+        from archpm.ui.widgets import BoxedList, ListRow
+        group = BoxedList("Title", "A description.")
+        self.assertFalse(group.box.isVisibleTo(group), "an empty group shows no box")
+        rows = [group.add_row(ListRow(f"row {i}", "sub")) for i in range(3)]
+        group.show()
+        self.assertTrue(group.box.isVisibleTo(group))
+        self.assertEqual([r.property("first") for r in rows], [True, False, False])
+        self.assertEqual([r.property("last") for r in rows], [False, False, True])
+        self.assertEqual(group.box.objectName(), "boxedlist")
+        self.assertEqual(rows[1].objectName(), "listrow")
+        self.assertGreaterEqual(rows[0].minimumHeight(), theme.LIST_ROW_H)
+        group.clear()
+        QTest.qWait(10)
+        self.assertEqual(group.rows(), [])
+        self.assertFalse(group.box.isVisibleTo(group))
+        group.close()
+
+    def test_the_stylesheet_draws_the_box_the_lines_and_the_hover(self):
+        from tests.test_chrome import rules
+        found = dict(rules(r"boxedlist|listrow"))
+        self.assertIn("@RADIUS_CARD@px", found["#boxedlist"])
+        self.assertIn("border: 1px solid @BORDER@", found["#boxedlist"])
+        self.assertIn("border-top: 1px solid @BORDER@", found["#listrow"])
+        self.assertIn("border-top: none", found['#listrow[first="true"]'])
+        self.assertIn("@SURFACE_HI@", found['#listrow[activatable="true"]:hover'])
+
+    def test_a_row_that_does_something_fires_on_click_and_keeps_its_title(self):
+        from archpm.ui.widgets import TITLE_MIN, ListRow, Switch
+        sw = Switch()
+        row = ListRow("A long title that will be elided when the row is narrow",
+                      "and a subtitle", suffix=[sw])
+        heard = []
+        row.activated.connect(lambda: heard.append(1))
+        row.show()
+        QTest.mouseClick(row, Qt.MouseButton.LeftButton, pos=row.rect().center())
+        self.assertEqual(heard, [], "a plain row does nothing on a click")
+        row.set_activatable(True)
+        QTest.mouseClick(row, Qt.MouseButton.LeftButton, pos=row.rect().center())
+        self.assertEqual(heard, [1])
+        self.assertLess(row.minimumSizeHint().width(), 300, "the title elides")
+        self.assertGreaterEqual(row.column.minimumWidth(), TITLE_MIN)
+        row.close()
+
+    def test_a_property_row_puts_the_name_small_over_the_value(self):
+        from archpm.ui.widgets import BoxedList, ListRow
+        group = BoxedList("Specs")
+        row = group.add_row(ListRow("Kernel", "7.2.5", property=True, mono=True))
+        group.show()
+        QTest.qWait(10)
+        self.assertLess(row.title.font().pointSizeF(), row.subtitle.font().pointSizeF())
+        self.assertTrue(row.subtitle.wordWrap())
+        self.assertEqual(row.subtitle.font().family().lower(), "monospace",
+                         "the font is set through the stylesheet, so it survives the box")
+        self.assertTrue(row.subtitle.textInteractionFlags()
+                        & Qt.TextInteractionFlag.TextSelectableByMouse)
+        group.close()
+
+    def test_groups_stand_in_two_columns_when_wide_and_one_when_narrow(self):
+        from archpm.ui.widgets import BoxedList, Columns, ListRow
+        cols = Columns(theme.GROUP_GAP, column_min=300)
+        groups = []
+        for n in (3, 2, 2, 3):
+            g = BoxedList(f"{n} rows")
+            for i in range(n):
+                g.add_row(ListRow(f"k{i}", "v", property=True))
+            groups.append((g, n + 1))
+        cols.set_groups(groups)
+        cols.show()
+        cols.resize(900, 600)
+        QTest.qWait(10)
+        self.assertEqual(cols.columns(), 2)
+        left = cols._sides[0].layout()
+        self.assertEqual([left.itemAt(i).widget() for i in range(left.count() - 1)],
+                         [groups[0][0], groups[1][0]], "the order is kept, half the rows left")
+        cols.resize(500, 600)
+        QTest.qWait(10)
+        self.assertEqual(cols.columns(), 1)
+        self.assertLessEqual(cols.minimumSizeHint().width(),
+                             max(g.minimumSizeHint().width() for g, _ in groups))
+        cols.close()
+
+
+@unittest.skipUnless(QApplication, "PySide6 not installed")
+class Pages(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.app, cls.tmp = app_and_settings()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.tmp.cleanup()
+
+    def test_startup_is_a_boxed_list_with_a_switch_per_entry(self):
+        from archpm.ui.startup import StartupView
+        from archpm.ui.widgets import Switch
+        v = StartupView()
+        v.auto = mock.Mock()
+        v.auto.entries.return_value = [entry("Zed"), entry("Alpha", enabled=False),
+                                       entry("Plasma", kind="Desktop"),
+                                       entry("Gnomish", this_desktop=False)]
+        v._fill_services = lambda: None
+        v.reload()
+        rows = v.list.rows()
+        self.assertEqual([r.title.text() for r in rows], ["Alpha", "Zed", "Plasma"],
+                         "your apps first, the desktop's parts last, the other desktop's hidden")
+        switches = [r.suffix[-1] for r in rows]
+        self.assertTrue(all(isinstance(s, Switch) for s in switches))
+        self.assertEqual([s.isChecked() for s in switches], [False, True, True])
+        self.assertIn("Desktop · keep on", rows[2].suffix[1].text())
+        # flipping a switch writes the entry and reports it
+        said = []
+        v.status.connect(said.append)
+        switches[0].toggle()
+        v.auto.set_enabled.assert_called_once()
+        self.assertEqual(v.auto.set_enabled.call_args[0][1], True)
+        self.assertEqual(said, ["Alpha will start at login"])
+        # a refused essential entry stays on
+        v._confirm_essential = lambda e: False
+        plasma = v.list.rows()[2].suffix[-1]
+        plasma.toggle()
+        self.assertTrue(plasma.isChecked())
+        self.assertEqual(v.auto.set_enabled.call_count, 1)
+
+    def test_startup_shows_the_other_desktop_rows_dimmed_when_asked(self):
+        from archpm.ui.startup import StartupView
+        v = StartupView()
+        v.auto = mock.Mock()
+        v.auto.entries.return_value = [entry("Zed"), entry("Gnomish", this_desktop=False)]
+        v._fill_services = lambda: None
+        v.cb_others.setChecked(True)
+        rows = v.list.rows()
+        self.assertEqual(rows[-1].title.text(), "Gnomish")
+        self.assertEqual(rows[-1].suffix[0].text(), "Other desktop")
+
+    def test_cleanup_rows_have_a_check_box_and_the_row_itself_ticks_it(self):
+        from archpm.root.client import RootClient
+        from archpm.ui.cleanup import CleanupView
+        v = CleanupView(RootClient())
+        v.scan = lambda: None
+        v.items = [CleanupItem(id="a", name="Alpha cache", description="rebuilt", size=1 << 20),
+                   CleanupItem(id="b", name="Empty", description="nothing", size=0)]
+        v._fill()
+        rows = v.list.rows()
+        self.assertEqual(len(rows), 2)
+        self.assertIsInstance(rows[0].prefix, QCheckBox)
+        self.assertTrue(rows[0].property("activatable"))
+        self.assertFalse(rows[1].prefix.isEnabled(), "nothing to remove, nothing to tick")
+        self.assertFalse(rows[1].property("activatable"))
+        rows[0].activated.emit()
+        self.assertEqual([i.id for i in v._selected()], ["a"])
+        self.assertTrue(v.btn_clean.isEnabled())
+        self.assertIn("1 selected", v.lbl_total.text())
+
+    def test_system_shows_specs_as_property_rows_and_failed_units_as_rows(self):
+        from archpm.ui.sysinfo import SystemView
+        v = SystemView()
+        v.reload = lambda: None
+        v._loaded([("System", [("Hostname", "box"), ("Kernel", "7.2")]),
+                   ("ArchPM", [("Version", "x"), ("Status file", "/run/user/1/s.json")])])
+        groups = [g for g, _ in v.columns._groups]
+        self.assertEqual([g.title.text() for g in groups], ["System", "ArchPM"])
+        self.assertEqual([r.title.text() for r in groups[0].rows()], ["Hostname", "Kernel"])
+        self.assertEqual(groups[1].rows()[1].subtitle.text(), "/run/user/1/s.json")
+        v.set_failed(FailedReport(units=[], taken_at=0, took_ms=1))
+        self.assertEqual(v.failed_list.rows()[0].title.text(), "No failed services found.")
+        v.set_failed(FailedReport(units=[FailedUnit(unit="a.service", description="A",
+                                                    log=["line 1"], since="Mon")],
+                                  taken_at=0, took_ms=1))
+        row = v.failed_list.rows()[0]
+        self.assertEqual(row.title.text(), "A")
+        self.assertIn("a.service", row.subtitle.text())
+        self.assertIn("failed since Mon", row.subtitle.text())
+        self.assertIs(v.failed_list._suffix, v.btn_failed)
+
+    def test_the_status_file_is_on_the_system_page_and_not_a_toast(self):
+        import inspect
+
+        from archpm import sysinfo
+        from archpm.publisher import status_path
+        from archpm.ui import app as app_module
+        rows = dict(sysinfo.archpm_section()[1])
+        self.assertEqual(rows["Status file"], str(status_path()))
+        self.assertNotIn("status_path", inspect.getsource(app_module),
+                         "the window says nothing about the file at start")
+
+
+if __name__ == "__main__":
+    unittest.main()

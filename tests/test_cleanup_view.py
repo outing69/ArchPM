@@ -67,18 +67,17 @@ class NoPasswordAtEntry(unittest.TestCase):
         self.assertIn("asked when you press Remove", texts)
 
     def test_a_root_row_is_tickable_before_any_password_when_the_helper_is_there(self):
-        from PySide6.QtCore import Qt
-
         from archpm.root.client import check
         if not check().ready:
             self.skipTest("root helper not installed here")
-        from archpm.ui.cleanup import COL_ON
         v = self.view()
         v.items = [CleanupItem(id="journal", name="System logs", description="", size=5 << 20,
                                needs_root=True, helper_command="journal-vacuum")]
         v._fill()
-        flags = v.table.item(0, COL_ON).flags()
-        self.assertTrue(flags & Qt.ItemFlag.ItemIsUserCheckable)
+        box = v._checks[0]
+        self.assertTrue(box.isEnabled())
+        box.toggle()
+        self.assertEqual([i.id for i in v._selected()], ["journal"])
         self.assertFalse(v.client.authenticated, "and no password was asked for it")
 
 

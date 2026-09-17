@@ -1,32 +1,28 @@
 """The Startup tab: what starts when you log in, and a switch for each."""
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QColor
+from functools import partial
+
+from PySide6.QtCore import Signal
+from PySide6.QtGui import QFontMetrics
 from PySide6.QtWidgets import (
-    QAbstractItemView,
     QCheckBox,
-    QHeaderView,
     QLabel,
     QMessageBox,
     QPushButton,
-    QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
 
 from ..actions import ActionError, UserBackend
 from ..autostart import Autostart, StartupEntry, running_pids, tilde
-from . import hints, theme
-from .widgets import FlowLayout, app_icon
+from . import theme
+from .widgets import BoxedList, ElidedLabel, FlowLayout, ListRow, Switch, app_icon, scrolling
 
-COL_ON, COL_NAME, COL_DESC, COL_STATE, COL_KIND, COL_SOURCE = range(6)
-HEADERS = ["", "Name", "What it does", "Status", "Kind", "Source"]
-HINT_KEYS = ["startup.on", "startup.name", "startup.what", "startup.status", "startup.kind",
-             "startup.source"]
 KIND_ORDER = {"App": 0, "System": 1, "Desktop": 2}
 KIND_LABEL = {"App": "App", "System": "System", "Desktop": "Desktop · keep on"}
+ICON = 24
+NARROW_ROW = 600    # px: under this a row shows no kind and source; the title keeps its room
 
 
 class StartupView(QWidget):
@@ -39,6 +35,7 @@ class StartupView(QWidget):
         self.entries: list[StartupEntry] = []
         self._argvs: dict[int, list[str]] = {}
         self._loading = False
+        self._status: list[QLabel] = []       # one per entry, the Running column
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(*theme.page_margins())
@@ -59,71 +56,35 @@ class StartupView(QWidget):
         head.addWidget(btn)
         outer.addLayout(head)
 
-        hint = QLabel(
-            "Autostart entries: untick one and it will not start at your next login. Nothing "
-            "is closed now, nothing is deleted, and you can tick it back any time; ArchPM only "
-            f"writes in your own folder ({tilde(self.auto.user_dir)}). Services of your "
-            "session that start at login are listed further down.<br>"
-            f"<span style='color:{theme.WARN}'>Rows marked <b>Desktop · keep on</b> are parts of "
-            "your desktop itself (panels, shortcuts, password prompts, power management). "
+        # Two groups in GNOME's shape, the page scrolling as a whole: the
+        # autostart entries under the page's own title, with the note as the
+        # group's description, and the session's services with their own.
+        page = QWidget()
+        groups = QVBoxLayout(page)
+        groups.setContentsMargins(0, 0, 0, 0)
+        groups.setSpacing(theme.GROUP_GAP)
+        self.list = BoxedList("", (
+            "Autostart entries: switch one off and it will not start at your next login. "
+            "Nothing is closed now, nothing is deleted, and you can switch it back any time; "
+            f"ArchPM only writes in your own folder ({tilde(self.auto.user_dir)}). Services "
+            "of your session that start at login are listed further down.<br>"
+            f"<span style='color:{theme.WARN}'>Rows marked <b>Desktop · keep on</b> are parts "
+            "of your desktop itself (panels, shortcuts, password prompts, power management). "
             "Switching those off gives you a broken login, not a faster one.</span>"
-        )
-        hint.setTextFormat(Qt.TextFormat.RichText)
-        hint.setWordWrap(True)
-        theme.style(hint, "color: {MUTED};")
-        outer.addWidget(hint)
-
-        self.table = QTableWidget(0, len(HEADERS))
-        self.table.setHorizontalHeaderLabels(HEADERS)
-        self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        self.table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        self.table.setAlternatingRowColors(True)
-        self.table.setShowGrid(False)
-        self.table.verticalHeader().setVisible(False)
-        self.table.verticalHeader().setDefaultSectionSize(theme.ROW_H)
-        header = self.table.horizontalHeader()
-        header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
-        header.setSectionResizeMode(COL_DESC, QHeaderView.ResizeMode.Stretch)
-        header.setHighlightSections(False)
-        for col, w in ((COL_ON, 36), (COL_NAME, 250), (COL_STATE, 170), (COL_KIND, 140),
-                       (COL_SOURCE, 120)):
-            self.table.setColumnWidth(col, w)
-        hints.header_tooltips(self.table, HINT_KEYS)
-        hints.attach_header(header, HINT_KEYS, self.help_requested.emit)
-        self.table.itemChanged.connect(self._toggled)
-        outer.addWidget(self.table, 3)
+        ))
+        groups.addWidget(self.list)
 
         # -- enabled user services: they start at login as well ---------------
-        svc_title = QLabel("Services of your session that start at login")
-        svc_title.setFont(theme.font("title", bold=True))
-        outer.addWidget(svc_title)
-        self.svc_hint = QLabel(
+        self.svc_list = BoxedList("Services of your session that start at login", (
             "These are started by systemd, not from the autostart folder, so the list above "
             "does not show them; without them the picture would look complete while it is "
             "not. Switch one off with <code>systemctl --user disable</code> in a terminal, "
             "and start, stop or restart it under Root tasks."
-        )
-        self.svc_hint.setTextFormat(Qt.TextFormat.RichText)
-        self.svc_hint.setWordWrap(True)
-        theme.style(self.svc_hint, "color: {MUTED};")
-        outer.addWidget(self.svc_hint)
-        self.svc_table = QTableWidget(0, 3)
-        self.svc_table.setHorizontalHeaderLabels(["Service", "What it does", "Status"])
-        self.svc_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        self.svc_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        self.svc_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        self.svc_table.setAlternatingRowColors(True)
-        self.svc_table.setShowGrid(False)
-        self.svc_table.verticalHeader().setVisible(False)
-        self.svc_table.verticalHeader().setDefaultSectionSize(theme.ROW_H)
-        sh = self.svc_table.horizontalHeader()
-        sh.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
-        sh.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        sh.setHighlightSections(False)
-        self.svc_table.setColumnWidth(0, 250)
-        self.svc_table.setColumnWidth(2, 170)
-        outer.addWidget(self.svc_table, 1)
+        ))
+        self.svc_hint = self.svc_list.description
+        groups.addWidget(self.svc_list)
+        groups.addStretch(1)
+        outer.addWidget(scrolling(page), 1)
 
     # -- data -----------------------------------------------------------------
     def showEvent(self, event) -> None:
@@ -148,63 +109,62 @@ class StartupView(QWidget):
         self._fill_services()
 
     def _fill_services(self) -> None:
+        self.svc_list.clear()
         try:
             services = UserBackend().enabled_services()
         except ActionError as exc:
-            self.svc_table.setRowCount(0)
             self.svc_hint.setText(f"Could not read your session's services: {exc}")
             return
-        self.svc_table.setRowCount(len(services))
-        for row, svc in enumerate(services):
-            unit = QTableWidgetItem(svc.unit)
-            unit.setToolTip(f"systemctl --user status {svc.unit}")
-            self.svc_table.setItem(row, 0, unit)
-            desc = QTableWidgetItem(svc.description)
-            desc.setForeground(QColor(theme.MUTED))
-            self.svc_table.setItem(row, 1, desc)
-            state = QTableWidgetItem("Running" if svc.active else "Not running")
-            state.setForeground(QColor(theme.OK if svc.active else theme.MUTED))
-            self.svc_table.setItem(row, 2, state)
+        for svc in services:
+            state = QLabel("Running" if svc.active else "Not running")
+            theme.text(state, "OK" if svc.active else "MUTED")
+            row = ListRow(svc.unit, svc.description, suffix=[state])
+            row.setToolTip(f"systemctl --user status {svc.unit}")
+            self.svc_list.add_row(row)
+
+    @staticmethod
+    def _meta(e: StartupEntry) -> str:
+        """Kind and source in one short line: 'App · User', 'System · User (override)'."""
+        source = e.source + (" (override)" if e.is_override else "")
+        return f"{KIND_LABEL.get(e.kind, e.kind)} · {source}"
 
     def _fill(self) -> None:
         self._loading = True
-        self.table.setRowCount(len(self.entries))
-        for row, e in enumerate(self.entries):
-            on = QTableWidgetItem()
-            on.setFlags(Qt.ItemFlag.ItemIsUserCheckable | Qt.ItemFlag.ItemIsEnabled
-                        | Qt.ItemFlag.ItemIsSelectable)
-            on.setCheckState(Qt.CheckState.Checked if e.enabled else Qt.CheckState.Unchecked)
-            on.setToolTip("Starts at login" if e.enabled else "Switched off")
-            self.table.setItem(row, COL_ON, on)
+        self.list.clear()
+        self._status = []
+        # the status and the kind stand in columns: one width for each
+        status_w = QFontMetrics(theme.font("body")).horizontalAdvance("Running · pid 9999999")
+        small = QFontMetrics(theme.font("small"))
+        meta_w = max((small.horizontalAdvance(self._meta(e)) for e in self.entries), default=0)
+        for e in self.entries:
+            icon = QLabel()
+            icon.setFixedSize(ICON, ICON)      # the slot stays, so the titles line up
+            pm = app_icon(e.icon).pixmap(ICON, ICON)
+            if not pm.isNull():
+                icon.setPixmap(pm)
 
-            name = QTableWidgetItem(e.name)
-            icon = app_icon(e.icon)
-            if not icon.isNull():
-                name.setIcon(icon)
-            name.setToolTip(f"{e.exec}\n{e.path}")
-            self.table.setItem(row, COL_NAME, name)
+            status = QLabel("")
+            status.setMinimumWidth(status_w)
+            meta = ElidedLabel(self._meta(e))
+            meta.set_width_hint(meta_w)
+            theme.style(meta, "color: {" + ("WARN" if e.essential else "MUTED")
+                        + "}; font-size: {FONT_SMALL}pt;")
+            meta.setToolTip(("Part of your desktop session. Leave it on. " if e.essential else "")
+                            + ("Your own entry" if e.source == "User"
+                               else "Installed with the system"))
+            switch = Switch()
+            switch.set_checked(e.enabled)
+            switch.setToolTip("Starts at login" if e.enabled else "Switched off")
+            switch.setAccessibleName(f"{e.name} starts at login")
+            switch.toggled.connect(partial(self._toggled, e, switch))
 
-            desc = QTableWidgetItem(e.description)
-            desc.setToolTip(e.exec)
-            self.table.setItem(row, COL_DESC, desc)
-
-            self.table.setItem(row, COL_STATE, QTableWidgetItem(""))
-
-            kind = QTableWidgetItem(KIND_LABEL.get(e.kind, e.kind))
-            if e.essential:
-                kind.setForeground(QColor(theme.WARN))
-                kind.setToolTip("Part of your desktop session. Leave it on.")
-            self.table.setItem(row, COL_KIND, kind)
-
-            src = QTableWidgetItem(e.source + (" (override)" if e.is_override else ""))
-            src.setToolTip("Your own entry" if e.source == "User" else "Installed with the system")
-            self.table.setItem(row, COL_SOURCE, src)
-
-            for col in (COL_DESC, COL_SOURCE):
-                self.table.item(row, col).setForeground(QColor(theme.MUTED))
+            row = ListRow(e.name, e.description, prefix=icon, suffix=[status, meta, switch])
+            row.setToolTip(f"{e.exec}\n{e.path}")
+            row.set_collapsible(meta, NARROW_ROW)   # kind and source go first when narrow
             if not e.for_this_desktop:
-                for col in range(len(HEADERS)):
-                    self.table.item(row, col).setForeground(QColor(theme.FAINT))
+                row.dim("FAINT")
+            self.list.add_row(row)
+            self._status.append(status)
         self._loading = False
         self._refresh_state()
 
@@ -216,30 +176,23 @@ class StartupView(QWidget):
 
     def _refresh_state(self) -> None:
         running = running_pids(self.entries, self._argvs)
-        for row, e in enumerate(self.entries):
-            item = self.table.item(row, COL_STATE)
-            if item is None:
-                continue
+        for e, label in zip(self.entries, self._status, strict=False):
             if not e.for_this_desktop:
-                item.setText("Other desktop")
-                item.setForeground(QColor(theme.FAINT))
+                text, colour = "Other desktop", "FAINT"
             elif e.id in running:
-                item.setText(f"Running · pid {running[e.id]}")
-                item.setForeground(QColor(theme.OK))
+                text, colour = f"Running · pid {running[e.id]}", "OK"
             else:
-                item.setText("Not running")
-                item.setForeground(QColor(theme.MUTED))
+                text, colour = "Not running", "MUTED"
+            if label.text() != text:
+                label.setText(text)
+                theme.text(label, colour)
 
     # -- toggling -------------------------------------------------------------
-    def _toggled(self, item: QTableWidgetItem) -> None:
-        if self._loading or item.column() != COL_ON:
+    def _toggled(self, entry: StartupEntry, switch: Switch, enabled: bool) -> None:
+        if self._loading:
             return
-        entry = self.entries[item.row()]
-        enabled = item.checkState() == Qt.CheckState.Checked
         if not enabled and entry.essential and not self._confirm_essential(entry):
-            self._loading = True
-            item.setCheckState(Qt.CheckState.Checked)
-            self._loading = False
+            switch.set_checked(True)
             return
         try:
             self.auto.set_enabled(entry, enabled)

@@ -8,16 +8,13 @@ ticks items, presses the button and confirms the list.
 from __future__ import annotations
 
 from PySide6.QtCore import QProcess, Qt, QThread, QTimer, Signal, Slot
-from PySide6.QtGui import QColor
+from PySide6.QtGui import QFontMetrics
 from PySide6.QtWidgets import (
-    QAbstractItemView,
-    QHeaderView,
+    QCheckBox,
     QLabel,
     QMessageBox,
     QPlainTextEdit,
     QPushButton,
-    QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -25,12 +22,8 @@ from PySide6.QtWidgets import (
 from ..actions import ActionError
 from ..cleanup import Cleaner, CleanupItem, human, running_owner
 from ..root.client import RootClient, check
-from . import hints, theme
-from .widgets import FlowLayout, mono
-
-COL_ON, COL_NAME, COL_DESC, COL_SIZE, COL_ROOT = range(5)
-HEADERS = ["", "What", "Why it is safe to remove", "Size", "Note"]
-HINT_KEYS = ["cleanup.on", "cleanup.what", "cleanup.why", "cleanup.size", "cleanup.note"]
+from . import theme
+from .widgets import BoxedList, ElidedLabel, FlowLayout, ListRow, mono, scrolling
 
 
 class _Scan(QThread):
@@ -107,7 +100,9 @@ class CleanupView(QWidget):
         head.addWidget(self.btn_clean)
         outer.addLayout(head)
 
-        hint = QLabel(
+        # One boxed list, the page's note as its description; the page
+        # scrolls as a whole and the log stays put underneath.
+        self.list = BoxedList("", (
             "Everything listed here is something a program builds again by itself: caches, "
             "compiled shaders, thumbnails, old package versions, old logs. Removing it costs "
             "you a slower first start of that program (shaders recompile, previews regenerate), "
@@ -116,31 +111,15 @@ class CleanupView(QWidget):
             "The sizes are read without root. Two items, the package cache and the system "
             "logs, need root to remove; your password is asked when you press Remove "
             "selected with one of them ticked, not before."
-        )
-        hint.setTextFormat(Qt.TextFormat.RichText)
-        hint.setWordWrap(True)
-        theme.style(hint, "color: {MUTED};")
-        outer.addWidget(hint)
-
-        self.table = QTableWidget(0, len(HEADERS))
-        self.table.setHorizontalHeaderLabels(HEADERS)
-        self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        self.table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        self.table.setAlternatingRowColors(True)
-        self.table.setShowGrid(False)
-        self.table.verticalHeader().setVisible(False)
-        self.table.verticalHeader().setDefaultSectionSize(theme.ROW_H)
-        header = self.table.horizontalHeader()
-        header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
-        header.setSectionResizeMode(COL_DESC, QHeaderView.ResizeMode.Stretch)
-        header.setHighlightSections(False)
-        for col, w in ((COL_ON, 36), (COL_NAME, 300), (COL_SIZE, 100), (COL_ROOT, 190)):
-            self.table.setColumnWidth(col, w)
-        hints.header_tooltips(self.table, HINT_KEYS)
-        hints.attach_header(header, HINT_KEYS, self.help_requested.emit)
-        self.table.itemChanged.connect(self._recount)
-        outer.addWidget(self.table, 1)
+        ))
+        self._checks: list[QCheckBox] = []     # one per item
+        self._notes: list[QLabel] = []
+        page = QWidget()
+        groups = QVBoxLayout(page)
+        groups.setContentsMargins(0, 0, 0, 0)
+        groups.addWidget(self.list)
+        groups.addStretch(1)
+        outer.addWidget(scrolling(page), 1)
 
         self.log = QPlainTextEdit()
         self.log.setReadOnly(True)
@@ -247,28 +226,32 @@ class CleanupView(QWidget):
             self._refresh_notes()
 
     def _note_for(self, it: CleanupItem, root_ok: bool) -> tuple[str, str]:
-        """(text, colour) for the Note column."""
+        """(text, colour token) for the row's note."""
         if it.needs_root:
             if it.note:
-                return "root · " + it.note, theme.WARN
+                return "root · " + it.note, "WARN"
             if root_ok:
-                return "root · unlocked", theme.OK
-            return "root · asks for your password on Remove", theme.MUTED
+                return "root · unlocked", "OK"
+            return "root · asks for your password on Remove", "MUTED"
         owner = running_owner(it, self._procs)
         if owner:
-            return f"running now: {owner}", theme.WARN
-        return "", theme.MUTED
+            return f"running now: {owner}", "WARN"
+        return "", "MUTED"
 
     def _refresh_notes(self) -> None:
         root_ok = check().ready and self.client.authenticated
-        for row, it in enumerate(self.items):
-            cell = self.table.item(row, COL_ROOT)
-            if cell is None:
-                continue
+        for it, label in zip(self.items, self._notes, strict=False):
             text, colour = self._note_for(it, root_ok)
-            if cell.text() != text:
-                cell.setText(text)
-                cell.setForeground(QColor(colour))
+            if label.text() != text:
+                self._set_note(label, text, colour)
+
+    @staticmethod
+    def _set_note(label: QLabel, text: str, colour: str) -> None:
+        label.setText(text)
+        theme.style(label, "color: {" + colour + "}; font-size: {FONT_SMALL}pt;")
+        label.setToolTip("Can be emptied while the program runs; it recreates what it needs, "
+                         "but may stumble for a moment. Closing it first is cleaner."
+                         if text.startswith("running") else text)
 
     @Slot(object)
     def _scanned(self, items) -> None:
@@ -278,50 +261,39 @@ class CleanupView(QWidget):
 
     def _fill(self) -> None:
         root_ok = check().ready and self.client.authenticated
-        self.table.blockSignals(True)
-        self.table.setRowCount(len(self.items))
-        for row, it in enumerate(self.items):
-            on = QTableWidgetItem()
+        self.list.clear()
+        self._checks, self._notes = [], []
+        size_w = QFontMetrics(mono("body")).horizontalAdvance("999.9 MB")
+        for it in self.items:
             # a root item can be ticked as soon as the helper is installed; the
             # password comes at removal, through pkexec, not at page entry
             usable = it.size > 0 and (not it.needs_root or (check().ready and it.helper_command))
-            flags = Qt.ItemFlag.ItemIsSelectable
+            box = QCheckBox()
+            box.setEnabled(bool(usable))
+            box.setAccessibleName(f"Remove {it.name}")
+            box.toggled.connect(self._recount)
+            note = ElidedLabel()
+            self._set_note(note, *self._note_for(it, root_ok))
+            size = QLabel(human(it.size) if it.size else "-")
+            theme.style(size, "font-family: monospace;")
+            size.setMinimumWidth(size_w)     # the sizes line up down the list
+            size.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            desc = it.description + (f"  {it.note}" if it.note else "")
+            row = ListRow(it.name, desc, prefix=box, suffix=[note, size])
+            row.setToolTip("\n".join(str(p) for p in it.paths) or it.helper_command or desc)
             if usable:
-                flags |= Qt.ItemFlag.ItemIsUserCheckable | Qt.ItemFlag.ItemIsEnabled
-            on.setFlags(flags)
-            on.setCheckState(Qt.CheckState.Unchecked)
-            self.table.setItem(row, COL_ON, on)
-            name = QTableWidgetItem(it.name)
-            name.setToolTip("\n".join(str(p) for p in it.paths) or it.helper_command)
-            self.table.setItem(row, COL_NAME, name)
-            desc = QTableWidgetItem(it.description + (f"  {it.note}" if it.note else ""))
-            desc.setToolTip(desc.text())
-            desc.setForeground(QColor(theme.MUTED))
-            self.table.setItem(row, COL_DESC, desc)
-            size = QTableWidgetItem(human(it.size) if it.size else "-")
-            size.setFont(mono("body"))
-            size.setTextAlignment(int(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter))
-            self.table.setItem(row, COL_SIZE, size)
-            text, colour = self._note_for(it, root_ok)
-            root = QTableWidgetItem(text)
-            root.setForeground(QColor(colour))
-            root.setToolTip("Can be emptied while the program runs; it recreates what it needs, "
-                            "but may stumble for a moment. Closing it first is cleaner."
-                            if text.startswith("running") else "")
-            self.table.setItem(row, COL_ROOT, root)
-            if not usable:
-                for col in range(len(HEADERS)):
-                    self.table.item(row, col).setForeground(QColor(theme.FAINT))
-        self.table.blockSignals(False)
+                row.set_activatable(True)      # a click anywhere on the row ticks it
+                row.activated.connect(box.toggle)
+            else:
+                row.dim("FAINT")
+            self.list.add_row(row)
+            self._checks.append(box)
+            self._notes.append(note)
         self._recount()
 
     def _selected(self) -> list[CleanupItem]:
-        out = []
-        for row, it in enumerate(self.items):
-            cell = self.table.item(row, COL_ON)
-            if cell is not None and cell.checkState() == Qt.CheckState.Checked:
-                out.append(it)
-        return out
+        return [it for it, box in zip(self.items, self._checks, strict=False)
+                if box.isChecked()]
 
     def _recount(self, *_) -> None:
         sel = self._selected()

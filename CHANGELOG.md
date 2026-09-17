@@ -3,6 +3,30 @@
 All notable changes, newest first. Versions are git tags on
 [github.com/outing69/ArchPM](https://github.com/outing69/ArchPM).
 
+## 0.2.28 (2026-09-17)
+
+- Stage three of the GNOME look, second part: boxed lists. Startup, Cleanup
+  and System show their grouped information as rows in one rounded box with
+  a line between them, a title and a subtitle per row and the group's note
+  above the box, instead of tables and key-value grids. Startup: one row per
+  autostart entry with its status, its kind and source and a switch, on in
+  the selection blue as a ticked box is; the session's services underneath
+  in a group of their own. Cleanup: one row per item with a check box, the
+  reason, the note and the size, and a click anywhere on the row ticks it.
+  System: the failed services as rows under the group's head, with the
+  Refresh button at the head's right, and the specs as property rows, the
+  name small over the value in full, wrapping and selectable, in two
+  columns when the window is wide enough for them and one when it is not.
+  Each of the three pages scrolls as a whole. When a row is narrow the kind
+  and source on Startup go first and the name keeps its room; the window's
+  minimum width is still the Overview's. The Processes and Network tables
+  are untouched, since data views stay dense; the navigation rail and the
+  yellow accent are as they were.
+- The toast at start that named the status file's path is gone. It was the
+  only message that came without the user doing anything, and the path is
+  developer information. It is on the System page instead, in the ArchPM
+  group as the row "Status file", and in Copy as text.
+
 ## 0.2.27 (2026-09-16)
 
 - Stage three of the GNOME look, first part: the header bar, the controls

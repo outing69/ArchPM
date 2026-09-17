@@ -68,11 +68,15 @@ TOKENS = tuple(DARK)
 # row height follows readability, not Adwaita's row spacing. The header bar
 # is Adwaita's 47 px including its bottom line; the focus ring is 2 px and
 # the overlay scrollbar's handle 6 px, over the content instead of beside it.
+# A boxed list's rows are at least 44 px with 10 px above and below the text
+# and 14 px at the sides; the switch is a 40 by 22 pill.
 SHAPE = {
     "RADIUS_CARD": 12, "RADIUS_CONTROL": 9, "RADIUS_SMALL": 6, "RADIUS_TAG": 5,
     "BUTTON_H": 34, "BUTTON_PAD_X": 16, "FIELD_PAD_X": 10,
     "PAGE_MARGIN": 18, "CARD_GAP": 12, "CARD_PAD": 18, "CARD_PAD_Y": 14, "TILE_PAD": 12,
     "ROW_H": 26, "RAIL_ITEM_H": 44, "HEADER_H": 47, "FOCUS_W": 2, "SCROLL_W": 6,
+    "LIST_ROW_H": 44, "LIST_PAD_X": 14, "LIST_PAD_Y": 10, "GROUP_GAP": 24,
+    "SWITCH_W": 40, "SWITCH_H": 22,
     "FONT_TITLE": 12, "FONT_BODY": 10, "FONT_SMALL": 8.5,
 }
 SHAPE_TOKENS = tuple(SHAPE)
@@ -130,6 +134,12 @@ RAIL_ITEM_H = SHAPE["RAIL_ITEM_H"]
 HEADER_H = SHAPE["HEADER_H"]
 FOCUS_W = SHAPE["FOCUS_W"]
 SCROLL_W = SHAPE["SCROLL_W"]
+LIST_ROW_H = SHAPE["LIST_ROW_H"]
+LIST_PAD_X = SHAPE["LIST_PAD_X"]
+LIST_PAD_Y = SHAPE["LIST_PAD_Y"]
+GROUP_GAP = SHAPE["GROUP_GAP"]
+SWITCH_W = SHAPE["SWITCH_W"]
+SWITCH_H = SHAPE["SWITCH_H"]
 FONT_TITLE = SHAPE["FONT_TITLE"]
 FONT_BODY = SHAPE["FONT_BODY"]
 FONT_SMALL = SHAPE["FONT_SMALL"]
@@ -163,6 +173,8 @@ def current() -> dict:
     out["BUTTON_INNER_FOCUS"] = out["BUTTON_INNER"] - 2 * grow
     out["BUTTON_PAD_X_FOCUS"] = SHAPE["BUTTON_PAD_X"] - grow
     out["FIELD_PAD_X_FOCUS"] = SHAPE["FIELD_PAD_X"] - grow
+    # a row's corners inside a boxed list's 1 px border
+    out["RADIUS_INNER"] = SHAPE["RADIUS_CARD"] - 1
     return out
 
 
@@ -451,6 +463,22 @@ QGroupBox::title {{
     subcontrol-origin: margin; left: 12px; padding: 0 6px;
     color: {MUTED}; font-size: {FONT_SMALL}pt; font-weight: 700;
 }}
+
+/* boxed lists: a group's rows in one rounded box, a line between rows; a
+   row that does something lights on hover, and the end rows keep the
+   box's corners */
+#boxedlist {{
+    background: {SURFACE}; border: 1px solid {BORDER}; border-radius: {RADIUS_CARD}px;
+}}
+#listrow {{ background: transparent; border: none; border-top: 1px solid {BORDER}; }}
+#listrow[first="true"] {{
+    border-top: none;
+    border-top-left-radius: {RADIUS_INNER}px; border-top-right-radius: {RADIUS_INNER}px;
+}}
+#listrow[last="true"] {{
+    border-bottom-left-radius: {RADIUS_INNER}px; border-bottom-right-radius: {RADIUS_INNER}px;
+}}
+#listrow[activatable="true"]:hover {{ background: {SURFACE_HI}; }}
 
 /* header bar: the title and the window's few controls, flat until hovered */
 #headerbar {{ background: {SURFACE}; border-bottom: 1px solid {BORDER}; }}

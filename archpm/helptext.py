@@ -321,7 +321,7 @@ GLOSSARY: tuple[Section, ...] = (
         Term("Desktop · keep on",
              "Entries that are parts of KDE Plasma itself: panels, shortcuts, power "
              "management, the password prompt. Switching them off breaks the next login.",
-             "Startup tab, Kind column"),
+             "Startup tab, next to the switch"),
         Term("Cache",
              "Data a program keeps to be faster next time: web pages, thumbnails, compiled "
              "shaders, downloaded packages. Deleting it costs a slower first start, never "
@@ -465,7 +465,7 @@ HINTS: dict[str, Hint] = {
     "net.details": Hint("Sockets and process ids; a process row lists its ports here while "
                         "closed. Expand a row for each address and port.", "Port"),
     # -- Startup ------------------------------------------------------------------
-    "startup.on": Hint("Ticked: starts at your next login. Untick to stop that; nothing "
+    "startup.on": Hint("On: starts at your next login. Switch it off to stop that; nothing "
                        "is closed now.", "Autostart entry"),
     "startup.name": Hint("The program that starts when you log in.", "Autostart entry"),
     "startup.what": Hint("What the program is for, from its menu entry.", "Autostart entry"),

@@ -6,11 +6,8 @@ import time
 from PySide6.QtCore import Qt, QThread, Signal, Slot
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import (
-    QGridLayout,
-    QHBoxLayout,
     QLabel,
     QPushButton,
-    QScrollArea,
     QVBoxLayout,
     QWidget,
 )
@@ -18,7 +15,7 @@ from PySide6.QtWidgets import (
 from .. import sysinfo
 from ..failed import SESSION, FailedReport
 from . import theme
-from .widgets import Card, FlowLayout, mono
+from .widgets import BoxedList, Columns, FlowLayout, ListRow, scrolling
 
 
 class _Gather(QThread):
@@ -60,14 +57,15 @@ class SystemView(QWidget):
         head.addWidget(btn)
         outer.addLayout(head)
 
-        # -- failed services, above the cards: a snapshot, read-only ---------
-        self.failed_card = Card("Failed services")
-        self.failed_body = QVBoxLayout()
-        self.failed_body.setSpacing(6)
-        frow = QHBoxLayout()
-        self.lbl_failed_state = QLabel("not checked yet")
-        theme.style(self.lbl_failed_state, "color: {MUTED};")
-        frow.addWidget(self.lbl_failed_state, 1)
+        # -- failed services, above the specs: a snapshot, read-only ---------
+        # The whole page scrolls: this group, then the spec groups, in two
+        # columns when the window is wide enough for them.
+        page = QWidget()
+        groups = QVBoxLayout(page)
+        groups.setContentsMargins(0, 0, 0, 0)
+        groups.setSpacing(theme.GROUP_GAP)
+        self.failed_list = BoxedList("Failed services", "not checked yet")
+        self.lbl_failed_state = self.failed_list.description
         # Named for what it refreshes: the page's own Refresh, next to it,
         # rereads the machine's specs and does not touch this block.
         self.btn_failed = QPushButton("Refresh failed services")
@@ -75,53 +73,36 @@ class SystemView(QWidget):
                                    "This is the only other time the check runs; it is not on a "
                                    "timer. The page's Refresh above rereads the machine's specs.")
         self.btn_failed.clicked.connect(self.refresh_failed.emit)
-        frow.addWidget(self.btn_failed)
-        self.failed_card.body.addLayout(frow)
-        self.failed_card.body.addLayout(self.failed_body)
-        outer.addWidget(self.failed_card)
-
-        self.scroll = QScrollArea()
-        self.scroll.setWidgetResizable(True)
-        self.scroll.setFrameShape(QScrollArea.Shape.NoFrame)
-        self.body = QWidget()
-        self.body_lay = QVBoxLayout(self.body)
-        self.body_lay.setContentsMargins(0, 0, 0, 0)
-        self.body_lay.setSpacing(theme.CARD_GAP)
-        self.body_lay.addStretch(1)
-        self.scroll.setWidget(self.body)
-        outer.addWidget(self.scroll, 1)
+        self.failed_list.set_suffix(self.btn_failed)
+        groups.addWidget(self.failed_list)
+        self.columns = Columns(theme.GROUP_GAP)
+        groups.addWidget(self.columns)
+        groups.addStretch(1)
+        outer.addWidget(scrolling(page), 1)
 
     def set_failed(self, report: FailedReport) -> None:
-        """One row per failed unit with its last log lines; one line when none."""
-        while self.failed_body.count():
-            item = self.failed_body.takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
+        """One row per failed unit with its last log lines; one row when none."""
+        self.failed_list.clear()
         when = time.strftime("%H:%M:%S", time.localtime(report.taken_at))
         self.lbl_failed_state.setText(
             f"checked at {when} in {report.took_ms:.0f} ms" + (f"  ·  {report.error}"
                                                               if report.error else ""))
         if not report.units:
-            line = QLabel("No failed services found.")
-            theme.style(line, "color: {MUTED};")
-            self.failed_body.addWidget(line)
+            row = ListRow("No failed services found.")
+            row.dim("MUTED")
+            self.failed_list.add_row(row)
             return
         for u in report.units:
             scope = "service of your session" if u.scope == SESSION else "system service"
             since = f"  ·  failed since {u.since}" if u.since else ""
-            head = QLabel(f"<b>{u.title}</b>&nbsp;&nbsp;<span style='color:{theme.MUTED}; "
-                          f"font-size: {theme.FONT_SMALL}pt'>{u.unit}</span><br>"
-                          f"<span style='color:{theme.MUTED}'>{scope}{since}</span>")
-            head.setTextFormat(Qt.TextFormat.RichText)
-            head.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-            self.failed_body.addWidget(head)
+            row = ListRow(u.title, f"{u.unit}  ·  {scope}{since}")
             body = QLabel("\n".join(u.log) if u.log else u.note)
-            body.setFont(mono("small"))
             body.setWordWrap(True)
-            theme.style(body,
-                        "color: {" + ("MUTED" if u.log else "WARN") + "}; padding-left: 12px;")
+            theme.style(body, "color: {" + ("MUTED" if u.log else "WARN") + "}; margin-top: 4px;"
+                        " font-family: monospace; font-size: {FONT_SMALL}pt;")
             body.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-            self.failed_body.addWidget(body)
+            row.add_body(body)
+            self.failed_list.add_row(row)
 
     def showEvent(self, event) -> None:
         super().showEvent(event)
@@ -147,29 +128,13 @@ class SystemView(QWidget):
     def _loaded(self, sections) -> None:
         self.sections = sections
         self.lbl_state.setText("")
-        while self.body_lay.count() > 1:  # keep the trailing stretch
-            item = self.body_lay.takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
+        groups = []
         for title, rows in sections:
-            card = Card(title)
-            grid = QGridLayout()
-            grid.setHorizontalSpacing(18)
-            grid.setVerticalSpacing(4)
-            grid.setColumnStretch(1, 1)
-            for r, (k, v) in enumerate(rows):
-                key = QLabel(k)
-                theme.style(key, "color: {MUTED};")
-                key.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignTop)
-                key.setMinimumWidth(130)  # same label column in every card
-                val = QLabel(v)
-                val.setFont(mono("body"))
-                val.setWordWrap(True)
-                val.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-                grid.addWidget(key, r, 0)
-                grid.addWidget(val, r, 1)
-            card.body.addLayout(grid)
-            self.body_lay.insertWidget(self.body_lay.count() - 1, card)
+            group = BoxedList(title)
+            for k, v in rows:
+                group.add_row(ListRow(k, v, property=True, mono=True))
+            groups.append((group, len(rows) + 1))
+        self.columns.set_groups(groups)
 
     def _copy(self) -> None:
         if not self.sections:
