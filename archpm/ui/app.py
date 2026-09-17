@@ -20,7 +20,6 @@ from PySide6.QtWidgets import (
 from .. import APP_NAME, __version__, failed, signalguard
 from ..actions import ActionError, get_backend
 from ..model import Snapshot
-from ..publisher import status_path
 from ..root.client import ElevatedBackend, RootClient
 from . import chrome, theme
 from .chrome import HeaderBar, Toast
@@ -471,7 +470,6 @@ def main() -> int:
     app.aboutToQuit.connect(server.close)
     win.show()
     win.check_failed_services()
-    win.toast.show_message(f"Status for the widget: {status_path()}", 6000)
     if request == END_GAME:
         win.end_game()
     return app.exec()

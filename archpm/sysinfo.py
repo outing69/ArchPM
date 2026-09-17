@@ -19,6 +19,7 @@ import psutil
 from . import __version__
 from .appinfo import read_environ
 from .gpu import sysfs_name
+from .publisher import status_path
 
 Section = tuple[str, list[tuple[str, str]]]
 
@@ -210,6 +211,7 @@ def archpm_section() -> Section:
         ("PySide6", qt),
         ("psutil", psutil.__version__),
         ("Root helper", helper),
+        ("Status file", str(status_path())),
         ("Session", f"uid {os.getuid()}, {read_environ(os.getpid()).get('XDG_SESSION_ID', '?')}"),
     ]
 
