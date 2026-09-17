@@ -10,14 +10,19 @@ install=archpm.install
 depends=('python' 'pyside6' 'python-psutil' 'polkit' 'iproute2')
 optdepends=('plasma-desktop: the Monitor and Network widgets'
             'adwaita-icon-theme: the Adwaita icons on the navigation rail'
-            'pacman-contrib: clean the package cache from the Cleanup tab'
+            'pacman-contrib: clean the package cache from the Cleanup page'
             'nvidia-utils: NVIDIA GPU telemetry via nvidia-smi'
             'hwdata: proper names for AMD GPUs')
 makedepends=('python-build' 'python-installer' 'python-wheel' 'python-setuptools')
-source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
+# The source is the commit the release tag's code is at, not the tag's own
+# tarball: a tag tarball would contain this PKGBUILD, whose checksum cannot
+# be known before the tag exists. Pinned to the commit, the tag can carry the
+# PKGBUILD that builds it, so "git checkout vX && makepkg -si" builds X.
+_commit=COMMIT_PLACEHOLDER
+source=("$pkgname-$pkgver.tar.gz::$url/archive/$_commit.tar.gz")
 sha256sums=('c394d1b1313cb2117540c041dc358ee1f0f58c34339b7f26eeea4b8e457a1fc9')
 
-_src="ArchPM-$pkgver"
+_src="ArchPM-$_commit"
 _helper=/usr/lib/archpm/archpm-helper
 _plasmoid=io.github.outing69.archpm
 

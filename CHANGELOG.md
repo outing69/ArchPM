@@ -3,6 +3,30 @@
 All notable changes, newest first. Versions are git tags on
 [github.com/outing69/ArchPM](https://github.com/outing69/ArchPM).
 
+## 0.2.37 (2026-09-17)
+
+- README brought back to what the application does after fifteen releases,
+  every claim checked against the code and every command run: the verdict
+  line and Root tasks at the foot of the Overview, the game card's own
+  verdict and colour rule, the Processes page's sections, counts, roles and
+  three views, Startup's Enabled and Disabled groups and its confirmation
+  that is not a password, the System page's failed services block, the
+  confirmation for a single process, the offer to force what stays and the
+  sentence that it cannot be undone, the theme, the header bar, and the
+  words the application now uses. The agent measured again: 3.6% of one
+  core over 3 h 19 min of desktop use, a sample about 75 ms.
+- The install section leads with the package, built from a release tag with
+  makepkg -si, and says plainly that the package is ready and waiting for
+  the AUR to reopen. The checkout route with install.sh comes second.
+- A release tag now builds itself. The PKGBUILD's source was the tag's own
+  tarball, whose checksum can only be committed after the tag exists, so
+  every tag so far carried the PKGBUILD of the release before it. The
+  source is now pinned to the commit the release is built from, and the tag
+  sits on the commit that carries the matching PKGBUILD.
+- Seven new screenshots, one per page, the window as the application
+  renders it at 1299 by 982, the rail pinned on the Overview and collapsed
+  on the rest. The widget images are unchanged.
+
 ## 0.2.36 (2026-09-17)
 
 - Processes: a section header counts what it names. "Apps (55)" counted
