@@ -72,9 +72,25 @@ ADWAITA_ICONS = {
     "Help": "help-about-symbolic",
     "Menu": "open-menu-symbolic",
 }
+# Icons for a kind of thing that has no icon of its own: the four kinds of
+# a Startup entry and the three sections of the process list. (Adwaita
+# symbolic name, Breeze name); both checked with QIcon.hasThemeIcon on the
+# development machine. The Adwaita names count towards the all-or-nothing
+# rule: one missing keeps the whole application on Breeze.
+KIND_ICONS = {
+    "App": ("application-x-executable-symbolic", "application-x-executable"),
+    "System": ("package-x-generic-symbolic", "package-x-generic"),
+    "Desktop": ("user-desktop-symbolic", "user-desktop"),
+    "override": ("document-edit-symbolic", "document-edit"),
+    "apps": ("application-x-executable-symbolic", "application-x-executable"),
+    "background": ("system-run-symbolic", "system-run"),
+    "system": ("computer-symbolic", "computer"),
+}
+KIND_SIZE = QSize(16, 16)
 ADWAITA = "Adwaita"
 BREEZE = {"breeze", "breeze-dark"}
 _icon_set: dict = {}     # "name": "adwaita" | "breeze", "missing": [...]
+_kind_icons: dict = {}   # (kind, colour token, mode) -> QIcon
 
 
 def pick_icon_name(name: str, fallback: str, has=None) -> str:
@@ -106,14 +122,16 @@ def _ensure_search_paths() -> None:
 
 
 def adwaita_missing(has=None) -> list[str]:
-    """The names of ADWAITA_ICONS that Adwaita does not resolve; empty when
-    the whole set is there. The theme name is put back afterwards."""
+    """The names of ADWAITA_ICONS and KIND_ICONS that Adwaita does not
+    resolve; empty when the whole set is there. The theme name is put back
+    afterwards."""
     has = QIcon.hasThemeIcon if has is None else has
     _ensure_search_paths()
     before = QIcon.themeName()
     QIcon.setThemeName(ADWAITA)
     try:
-        return [name for name in ADWAITA_ICONS.values() if not has(name)]
+        names = list(ADWAITA_ICONS.values()) + [a for a, _ in KIND_ICONS.values()]
+        return [name for name in dict.fromkeys(names) if not has(name)]
     finally:
         QIcon.setThemeName(before)
 
@@ -170,6 +188,26 @@ def page_icon(label: str, color: str) -> QIcon:
             return tinted(QIcon(path), color, ICON)
     name, fallback = MENU_ICON if label == "Menu" else PAGE_ICONS.get(label, ("", ""))
     return theme_icon(name, fallback)
+
+
+def kind_icon(kind: str, color: str = "MUTED") -> QIcon:
+    """The icon for a kind of entry or a section of processes, for a row
+    that has no icon of its own: the Adwaita symbolic file tinted in
+    `color`, or the Breeze icon as the theme paints it. Cached per mode."""
+    key = (kind, color, theme.mode())
+    icon = _kind_icons.get(key)
+    if icon is None:
+        adwaita, breeze = KIND_ICONS.get(kind, ("", ""))
+        icon = QIcon()
+        if icon_set()["name"] == "adwaita":
+            path = adwaita_file(adwaita)
+            if path:
+                icon = tinted(QIcon(path), theme.resolve(color), KIND_SIZE)
+        if icon.isNull() and breeze:
+            _ensure_search_paths()
+            icon = QIcon.fromTheme(breeze)
+        _kind_icons[key] = icon
+    return icon
 
 
 def match_breeze_to_mode(light: bool) -> None:

@@ -3,6 +3,29 @@
 All notable changes, newest first. Versions are git tags on
 [github.com/outing69/ArchPM](https://github.com/outing69/ArchPM).
 
+## 0.2.30 (2026-09-17)
+
+- Startup: switching off an entry marked Desktop · keep on, or a System
+  entry, asks first and names what you lose at the next login, in plain
+  words: "the panel, the desktop and its widgets" for Plasma, "every
+  password prompt for a root task, including ArchPM's own" for the
+  PolicyKit agent, and so on. Not a password: the entry lives in your own
+  autostart folder, which a text editor could change just as well, so a
+  prompt would guard nothing. The wording comes from the one list of the
+  session's pieces (session.py) where the entry runs one of them, and
+  from a short line per entry where it does not; an entry ArchPM does not
+  know gets what its menu entry says it does. Switching an entry back on
+  asks nothing.
+- Icons for a kind where an entry or a process has none of its own. On
+  Startup a program with its own icon keeps it; the rest show the icon of
+  their kind: App, System, Desktop · keep on, and a system entry with your
+  own copy over it. In the process list a process without an icon shows
+  the icon of the section it sits in: Apps, Background processes or
+  System processes, whether or not the sections are shown. The names come
+  from the icon theme, Adwaita's symbolic set tinted like the rail's icons
+  when every name resolves, else Breeze's, the same all-or-nothing rule as
+  the rail; no icon files are shipped.
+
 ## 0.2.29 (2026-09-17)
 
 - Cleanup: a root row with nothing to remove says so. The two root rows

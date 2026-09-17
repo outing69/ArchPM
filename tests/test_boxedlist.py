@@ -185,12 +185,98 @@ class Pages(unittest.TestCase):
         v.auto.set_enabled.assert_called_once()
         self.assertEqual(v.auto.set_enabled.call_args[0][1], True)
         self.assertEqual(said, ["Alpha will start at login"])
-        # a refused essential entry stays on
-        v._confirm_essential = lambda e: False
+        # a refused desktop entry stays on
+        v._confirm_off = lambda e: False
         plasma = v.list.rows()[2].suffix[-1]
         plasma.toggle()
         self.assertTrue(plasma.isChecked())
         self.assertEqual(v.auto.set_enabled.call_count, 1)
+
+    def test_switching_off_a_desktop_or_system_entry_asks_and_names_the_loss(self):
+        from archpm.ui.startup import StartupView
+        v = StartupView()
+        v.auto = mock.Mock()
+        plasma = entry("Plasma", kind="Desktop")
+        plasma.exec = "/usr/bin/plasmashell"
+        plasma.id = "org.kde.plasmashell.desktop"
+        access = entry("Accessibility", kind="Desktop")
+        access.id, access.exec = "kaccess.desktop", "kaccess"
+        stranger = entry("Stranger", kind="System")
+        stranger.id, stranger.exec = "stranger.desktop", "/opt/stranger/bin/stranger"
+        app = entry("Zed")
+        v.auto.entries.return_value = [app, stranger, plasma, access]
+        v._fill_services = lambda: None
+        v.reload()
+        # the shared wording, the entry's own line, and what is known of a stranger
+        self.assertEqual(v.loss_of(plasma), "the panel, the desktop and its widgets")
+        self.assertEqual(v.loss_of(access),
+                         "sticky keys, slow keys and the other accessibility features")
+        self.assertEqual(v.loss_of(stranger), "what it does: Stranger does things")
+        asked = []
+        v._confirm_off = lambda e: asked.append(e.name) or False
+        rows = {r.title.text(): r for r in v.list.rows()}
+        for name in ("Stranger", "Plasma", "Accessibility"):
+            rows[name].suffix[-1].toggle()          # off: asks, refused, stays on
+            self.assertTrue(rows[name].suffix[-1].isChecked())
+        self.assertEqual(asked, ["Stranger", "Plasma", "Accessibility"])
+        v.auto.set_enabled.assert_not_called()
+        rows["Zed"].suffix[-1].toggle()             # an app: no question
+        self.assertEqual(asked, ["Stranger", "Plasma", "Accessibility"])
+        self.assertEqual(v.auto.set_enabled.call_count, 1)
+        # back on asks nothing, for any kind
+        off = entry("Plasma", kind="Desktop", enabled=False)
+        off.id, off.exec = plasma.id, plasma.exec
+        v.auto.entries.return_value = [off]
+        v.reload()
+        v.list.rows()[0].suffix[-1].toggle()
+        self.assertEqual(asked, ["Stranger", "Plasma", "Accessibility"])
+        self.assertEqual(v.auto.set_enabled.call_args[0][1], True)
+
+    def test_an_entry_without_an_icon_shows_the_icon_of_its_kind(self):
+        from archpm.ui import navrail
+        from archpm.ui.startup import StartupView
+        v = StartupView()
+        v.auto = mock.Mock()
+        plain = entry("Plain")
+        over = entry("Over", kind="System")
+        over.system_path = Path("/etc/xdg/autostart/over.desktop")
+        v.auto.entries.return_value = [plain, over, entry("Desk", kind="Desktop")]
+        v._fill_services = lambda: None
+        v.reload()
+        rows = v.list.rows()
+        self.assertEqual([v._kind_key(e) for e in v.entries], ["App", "System", "Desktop"]
+                         if not over.is_override else ["App", "override", "Desktop"])
+        self.assertTrue(over.is_override)
+        if navrail.icon_set()["name"] == "adwaita" or navrail.kind_icon("App").isNull():
+            pass
+        for r in rows:
+            pm = r.prefix.pixmap()
+            self.assertFalse(pm.isNull(), "the kind's icon fills the slot")
+        self.assertEqual(rows[1].prefix.toolTip(), "A system entry with your own copy over it")
+        for kind in navrail.KIND_ICONS:
+            self.assertFalse(navrail.kind_icon(kind).isNull(), kind)
+
+    def test_a_process_without_an_icon_shows_its_sections_icon(self):
+        from archpm.model import ProcSample
+        from archpm.ui import navrail
+        from archpm.ui.proc_model import COL_NAME, ProcModel
+        m = ProcModel(16)
+        user = "/user.slice/user-1000.slice/user@1000.service"
+        app = ProcSample(pid=10, name="game", cgroup=user + "/app.slice/app-steam-1.scope",
+                         uid=1000)
+        bg = ProcSample(pid=11, name="daemon", cgroup=user + "/background.slice/x.service",
+                        uid=1000)
+        sysd = ProcSample(pid=12, name="kthread", cgroup="/", uid=0)
+        m.mode = "flat"
+        m.update([app, bg, sysd])
+        got = {}
+        for row in range(m.rowCount()):
+            idx = m.index(row, COL_NAME)
+            got[m.data(idx, Qt.ItemDataRole.DisplayRole)] = m.data(
+                idx, Qt.ItemDataRole.DecorationRole)
+        for name, key in (("game", "apps"), ("daemon", "background"), ("kthread", "system")):
+            self.assertIsNotNone(got[name], name)
+            self.assertEqual(got[name].cacheKey(), navrail.kind_icon(key).cacheKey(), name)
 
     def test_startup_shows_the_other_desktop_rows_dimmed_when_asked(self):
         from archpm.ui.startup import StartupView

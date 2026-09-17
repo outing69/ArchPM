@@ -28,6 +28,7 @@ from ..model import ProcSample
 from ..sections import ABOUT, KEY_OF_PID, LABEL, RANK, SECTION_PID, is_section, section_of, uid_min
 from . import theme
 from .hints import tooltip_html
+from .navrail import kind_icon
 from .widgets import app_icon, human_bytes
 
 SORT_ROLE = Qt.ItemDataRole.UserRole + 1
@@ -254,10 +255,15 @@ class ProcModel(QAbstractItemModel):
                 return font
             return None
         if role == Qt.ItemDataRole.DecorationRole:
-            if col == COL_NAME and p.icon:
+            if col != COL_NAME or is_section(p.pid):
+                return None
+            if p.icon:
                 icon = app_icon(p.icon)
-                return None if icon.isNull() else icon
-            return None
+                if not icon.isNull():
+                    return icon
+            # no icon of its own: the icon of the section it sits in
+            icon = kind_icon(self._section_key(p))
+            return None if icon.isNull() else icon
         if role == Qt.ItemDataRole.ToolTipRole:
             if is_section(p.pid):
                 return wrap_tip([ABOUT[KEY_OF_PID[p.pid]]])
@@ -445,6 +451,13 @@ class ProcModel(QAbstractItemModel):
         return bool(node and node.children)
 
     # -- updates --------------------------------------------------------------
+    def _section_key(self, p: ProcSample) -> str:
+        """The section a row sits in, whether or not the sections are shown."""
+        spid = self._section_of.get(p.pid) if self.sectioned else None
+        if spid is not None:
+            return KEY_OF_PID[spid]
+        return section_of(p.cgroup, p.uid, self._uid_min)[0]
+
     def _desired_parent_pid(self, p: ProcSample, incoming: dict[int, ProcSample]) -> int:
         if self.sectioned:
             if is_section(p.pid):

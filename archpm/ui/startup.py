@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from functools import partial
 
-from PySide6.QtCore import Signal
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QFontMetrics
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -16,12 +16,18 @@ from PySide6.QtWidgets import (
 
 from ..actions import ActionError, UserBackend
 from ..autostart import Autostart, StartupEntry, running_pids, tilde
+from ..session import autostart_loss
 from . import theme
+from .navrail import kind_icon
 from .widgets import BoxedList, ElidedLabel, FlowLayout, ListRow, Switch, app_icon, scrolling
 
 KIND_ORDER = {"App": 0, "System": 1, "Desktop": 2}
 KIND_LABEL = {"App": "App", "System": "System", "Desktop": "Desktop · keep on"}
 ICON = 24
+KIND_ICON = 16      # a kind's symbolic icon at its own size, centred in the slot
+KIND_TIP = {"App": "Your own entry", "System": "Installed with the system",
+            "Desktop": "Part of your desktop session",
+            "override": "A system entry with your own copy over it"}
 NARROW_ROW = 600    # px: under this a row shows no kind and source; the title keeps its room
 
 
@@ -123,6 +129,11 @@ class StartupView(QWidget):
             self.svc_list.add_row(row)
 
     @staticmethod
+    def _kind_key(e: StartupEntry) -> str:
+        """Which kind icon an entry without its own gets."""
+        return "override" if e.is_override else e.kind
+
+    @staticmethod
     def _meta(e: StartupEntry) -> str:
         """Kind and source in one short line: 'App · User', 'System · User (override)'."""
         source = e.source + (" (override)" if e.is_override else "")
@@ -139,7 +150,12 @@ class StartupView(QWidget):
         for e in self.entries:
             icon = QLabel()
             icon.setFixedSize(ICON, ICON)      # the slot stays, so the titles line up
+            icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
             pm = app_icon(e.icon).pixmap(ICON, ICON)
+            if pm.isNull():
+                # no icon of its own: the icon of its kind, or of the override
+                pm = kind_icon(self._kind_key(e)).pixmap(KIND_ICON, KIND_ICON)
+                icon.setToolTip(KIND_TIP[self._kind_key(e)])
             if not pm.isNull():
                 icon.setPixmap(pm)
 
@@ -191,7 +207,10 @@ class StartupView(QWidget):
     def _toggled(self, entry: StartupEntry, switch: Switch, enabled: bool) -> None:
         if self._loading:
             return
-        if not enabled and entry.essential and not self._confirm_essential(entry):
+        # Off for a piece of the desktop or a system entry: a confirmation
+        # that names the consequence. Not a password: the entry lives in the
+        # user's own folder, which a text editor could change just as well.
+        if not enabled and entry.kind in ("Desktop", "System") and not self._confirm_off(entry):
             switch.set_checked(True)
             return
         try:
@@ -204,16 +223,31 @@ class StartupView(QWidget):
         self.status.emit(f"{entry.name} {verb}")
         self.reload()
 
-    def _confirm_essential(self, entry: StartupEntry) -> bool:
-        what = entry.description or entry.exec
-        answer = QMessageBox.warning(
-            self, "This is part of your desktop",
-            f"<b>{entry.name}</b> is part of the desktop session itself.<br><br>"
-            f"{what}<br><br>"
-            "If it does not start, your next login may come up without panels, shortcuts, "
-            "password prompts or power management. This is not a way to make the PC faster."
-            "<br><br>Switch it off anyway?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No,
+    @staticmethod
+    def loss_of(entry: StartupEntry) -> str:
+        """What the user loses at the next login: the shared line for a piece
+        of the session, the entry's own line, or what is known of it."""
+        program = entry.exec.split()[0].rsplit("/", 1)[-1] if entry.exec else ""
+        loss = autostart_loss(entry.id, program)
+        if loss:
+            return loss
+        what = entry.description or program or entry.name
+        return f"what it does: {what}"
+
+    def _confirm_off(self, entry: StartupEntry) -> bool:
+        part = ("part of your desktop session" if entry.kind == "Desktop"
+                else "installed with the system")
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Warning)
+        box.setWindowTitle(f"Switch off {entry.name}?")
+        box.setText(f"<b>{entry.name}</b> is {part}. Off, at your next login you lose "
+                    f"{self.loss_of(entry)}.")
+        box.setInformativeText(
+            "Nothing is closed now. The change is a line in a file in your own folder, "
+            "and switching it back on undoes it; that asks nothing."
         )
-        return answer == QMessageBox.StandardButton.Yes
+        off = box.addButton("Switch off", QMessageBox.ButtonRole.DestructiveRole)
+        keep = box.addButton("Keep on", QMessageBox.ButtonRole.RejectRole)
+        box.setDefaultButton(keep)
+        box.exec()
+        return box.clickedButton() is off

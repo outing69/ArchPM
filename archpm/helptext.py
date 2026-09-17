@@ -320,7 +320,9 @@ GLOSSARY: tuple[Section, ...] = (
              "Startup tab"),
         Term("Desktop · keep on",
              "Entries that are parts of KDE Plasma itself: panels, shortcuts, power "
-             "management, the password prompt. Switching them off breaks the next login.",
+             "management, the password prompt. Switching one off, or a system entry, "
+             "first asks and names what you lose at the next login; switching it back "
+             "on asks nothing.",
              "Startup tab, next to the switch"),
         Term("Cache",
              "Data a program keeps to be faster next time: web pages, thumbnails, compiled "
