@@ -1,6 +1,6 @@
 # Maintainer: Alex <https://github.com/outing69>
 pkgname=archpm
-pkgver=0.2.37
+pkgver=0.2.38
 pkgrel=1
 pkgdesc="Process manager and monitor for a Linux gaming PC: PySide6 GUI, sampler agent and two Plasma 6 widgets"
 arch=('any')
@@ -18,9 +18,9 @@ makedepends=('python-build' 'python-installer' 'python-wheel' 'python-setuptools
 # tarball: a tag tarball would contain this PKGBUILD, whose checksum cannot
 # be known before the tag exists. Pinned to the commit, the tag can carry the
 # PKGBUILD that builds it, so "git checkout vX && makepkg -si" builds X.
-_commit=1b3d640b6d238cc719353c5a325d49fea8da0f25
+_commit=3b1f93bf084cbb3efbc35d88303dfc0c53ea80ed
 source=("$pkgname-$pkgver.tar.gz::$url/archive/$_commit.tar.gz")
-sha256sums=('9fda2221bc86e5c64e13e36da7abac8f1897629e09a1f80d411aee56c3f88264')
+sha256sums=('dccac0ba9a6ba383247920d398bcb0589cc9a69a6b1fe682cc7772ef460a9df6')
 
 _src="ArchPM-$_commit"
 _helper=/usr/lib/archpm/archpm-helper
