@@ -141,14 +141,25 @@ class Confirmations(unittest.TestCase):
         self.assertIn("and 4 more.", v.text)
         self.assertNotIn("worker9", v.text)
 
-    def test_list_all_names_every_process_for_a_group(self):
+    def test_a_group_says_what_goes_with_it_and_lists_no_ids(self):
         procs = [proc(9000 + i, f"worker{i}") for i in range(12)]
         procs[0].app_name = "Brave"
+        for p, role in zip(procs[1:], ["page", "page", "page", "extension", "graphics",
+                                       "network", "audio", "helper", "helper"], strict=False):
+            p.role = role
         v = verdict(procs, "TERM", tree=True, always_ask=True, list_all=True)
         self.assertEqual(v.title, "Ask Brave and 11 more to quit?")
+        self.assertIn("Brave and everything that belongs to it: 12 processes, among them "
+                      "3 pages, 1 extension process, the graphics, 4 helpers. "
+                      "Every open page closes with it.", v.text)
         for p in procs:
-            self.assertIn(f"{p.display_name} ({p.pid})", v.text)
-        self.assertNotIn("more.", v.text)
+            self.assertNotIn(f"({p.pid})", v.text)
+        self.assertNotIn("Command:", v.text)
+        plain = [proc(9100 + i, f"w{i}") for i in range(3)]
+        plain[0].app_name = "PyCharm"
+        v = verdict(plain, "TERM", tree=True, always_ask=True, list_all=True)
+        self.assertIn("PyCharm and everything that belongs to it: 3 processes.", v.text)
+        self.assertNotIn("among them", v.text)
 
     def test_a_long_command_line_is_cut(self):
         v = verdict([proc(9000, "game", cmdline="/opt/game/bin " + "x" * 300)], "KILL")

@@ -22,7 +22,7 @@ from dataclasses import dataclass
 from PySide6.QtCore import QAbstractItemModel, QModelIndex, QSortFilterProxyModel, Qt
 from PySide6.QtGui import QColor, QFont
 
-from ..appinfo import describe
+from ..appinfo import ROLE_ABOUT, describe
 from ..grouping import build_groups, summarize
 from ..model import ProcSample
 from ..sections import ABOUT, KEY_OF_PID, LABEL, RANK, SECTION_PID, is_section, section_of, uid_min
@@ -284,6 +284,8 @@ class ProcModel(QAbstractItemModel):
                 exe = p.argv[0] if p.argv else p.name
                 about = describe(exe, p.app_name) or describe(p.name)
                 lines = [about] if about else []
+                if p.role:
+                    lines.append(ROLE_ABOUT.get(p.role, ""))
                 if p.members:
                     lines.append(f"{p.members} processes of one application, grouped by "
                                  f"{group_source(p.cgroup)}.")
@@ -314,7 +316,8 @@ class ProcModel(QAbstractItemModel):
         if col == COL_PID:
             return "" if p.members else str(p.pid)
         if col == COL_NAME:
-            return p.display_name
+            # a member of a browser says what it is: "Brave · page"
+            return f"{p.display_name} · {p.role}" if p.role else p.display_name
         if col == COL_CPU:
             v = cpu / self.ncpu if self.normalize_cpu else cpu
             return f"{v:.1f}" if v >= 0.05 else "·"
@@ -725,7 +728,7 @@ class ProcFilter(QSortFilterProxyModel):
     def matches_text(self, p: ProcSample) -> bool:
         t = self.text
         return (not t or t in p.name.lower() or t in p.app_name.lower()
-                or t in p.cmdline.lower() or t == str(p.pid))
+                or t in p.role or t in p.cmdline.lower() or t == str(p.pid))
 
     def data(self, index: QModelIndex, role: int = Qt.ItemDataRole.DisplayRole):
         # During a search a visible row is a match or an ancestor of one; the

@@ -11,7 +11,7 @@ import time
 
 import psutil
 
-from .appinfo import AppResolver
+from .appinfo import AppResolver, process_role
 from .gpu import GpuMonitor
 from .grouping import build_groups, read_pss
 from .model import ProcSample, Snapshot, SystemSample
@@ -142,6 +142,7 @@ class Sampler:
                 owned=owned,
                 uid=uids.real if uids else -1,
                 app_name=app.name,
+                role=process_role(cmd),
                 icon=app.icon,
                 category=app.category,
                 program=app.program,

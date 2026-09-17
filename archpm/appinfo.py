@@ -446,3 +446,54 @@ class AppResolver:
 
     def forget(self, pid: int) -> None:
         self._cache.pop(pid, None)
+
+
+# -- what a member process is ------------------------------------------------
+# A browser is many processes with one name. Chromium and everything built on
+# it (Chrome, Brave, Electron, CEF, Qt WebEngine) say what each one is in
+# --type=; Firefox says it in the last word after -contentproc. Measured on
+# Brave, Chrome, Firefox, Steam's webhelper and Qt WebEngine. A process these
+# rules cannot place keeps its plain name: no guessing.
+CHROMIUM_ROLES = {
+    "renderer": "page", "gpu-process": "graphics",
+    "zygote": "helper", "broker": "helper", "ppapi": "helper", "plugin": "helper",
+    "sandbox-helper": "helper", "crashpad-handler": "helper",
+}
+CHROMIUM_UTILITY = {"network": "network", "audio": "audio", "storage": "storage",
+                    "video": "media", "media": "media", "print": "printing"}
+FIREFOX_ROLES = {"tab": "page", "gpu": "graphics", "socket": "network", "rdd": "media",
+                 "utility": "helper", "forkserver": "helper"}
+ROLE_ABOUT = {
+    "page": "One page of the program: a tab, or a window. Ending it closes that page; "
+            "the program stays.",
+    "extension": "The program's extensions run in this process, not a page.",
+    "graphics": "Draws the program's windows and pages; the program starts it again if it ends.",
+    "network": "The program's network helper.",
+    "audio": "The program's sound helper.",
+    "storage": "The program's storage helper.",
+    "media": "The program's media decoding helper.",
+    "printing": "The program's printing helper.",
+    "helper": "A helper of the program, not a page.",
+}
+
+
+def process_role(argv: tuple[str, ...] | list[str]) -> str:
+    """What this process is to its program, from its own command line; ""
+    when the command line does not say."""
+    kind = ""
+    for arg in argv:
+        if arg.startswith("--type="):
+            kind = arg[len("--type="):]
+            break
+    if kind:
+        if kind == "renderer":
+            return "extension" if "--extension-process" in argv else "page"
+        if kind == "utility":
+            sub = next((a[len("--utility-sub-type="):] for a in argv
+                        if a.startswith("--utility-sub-type=")), "")
+            head = sub.split(".")[0].lower()
+            return CHROMIUM_UTILITY.get(head, "helper")
+        return CHROMIUM_ROLES.get(kind, "")
+    if "-contentproc" in argv and len(argv) > 1:
+        return FIREFOX_ROLES.get(argv[-1], "")
+    return ""

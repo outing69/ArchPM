@@ -228,8 +228,9 @@ class Grouped(unittest.TestCase):
         v = signalguard.check(procs, "TERM", tree=True, always_ask=True, list_all=True,
                               self_pid=4242, above={4242}, leaders=set())
         self.assertTrue(v.confirm)
+        self.assertIn("Brave and everything that belongs to it: 3 processes", v.text)
         for pid in (100, 101, 102):
-            self.assertIn(f"({pid})", v.text)
+            self.assertNotIn(f"({pid})", v.text, "ids help nobody at that moment")
         self.assertEqual(v.title, "Ask Brave and 2 more to quit?")
 
     def test_every_member_shows_under_its_group_even_a_quiet_helper(self):

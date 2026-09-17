@@ -99,6 +99,35 @@ def describe(p: ProcSample) -> str:
     return f"Program: {program}, process {p.pid}\nRuns as: {owner}\nCommand: {command}"
 
 
+ROLE_WORDS = {"page": ("page", "pages"), "extension": ("extension process", "extension processes"),
+              "graphics": ("the graphics", "the graphics"), "helper": ("helper", "helpers")}
+
+
+def group_loss(lead: ProcSample, procs: list[ProcSample]) -> str:
+    """What ending a group takes: the program and everything that belongs to
+    it, with the count, and for a browser what the members are. Process ids
+    help nobody at that moment, so none are listed."""
+    counts: dict[str, int] = {}
+    for p in procs:
+        if p.role:
+            key = p.role if p.role in ("page", "extension", "graphics") else "helper"
+            counts[key] = counts.get(key, 0) + 1
+    head = (f"{lead.display_name} and everything that belongs to it: "
+            f"{len(procs)} processes")
+    if not counts:
+        return head + "."
+    bits = []
+    for key in ("page", "extension", "graphics", "helper"):
+        n = counts.get(key, 0)
+        if n:
+            one, many = ROLE_WORDS[key]
+            bits.append(one if key == "graphics" else f"{n} {one if n == 1 else many}")
+    text = head + ", among them " + ", ".join(bits) + "."
+    if counts.get("page"):
+        text += " Every open page closes with it."
+    return text
+
+
 def check(procs: list[ProcSample], sig_name: str, tree: bool = False,
           always_ask: bool = False, list_all: bool = False, self_pid: int | None = None,
           above: set[int] | None = None, leaders: set[int] | None = None) -> Verdict:
@@ -148,9 +177,7 @@ def check(procs: list[ProcSample], sig_name: str, tree: bool = False,
     v.title = question.format(subject)
 
     if list_all and len(procs) > 1:
-        parts = [describe(lead),
-                 "Every process this reaches:\n" + "\n".join(
-                     f"  {p.display_name} ({p.pid})" for p in procs)]
+        parts = [group_loss(lead, procs)]
     else:
         parts = [describe(p) for p in procs[:MAX_LISTED]]
         if len(procs) > MAX_LISTED:

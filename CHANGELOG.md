@@ -3,6 +3,25 @@
 All notable changes, newest first. Versions are git tags on
 [github.com/outing69/ArchPM](https://github.com/outing69/ArchPM).
 
+## 0.2.33 (2026-09-17)
+
+- Processes: a member of a browser is named for what it is, from what its
+  own command line says. A Chromium renderer reads "Brave · page", one that
+  hosts extensions "Brave · extension", the gpu process "Brave · graphics",
+  the utilities "Brave · network", "audio", "storage", "media" or
+  "printing", and zygotes, brokers and the like "Brave · helper". Firefox
+  says it in the last word after -contentproc, so a tab is a page and
+  socket, rdd, gpu and utility are network, media, graphics and helper.
+  The same rule covers Chrome, Electron applications, Steam's webhelper and
+  Qt WebEngine, since they use Chromium's flags. A process the rules cannot
+  place keeps its plain name; nothing is guessed. The name's tooltip says
+  what the role means, and the search finds "page".
+- The group dialog says what goes, not which ids. Instead of one member's
+  full command line and a list of process ids it reads "Brave and
+  everything that belongs to it: 19 processes, among them 5 pages, 2
+  extension processes, the graphics, 7 helpers. Every open page closes
+  with it." The title keeps the count, as before.
+
 ## 0.2.32 (2026-09-17)
 
 - Terminate and Force kill ask first for a single process, as they already
