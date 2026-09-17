@@ -826,6 +826,8 @@ class Switch(QWidget):
 
 
 TITLE_MIN = 96      # px: the least a row's title column keeps
+FLASH_MS = 700      # a header lighting up where a row landed
+SLIDE_MS = 260      # a row sliding to its new place
 # stylesheet fonts for a boxed list's labels; see ListRow
 SMALL = "font-size: {FONT_SMALL}pt;"
 SMALL_MUTED = "color: {MUTED}; " + SMALL
@@ -856,7 +858,10 @@ class ListRow(QFrame):
         self.setProperty("first", False)
         self.setProperty("last", False)
         self.setProperty("activatable", False)
+        self.setProperty("moving", False)
         self.setMinimumHeight(theme.LIST_ROW_H)
+        self._glow = 0.0
+        self._flash: QVariantAnimation | None = None
         lay = QHBoxLayout(self)
         lay.setContentsMargins(theme.LIST_PAD_X, theme.LIST_PAD_Y,
                                theme.LIST_PAD_X, theme.LIST_PAD_Y)
@@ -931,6 +936,56 @@ class ListRow(QFrame):
             if isinstance(w, QLabel):
                 theme.text(w, token)
 
+    def make_header(self) -> None:
+        """A group header inside the list, in the process list's shape: the
+        group's name in bold with its count, a row that is not an entry."""
+        theme.style(self.title, "font-weight: 700;")
+        self.setProperty("header", True)
+        self.setMinimumHeight(theme.LIST_ROW_H - 8)
+        self.layout().setContentsMargins(theme.LIST_PAD_X, theme.LIST_PAD_Y - 4,
+                                         theme.LIST_PAD_X, theme.LIST_PAD_Y - 4)
+
+    def set_count(self, label: str, count: int) -> None:
+        self.title.setText(f"{label} ({count})")
+
+    def flash(self, msec: int = FLASH_MS) -> None:
+        """Light up briefly in the highlight colour, so the eye finds the
+        row: where a moved row landed, even when the row itself left the
+        screen."""
+        if self._flash is None:
+            self._flash = QVariantAnimation(self)
+            self._flash.setEasingCurve(QEasingCurve.Type.InOutQuad)
+            self._flash.valueChanged.connect(self._glow_to)
+        self._flash.stop()
+        self._flash.setDuration(msec)
+        self._flash.setKeyValueAt(0.0, 0.0)
+        self._flash.setKeyValueAt(0.3, 1.0)
+        self._flash.setKeyValueAt(1.0, 0.0)
+        self._flash.start()
+
+    def _glow_to(self, value) -> None:
+        self._glow = float(value)
+        self.update()
+
+    def glowing(self) -> bool:
+        """Lit, or about to be: the flash is running."""
+        return self._glow > 0.0 or (self._flash is not None
+                                    and self._flash.state() == QVariantAnimation.State.Running)
+
+    def paintEvent(self, event) -> None:
+        super().paintEvent(event)
+        if self._glow <= 0.0:
+            return
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        colour = theme.color("ACCENT")
+        colour.setAlphaF(0.28 * self._glow)
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(colour)
+        r = theme.RADIUS_CARD - 1
+        p.drawRoundedRect(QRectF(self.rect()), r, r)
+        p.end()
+
 
 class BoxedList(QWidget):
     """A group in GNOME's shape: a title, a description under it, room for
@@ -964,6 +1019,7 @@ class BoxedList(QWidget):
         self._rows.setContentsMargins(0, 0, 0, 0)
         self._rows.setSpacing(0)
         lay.addWidget(self.box)
+        self._slide: tuple | None = None
         self._show_head()
         self.box.hide()
 
@@ -988,7 +1044,13 @@ class BoxedList(QWidget):
         self._show_head()
 
     def rows(self) -> list[ListRow]:
-        return [self._rows.itemAt(i).widget() for i in range(self._rows.count())]
+        """The rows in order; a placeholder of a slide in progress is not one."""
+        out = []
+        for i in range(self._rows.count()):
+            w = self._rows.itemAt(i).widget()
+            if isinstance(w, ListRow):
+                out.append(w)
+        return out
 
     @staticmethod
     def _mark(row: ListRow, first: bool, last: bool) -> None:
@@ -998,6 +1060,12 @@ class BoxedList(QWidget):
         row.setProperty("last", last)
         row.style().unpolish(row)
         row.style().polish(row)
+
+    def _remark(self) -> None:
+        rows = self.rows()
+        for i, row in enumerate(rows):
+            if isinstance(row, ListRow):
+                self._mark(row, i == 0, i == len(rows) - 1)
 
     def add_row(self, row: ListRow) -> ListRow:
         rows = self.rows()
@@ -1009,12 +1077,95 @@ class BoxedList(QWidget):
         return row
 
     def clear(self) -> None:
+        self.finish_slide()
         while self._rows.count():
             item = self._rows.takeAt(0)
             if item.widget():
                 item.widget().hide()
                 item.widget().deleteLater()
         self.box.hide()
+
+    # -- a row on the move -----------------------------------------------------
+    # The rows are widgets in one column, not items of a model, so a row
+    # can really travel: it is lifted out of the layout, a placeholder of
+    # its height stays where it was and another of no height goes where it
+    # will be, the two trade their heights while the row moves between
+    # them, and the row is put back at the end. The box keeps its height
+    # throughout; the viewport clips the row when it travels past the edge.
+    def slide_row(self, row: ListRow, index: int, msec: int = SLIDE_MS) -> None:
+        """Move `row` to `index` of the final order, animated. A slide that
+        is still running is finished first: one at a time."""
+        self.finish_slide()
+        old = self._rows.indexOf(row)
+        if old < 0:
+            return
+        if msec <= 0 or not self.isVisible():
+            self._rows.removeWidget(row)
+            self._rows.insertWidget(index, row)
+            self._remark()
+            return
+        h = row.height()
+        start = row.geometry()
+        self._rows.removeWidget(row)
+        gone = QWidget(self.box)
+        gone.setFixedHeight(h)
+        self._rows.insertWidget(old, gone)
+        coming = QWidget(self.box)
+        coming.setFixedHeight(0)
+        self._rows.insertWidget(index + (1 if index > old else 0), coming)
+        for ph in (gone, coming):
+            ph.show()      # now, not at the next event: the layout skips a hidden item
+        self._set_moving(row, True)
+        row.raise_()
+        anim = QVariantAnimation(self)
+        anim.setDuration(msec)
+        anim.setStartValue(0.0)
+        anim.setEndValue(1.0)
+        anim.setEasingCurve(QEasingCurve.Type.InOutCubic)
+        self._slide = (anim, row, index, gone, coming, h, start)
+        anim.valueChanged.connect(self._slide_step)
+        anim.finished.connect(self.finish_slide)
+        anim.start()
+
+    def _slide_step(self, value) -> None:
+        if self._slide is None:
+            return
+        _anim, row, _index, gone, coming, h, start = self._slide
+        t = float(value)
+        gone.setFixedHeight(round(h * (1.0 - t)))
+        coming.setFixedHeight(round(h * t))
+        # lay the column out now, not at the next event, so the target is
+        # this frame's and the row never lags a frame behind the gap
+        self._rows.invalidate()
+        self._rows.activate()
+        target = coming.geometry()
+        y = start.y() + (target.y() - start.y()) * t
+        row.setGeometry(start.x(), round(y), start.width(), h)
+
+    def finish_slide(self) -> None:
+        """Put a moving row in its place at once; nothing when none moves."""
+        if self._slide is None:
+            return
+        anim, row, index, gone, coming, _h, _start = self._slide
+        self._slide = None
+        anim.stop()
+        anim.deleteLater()
+        for ph in (gone, coming):
+            self._rows.removeWidget(ph)
+            ph.hide()
+            ph.deleteLater()
+        self._set_moving(row, False)
+        self._rows.insertWidget(index, row)
+        self._remark()
+
+    @staticmethod
+    def _set_moving(row: ListRow, on: bool) -> None:
+        row.setProperty("moving", on)
+        row.style().unpolish(row)
+        row.style().polish(row)
+
+    def sliding(self) -> bool:
+        return self._slide is not None
 
 
 class Columns(QWidget):

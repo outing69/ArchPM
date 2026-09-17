@@ -41,7 +41,8 @@ class StartupView(QWidget):
         self.entries: list[StartupEntry] = []
         self._argvs: dict[int, list[str]] = {}
         self._loading = False
-        self._status: list[QLabel] = []       # one per entry, the Running column
+        self._records: dict[str, tuple] = {}  # entry id -> (entry, row, status label)
+        self._headers: dict[bool, ListRow] = {}   # enabled? -> the group's header row
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(*theme.page_margins())
@@ -105,11 +106,10 @@ class StartupView(QWidget):
             return
         if not self.cb_others.isChecked():
             entries = [e for e in entries if e.for_this_desktop]
-        # Your own apps first, the desktop's own parts last, so what you may
-        # want to switch off is at the top and what you should leave alone is
-        # grouped at the bottom.
-        entries.sort(key=lambda e: (not e.for_this_desktop, KIND_ORDER.get(e.kind, 1),
-                                    e.name.lower()))
+        # Enabled first, then disabled; within a group your own apps first
+        # and the desktop's own parts last, so what you may want to switch
+        # off is at the top and what you should leave alone is at the bottom.
+        entries.sort(key=self._key)
         self.entries = entries
         self._fill()
         self._fill_services()
@@ -129,6 +129,11 @@ class StartupView(QWidget):
             self.svc_list.add_row(row)
 
     @staticmethod
+    def _key(e: StartupEntry) -> tuple:
+        return (not e.enabled, not e.for_this_desktop, KIND_ORDER.get(e.kind, 1),
+                e.name.lower())
+
+    @staticmethod
     def _kind_key(e: StartupEntry) -> str:
         """Which kind icon an entry without its own gets."""
         return "override" if e.is_override else e.kind
@@ -139,15 +144,34 @@ class StartupView(QWidget):
         source = e.source + (" (override)" if e.is_override else "")
         return f"{KIND_LABEL.get(e.kind, e.kind)} · {source}"
 
+    def _header(self, enabled: bool) -> ListRow:
+        row = ListRow()
+        row.make_header()
+        row.setToolTip("Starts at your next login" if enabled
+                       else "Switched off: stays off until you switch it back on")
+        self._headers[enabled] = row
+        return row
+
+    def _count_groups(self) -> None:
+        for enabled, label in ((True, "Enabled"), (False, "Disabled")):
+            n = sum(1 for e in self.entries if e.enabled == enabled)
+            self._headers[enabled].set_count(label, n)
+
     def _fill(self) -> None:
         self._loading = True
         self.list.clear()
-        self._status = []
+        self._records = {}
+        self._headers = {}
+        self.list.add_row(self._header(True))
+        seen_off = False
         # the status and the kind stand in columns: one width for each
         status_w = QFontMetrics(theme.font("body")).horizontalAdvance("Running · pid 9999999")
         small = QFontMetrics(theme.font("small"))
         meta_w = max((small.horizontalAdvance(self._meta(e)) for e in self.entries), default=0)
         for e in self.entries:
+            if not e.enabled and not seen_off:
+                self.list.add_row(self._header(False))
+                seen_off = True
             icon = QLabel()
             icon.setFixedSize(ICON, ICON)      # the slot stays, so the titles line up
             icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -180,7 +204,10 @@ class StartupView(QWidget):
             if not e.for_this_desktop:
                 row.dim("FAINT")
             self.list.add_row(row)
-            self._status.append(status)
+            self._records[e.id] = (e, row, status)
+        if not seen_off:
+            self.list.add_row(self._header(False))
+        self._count_groups()
         self._loading = False
         self._refresh_state()
 
@@ -192,7 +219,7 @@ class StartupView(QWidget):
 
     def _refresh_state(self) -> None:
         running = running_pids(self.entries, self._argvs)
-        for e, label in zip(self.entries, self._status, strict=False):
+        for e, _row, label in self._records.values():
             if not e.for_this_desktop:
                 text, colour = "Other desktop", "FAINT"
             elif e.id in running:
@@ -221,7 +248,28 @@ class StartupView(QWidget):
             return
         verb = "will start at login" if enabled else "will no longer start at login"
         self.status.emit(f"{entry.name} {verb}")
-        self.reload()
+        entry.enabled = enabled
+        switch.setToolTip("Starts at login" if enabled else "Switched off")
+        self._move(entry)
+
+    def _final_order(self) -> list:
+        """The list's rows as they must stand: each group's header, then its
+        entries in the page's order."""
+        by_key = sorted(self.entries, key=self._key)
+        order = [self._headers[True]]
+        order += [self._records[e.id][1] for e in by_key if e.enabled]
+        order.append(self._headers[False])
+        order += [self._records[e.id][1] for e in by_key if not e.enabled]
+        return order
+
+    def _move(self, entry: StartupEntry) -> None:
+        """The row goes to its group at once, sliding there within what is
+        on screen; the view is not scrolled, and the group's header lights
+        up so the eye finds where the row went even when it left the screen."""
+        row = self._records[entry.id][1]
+        self._count_groups()
+        self.list.slide_row(row, self._final_order().index(row))
+        self._headers[entry.enabled].flash()
 
     @staticmethod
     def loss_of(entry: StartupEntry) -> str:

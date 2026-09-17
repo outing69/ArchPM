@@ -172,12 +172,15 @@ class Pages(unittest.TestCase):
         v._fill_services = lambda: None
         v.reload()
         rows = v.list.rows()
-        self.assertEqual([r.title.text() for r in rows], ["Alpha", "Zed", "Plasma"],
-                         "your apps first, the desktop's parts last, the other desktop's hidden")
-        switches = [r.suffix[-1] for r in rows]
+        self.assertEqual([r.title.text() for r in rows],
+                         ["Enabled (2)", "Zed", "Plasma", "Disabled (1)", "Alpha"],
+                         "enabled first; apps before the desktop's parts; other desktops hidden")
+        switches = [r.suffix[-1] for r in rows if r.suffix]
         self.assertTrue(all(isinstance(s, Switch) for s in switches))
-        self.assertEqual([s.isChecked() for s in switches], [False, True, True])
+        self.assertEqual([s.isChecked() for s in switches], [True, True, False])
         self.assertIn("Desktop · keep on", rows[2].suffix[1].text())
+        rows = {r.title.text(): r for r in rows}
+        switches = [rows["Alpha"].suffix[-1], rows["Zed"].suffix[-1]]
         # flipping a switch writes the entry and reports it
         said = []
         v.status.connect(said.append)
@@ -186,8 +189,9 @@ class Pages(unittest.TestCase):
         self.assertEqual(v.auto.set_enabled.call_args[0][1], True)
         self.assertEqual(said, ["Alpha will start at login"])
         # a refused desktop entry stays on
+        v.list.finish_slide()
         v._confirm_off = lambda e: False
-        plasma = v.list.rows()[2].suffix[-1]
+        plasma = {r.title.text(): r for r in v.list.rows()}["Plasma"].suffix[-1]
         plasma.toggle()
         self.assertTrue(plasma.isChecked())
         self.assertEqual(v.auto.set_enabled.call_count, 1)
@@ -228,7 +232,7 @@ class Pages(unittest.TestCase):
         off.id, off.exec = plasma.id, plasma.exec
         v.auto.entries.return_value = [off]
         v.reload()
-        v.list.rows()[0].suffix[-1].toggle()
+        {r.title.text(): r for r in v.list.rows()}["Plasma"].suffix[-1].toggle()
         self.assertEqual(asked, ["Stranger", "Plasma", "Accessibility"])
         self.assertEqual(v.auto.set_enabled.call_args[0][1], True)
 
@@ -250,9 +254,13 @@ class Pages(unittest.TestCase):
         if navrail.icon_set()["name"] == "adwaita" or navrail.kind_icon("App").isNull():
             pass
         for r in rows:
+            if r.prefix is None:
+                continue                     # a group header
             pm = r.prefix.pixmap()
             self.assertFalse(pm.isNull(), "the kind's icon fills the slot")
-        self.assertEqual(rows[1].prefix.toolTip(), "A system entry with your own copy over it")
+        by_title = {r.title.text(): r for r in rows}
+        self.assertEqual(by_title["Over"].prefix.toolTip(),
+                         "A system entry with your own copy over it")
         for kind in navrail.KIND_ICONS:
             self.assertFalse(navrail.kind_icon(kind).isNull(), kind)
 
@@ -278,6 +286,87 @@ class Pages(unittest.TestCase):
             self.assertIsNotNone(got[name], name)
             self.assertEqual(got[name].cacheKey(), navrail.kind_icon(key).cacheKey(), name)
 
+    def _startup(self, names_enabled):
+        from archpm.ui.startup import StartupView
+        v = StartupView()
+        v.auto = mock.Mock()
+        v.auto.entries.return_value = [entry(n, enabled=on) for n, on in names_enabled]
+        v._fill_services = lambda: None
+        v.resize(900, 700)
+        v.show()
+        QTest.qWait(20)
+        return v
+
+    def titles(self, v):
+        return [r.title.text() for r in v.list.rows()]
+
+    def test_a_switched_off_row_slides_to_the_disabled_group_and_the_header_lights_up(self):
+        v = self._startup([("Alpha", True), ("Beta", True), ("Gamma", False)])
+        self.assertEqual(self.titles(v),
+                         ["Enabled (2)", "Alpha", "Beta", "Disabled (1)", "Gamma"])
+        area = v.findChild(__import__("PySide6.QtWidgets").QtWidgets.QScrollArea)
+        before = area.verticalScrollBar().value()
+        rows = {r.title.text(): r for r in v.list.rows()}
+        rows["Alpha"].suffix[-1].toggle()
+        self.assertTrue(v.list.sliding(), "the row is on its way")
+        self.assertEqual(self.titles(v)[0], "Enabled (1)", "the counts change at once")
+        self.assertTrue(v._headers[False].glowing(), "the Disabled header lights up")
+        self.assertEqual(area.verticalScrollBar().value(), before, "the view is not scrolled")
+        v.auto.entries.assert_called_once()            # no reload: the row moved
+        v.list.finish_slide()
+        self.assertEqual(self.titles(v),
+                         ["Enabled (1)", "Beta", "Disabled (2)", "Alpha", "Gamma"])
+        self.assertFalse(v.list.sliding())
+        # and back on, the same way
+        rows["Alpha"].suffix[-1].toggle()
+        self.assertTrue(v._headers[True].glowing())
+        v.list.finish_slide()
+        self.assertEqual(self.titles(v),
+                         ["Enabled (2)", "Alpha", "Beta", "Disabled (1)", "Gamma"])
+        v.close()
+
+    def test_one_slide_at_a_time_and_a_refused_row_stays(self):
+        v = self._startup([("Alpha", True), ("Beta", True), ("Gamma", False)])
+        rows = {r.title.text(): r for r in v.list.rows()}
+        rows["Alpha"].suffix[-1].toggle()
+        first = v.list._slide[0]
+        rows["Beta"].suffix[-1].toggle()          # while Alpha still moves
+        self.assertIsNot(v.list._slide[0], first, "the first is finished, the second runs")
+        v.list.finish_slide()
+        self.assertEqual(self.titles(v),
+                         ["Enabled (0)", "Disabled (3)", "Alpha", "Beta", "Gamma"])
+        # a desktop row the user does not confirm does not move
+        v.auto.entries.return_value = [entry("Zed", kind="Desktop"), entry("Off", enabled=False)]
+        v.reload()
+        v._confirm_off = lambda e: False
+        v.list.rows()[1].suffix[-1].toggle()
+        self.assertFalse(v.list.sliding())
+        self.assertEqual(self.titles(v), ["Enabled (1)", "Zed", "Disabled (1)", "Off"])
+        v.auto.set_enabled.assert_called()         # from the first part only
+        v.close()
+
+    def test_a_slide_moves_the_row_between_two_placeholders(self):
+        from archpm.ui.widgets import BoxedList, ListRow
+        group = BoxedList("t")
+        rows = [group.add_row(ListRow(f"r{i}")) for i in range(4)]
+        group.resize(400, 300)
+        group.show()
+        QTest.qWait(20)
+        y0 = rows[0].y()
+        height = group.box.height()
+        group.slide_row(rows[0], 3)
+        anim = group._slide[0]
+        anim.pause()
+        anim.setCurrentTime(anim.duration() // 2)
+        QTest.qWait(5)
+        self.assertGreater(rows[0].y(), y0, "half way down")
+        self.assertEqual(group.box.height(), height, "the box keeps its height")
+        self.assertEqual(group._rows.count(), 5, "three rows and two placeholders")
+        group.finish_slide()
+        self.assertEqual([r.title.text() for r in group.rows()], ["r1", "r2", "r3", "r0"])
+        self.assertTrue(group.rows()[-1].property("last"))
+        group.close()
+
     def test_startup_shows_the_other_desktop_rows_dimmed_when_asked(self):
         from archpm.ui.startup import StartupView
         v = StartupView()
@@ -285,7 +374,7 @@ class Pages(unittest.TestCase):
         v.auto.entries.return_value = [entry("Zed"), entry("Gnomish", this_desktop=False)]
         v._fill_services = lambda: None
         v.cb_others.setChecked(True)
-        rows = v.list.rows()
+        rows = [r for r in v.list.rows() if r.suffix]
         self.assertEqual(rows[-1].title.text(), "Gnomish")
         self.assertEqual(rows[-1].suffix[0].text(), "Other desktop")
 

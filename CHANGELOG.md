@@ -3,6 +3,24 @@
 All notable changes, newest first. Versions are git tags on
 [github.com/outing69/ArchPM](https://github.com/outing69/ArchPM).
 
+## 0.2.31 (2026-09-17)
+
+- Startup: the autostart entries stand in two groups, Enabled on top and
+  Disabled under it, each with a header and its count in the process
+  list's shape: the group's name in bold with the number of entries. The
+  session's services underneath are read-only and stay as they were.
+- A row that is switched off moves to Disabled at once, and the move is
+  animated: the row lifts, travels to its place within what is on screen,
+  the gap it leaves closes and the gap it goes to opens, and the row
+  settles. When its place is below the viewport it slides out of view in
+  that direction; the view is never scrolled. The Disabled header lights up
+  briefly at the same time, so the eye finds where the row landed even
+  when the row itself left the screen. One move at a time: a second switch
+  while a row is still moving puts the first in its place at once. Back on
+  moves the row to Enabled the same way. The confirmation for Desktop and
+  System rows still comes first, and a row that is not confirmed does not
+  move.
+
 ## 0.2.30 (2026-09-17)
 
 - Startup: switching off an entry marked Desktop · keep on, or a System

@@ -479,6 +479,11 @@ QGroupBox::title {{
     border-bottom-left-radius: {RADIUS_INNER}px; border-bottom-right-radius: {RADIUS_INNER}px;
 }}
 #listrow[activatable="true"]:hover {{ background: {SURFACE_HI}; }}
+/* a row on the move between two places: lifted, so it covers what it passes */
+#listrow[moving="true"] {{
+    background: {SURFACE_HI}; border: 1px solid {BORDER_HI};
+    border-radius: {RADIUS_INNER}px;
+}}
 
 /* header bar: the title and the window's few controls, flat until hovered */
 #headerbar {{ background: {SURFACE}; border-bottom: 1px solid {BORDER}; }}
