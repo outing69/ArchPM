@@ -734,13 +734,28 @@ class ProcFilter(QSortFilterProxyModel):
         self.only_gpu = False
         self.category = ""   # "" = all; otherwise one of appinfo.CATEGORIES
 
+    def _change(self, apply) -> None:
+        """Change a filter parameter the way Qt 6.10 asks: beginFilterChange()
+        before, endFilterChange(Rows) after. The proxy notes which rows it
+        showed at begin and, at end, runs the row filter once and emits
+        inserts and removes for the rows whose acceptance changed, instead
+        of the whole-model reset that invalidateFilter() did; the view keeps
+        its selection and its open branches. Rows only: this model never
+        filters columns. On a Qt before 6.10 the old call stays."""
+        begin = getattr(self, "beginFilterChange", None)
+        if begin is None:
+            apply()
+            self.invalidateFilter()
+            return
+        begin()
+        apply()
+        self.endFilterChange(QSortFilterProxyModel.Direction.Rows)
+
     def set_text(self, text: str) -> None:
-        self.text = text.strip().lower()
-        self.invalidateFilter()
+        self._change(lambda: setattr(self, "text", text.strip().lower()))
 
     def set_flag(self, name: str, value) -> None:
-        setattr(self, name, value)
-        self.invalidateFilter()
+        self._change(lambda: setattr(self, name, value))
 
     def matches_text(self, p: ProcSample) -> bool:
         t = self.text

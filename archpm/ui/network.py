@@ -24,7 +24,7 @@ COL_NAME, COL_CONNS, COL_RX, COL_TX, COL_LISTEN, COL_INFO = range(6)
 HEADERS = ["Program", "Connections", "Download", "Upload", "Listening", "Details"]
 HINT_KEYS = ["net.program", "net.connections", "net.download", "net.upload", "net.listening",
              "net.details"]
-RIGHT = int(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+RIGHT = Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
 
 
 def _rate(v: float) -> str:

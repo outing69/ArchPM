@@ -360,7 +360,8 @@ class MainProtocol(unittest.TestCase):
         self.assertIn("uid", payload["result"])
 
     def test_unknown_subcommand_is_rejected_by_argparse(self):
-        with self.assertRaises(SystemExit), redirect_stdout(io.StringIO()):
+        with self.assertRaises(SystemExit), redirect_stdout(io.StringIO()), \
+                contextlib.redirect_stderr(io.StringIO()):
             helper.main(["reboot"])
 
     def test_abbreviated_subcommands_are_rejected(self):

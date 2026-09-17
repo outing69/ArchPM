@@ -174,6 +174,10 @@ class GpuMonitor:
                     proc.wait(timeout=2)
                 except subprocess.TimeoutExpired:
                     proc.kill()
+                    proc.wait()
+                # The pipe is ours to close: Popen leaves it to the garbage
+                # collector, which closes it late and with a ResourceWarning.
+                proc.stdout.close()
             if self._stop.wait(backoff):
                 return
             backoff = min(backoff * 2, 30.0)

@@ -160,6 +160,10 @@ class Grouped(unittest.TestCase):
     def setUpClass(cls):
         TreeSearch.setUpClass()
 
+    @classmethod
+    def tearDownClass(cls):
+        TreeSearch.tearDownClass()      # the settings folder TreeSearch.setUpClass made
+
     def setUp(self):
         from archpm.actions import UserBackend
         from archpm.ui.procview import ProcessView
@@ -267,6 +271,10 @@ class HiddenPage(unittest.TestCase):
     def setUpClass(cls):
         TreeSearch.setUpClass()
 
+    @classmethod
+    def tearDownClass(cls):
+        TreeSearch.tearDownClass()      # the settings folder TreeSearch.setUpClass made
+
     def test_updates_are_deferred_while_hidden_and_applied_on_show(self):
         from PySide6.QtWidgets import QLabel, QStackedWidget
 
@@ -305,6 +313,10 @@ class Tooltip(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         TreeSearch.setUpClass()
+
+    @classmethod
+    def tearDownClass(cls):
+        TreeSearch.tearDownClass()      # the settings folder TreeSearch.setUpClass made
 
     def test_long_command_line_is_wrapped_and_cut(self):
         from PySide6.QtCore import Qt

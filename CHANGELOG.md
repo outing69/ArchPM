@@ -3,6 +3,28 @@
 All notable changes, newest first. Versions are git tags on
 [github.com/outing69/ArchPM](https://github.com/outing69/ArchPM).
 
+## 0.2.38 (2026-09-17)
+
+- The test run is clean: 391 tests, no warnings, nothing on stderr, with
+  every Python warning enabled. Two warnings came from the application:
+  the two nvidia-smi streams left their pipe to the garbage collector
+  (ResourceWarning: unclosed file), which closed it late; the stream now
+  closes the pipe itself when the process is stopped or restarted. Nothing
+  leaked for the lifetime of the agent: each restart of a stream freed the
+  previous pipe at once through reference counting, and one pipe per
+  stream stayed open until stop, which is the pipe being read. And the
+  process filter called QSortFilterProxyModel.invalidateFilter(), which Qt
+  6.10 deprecated together with its rows and columns variants; the filter
+  now changes its parameter between beginFilterChange() and
+  endFilterChange(Rows), so the proxy runs the row filter once at the end
+  and emits inserts and removes for the rows whose acceptance changed,
+  instead of resetting the whole model; the view keeps its selection and
+  its open branches. On a Qt before 6.10 the old call stays.
+- Three more came from the tests and one from the Network page: three
+  test classes made a settings folder and never cleaned it, one test let
+  the root helper's argparse error reach stderr, and the Network page
+  passed an int where Qt wants an alignment flag. All fixed.
+
 ## 0.2.37 (2026-09-17)
 
 - README brought back to what the application does after fifteen releases,
