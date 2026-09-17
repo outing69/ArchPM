@@ -58,6 +58,7 @@ from .proc_model import (
 )
 from .widgets import FlowLayout, Graph, app_icon, human_bytes, mono
 
+WATCH_S = 5.0     # after a Terminate: this long before the toast offers to force it
 NICE_PRESETS = [
     ("Game priority (nice -10)", -10),
     ("High (nice -5)", -5),
@@ -166,12 +167,15 @@ class HistoryPanel(QWidget):
 class ProcessView(QWidget):
     status = Signal(str)
     help_requested = Signal(str)
+    # a message with one button: (text, button label, what the button does)
+    offer = Signal(str, str, object)
 
     def __init__(self, ncpu: int, backend: UserBackend, history: ProcHistory | None = None,
                  parent=None) -> None:
         super().__init__(parent)
         self.ncpu = ncpu
         self.backend = backend
+        self._watches: list[dict] = []     # see watch()
         self.history = history
         # The process whose history is shown, kept when its row disappears:
         # after a kill you want to see what it was doing, not whatever row Qt
@@ -357,6 +361,7 @@ class ProcessView(QWidget):
 
     def update_view(self, snap) -> None:
         if self.isHidden():
+            self._check_watches(snap)
             # Another page is on screen. Updating the model and re-sorting the
             # proxy costs 8 ms per tick in the default view and 28 ms with
             # every process shown (measured), for rows nobody sees. Keep the
@@ -364,6 +369,7 @@ class ProcessView(QWidget):
             self._pending = snap
             self.model.remember(snap.procs)
             return
+        self._check_watches(snap)
         self._pending = None
         self.model.update(snap.procs)
         self._expand_sections()
@@ -675,6 +681,53 @@ class ProcessView(QWidget):
         if verdict.confirm and not self._confirm(verdict):
             return
         self._run(lambda p: self.backend.send_signal(p.pid, sig), procs, sig.name)
+        if sig == signal.SIGTERM:
+            self.watch(procs)
+
+    # -- after a Terminate: is it gone? ------------------------------------
+    # A program may ignore the request. Nothing is forced by itself: the pid
+    # is watched on the next samples, and when it is still there after
+    # WATCH_S the toast says so and offers one button, so the user is not
+    # sent hunting through a context menu for Force kill.
+    def watch(self, procs: list[ProcSample], name: str = "") -> None:
+        """Watch these processes, asked to quit just now, for WATCH_S."""
+        procs = [p for p in procs if p.pid > 0]
+        if not procs:
+            return
+        lead = next((p for p in procs if p.app_name), procs[0])
+        self._watches.append({"pids": {p.pid: p.create_time for p in procs},
+                              "name": name or lead.display_name, "sent": time.time()})
+
+    def _check_watches(self, snap) -> None:
+        if not self._watches:
+            return
+        alive = {p.pid: p for p in snap.procs}
+        now = time.time()
+        for watch in list(self._watches):
+            # the same pid with another start time is another process
+            left = [alive[pid] for pid, born in watch["pids"].items()
+                    if pid in alive and alive[pid].create_time == born]
+            if not left:
+                self._watches.remove(watch)
+                continue
+            if now - watch["sent"] < WATCH_S:
+                continue
+            self._watches.remove(watch)
+            name = watch["name"]
+            text = (f"{name} is still running." if len(left) == 1
+                    else f"{name}: {len(left)} processes are still running.")
+            self.offer.emit(text, "Force kill", lambda procs=left: self._force(procs))
+
+    def _force(self, procs: list[ProcSample]) -> None:
+        """SIGKILL to what stayed, after the same confirmation as any Force kill."""
+        many = len(procs) > 1
+        verdict = signalguard.check(procs, "KILL", tree=many, always_ask=True, list_all=many)
+        if verdict.refused:
+            self._notice("Not done", verdict.refused)
+            return
+        if verdict.confirm and not self._confirm(verdict):
+            return
+        self._run(lambda p: self.backend.send_signal(p.pid, signal.SIGKILL), procs, "SIGKILL")
 
     def _confirm(self, verdict: signalguard.Verdict) -> bool:
         box = QMessageBox(self)

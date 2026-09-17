@@ -17,6 +17,7 @@ from pathlib import Path
 import psutil
 
 from .grouping import unit_of
+from .helptext import CANNOT_UNDO
 from .model import ProcSample
 from .session import process_loss, unit_loss
 
@@ -129,7 +130,10 @@ def check(procs: list[ProcSample], sig_name: str, tree: bool = False,
 
     foreign = [p for p in procs if not p.owned]
     session = [(p, session_loss(p.name)) for p in procs if session_loss(p.name)]
-    v.confirm = sig_name != "CONT" and (always_ask or sig_name == "KILL"
+    # Terminate and Force kill always ask: there is no undo, and a single
+    # process is no exception to that (an audit sent a real SIGTERM to a live
+    # browser because it was). STOP asks for another account or the session.
+    v.confirm = sig_name != "CONT" and (always_ask or sig_name in ("KILL", "TERM")
                                         or bool(foreign) or bool(session))
     if not v.confirm:
         return v
@@ -167,6 +171,8 @@ def check(procs: list[ProcSample], sig_name: str, tree: bool = False,
         seen_loss.add(loss)
         verb = "Pausing" if sig_name == "STOP" else "Ending"
         notes.append(f"{p.name} is part of your desktop session. {verb} it takes {loss} with it.")
+    if sig_name in ("TERM", "KILL"):
+        notes.append(CANNOT_UNDO)
     v.text = "\n\n".join(parts + notes)
     return v
 

@@ -87,10 +87,16 @@ class Refusals(unittest.TestCase):
         self.assertTrue(v.refused)
         self.assertFalse(v.confirm)
 
-    def test_an_ordinary_own_process_is_neither_refused_nor_questioned(self):
+    def test_an_ordinary_own_process_is_not_refused_and_terminate_still_asks(self):
+        # since 0.2.32: Terminate asks for a single process as for a group,
+        # and every irreversible action says the one sentence
+        from archpm.helptext import CANNOT_UNDO
         v = verdict([proc(9000, "firefox")])
         self.assertEqual(v.refused, "")
-        self.assertFalse(v.confirm)
+        self.assertTrue(v.confirm)
+        self.assertTrue(v.text.endswith(CANNOT_UNDO))
+        self.assertTrue(verdict([proc(9000, "firefox")], "KILL").text.endswith(CANNOT_UNDO))
+        self.assertFalse(verdict([proc(9000, "firefox")], "CONT").confirm)
 
 
 class Confirmations(unittest.TestCase):

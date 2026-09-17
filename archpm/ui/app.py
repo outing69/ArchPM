@@ -222,6 +222,7 @@ class MainWindow(QMainWindow):
         # Over the content column: a child of the shell, since the stack
         # raises each page it shows and would cover a child of its own.
         self.toast = Toast(self.shell, left=self.shell.placeholder.width)
+        self.procs.offer.connect(self.toast.show_action)   # "still running": one button
 
     def _build_tray(self) -> None:
         if not QSystemTrayIcon.isSystemTrayAvailable():
@@ -366,6 +367,7 @@ class MainWindow(QMainWindow):
                 failed += 1
         self._flash(f"{name}: asked {done} process(es) to quit"
                     + (f", {failed} refused" if failed else ""))
+        self.procs.watch([by_pid[pid] for pid in pids if pid in by_pid], name)
 
     def _show_help(self, term: str) -> None:
         self.help.show_term(term)

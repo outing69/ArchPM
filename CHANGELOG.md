@@ -3,6 +3,26 @@
 All notable changes, newest first. Versions are git tags on
 [github.com/outing69/ArchPM](https://github.com/outing69/ArchPM).
 
+## 0.2.32 (2026-09-17)
+
+- Terminate and Force kill ask first for a single process, as they already
+  did for a group. An audit of the application sent a real SIGTERM to a live
+  browser process because a single process needed no confirmation; it does
+  now. Every irreversible action carries the same short sentence, "This
+  cannot be undone.", in the same words each time, so the user learns the
+  pattern once: Terminate, Force kill, End game on the Overview, and the
+  system-logs cleanup, whose dialog already said the logs go for good.
+- After a Terminate the process is watched on the next samples. When it is
+  still there after five seconds, the toast says "<name> is still running."
+  with one button, Force kill, so the user is not sent hunting through a
+  context menu; the button opens the same confirmation as any Force kill.
+  Nothing is forced by itself, there is one offer per action, a process
+  that went or whose pid was reused by another is not offered, and the
+  offer comes on whichever page is showing. End game is watched the same
+  way, and its dialog says so instead of pointing at the Processes tab.
+- The toast can carry one button. A notice with a button stays twelve
+  seconds; a plain one four, as before.
+
 ## 0.2.31 (2026-09-17)
 
 - Startup: the autostart entries stand in two groups, Enabled on top and

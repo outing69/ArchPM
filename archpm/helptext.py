@@ -8,6 +8,11 @@ from pathlib import Path
 
 from . import __version__
 
+# The one sentence every irreversible action carries, in the same words each
+# time, so the user learns the pattern once: Terminate, Force kill, End game
+# and the journal cleanup.
+CANNOT_UNDO = "This cannot be undone."
+
 REPO = "https://github.com/outing69/ArchPM"
 ISSUES = f"{REPO}/issues"
 LICENSE = "MIT"

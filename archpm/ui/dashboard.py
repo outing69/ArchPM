@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
 )
 
 from ..game import game_tree, pick_game
+from ..helptext import CANNOT_UNDO
 from ..model import ProcSample, Snapshot
 from ..sysinfo import cpu_model, short_cpu_name
 from . import hints, theme
@@ -121,7 +122,8 @@ class GameCard(Card):
             self, "End the game?",
             f"Ask <b>{self.name}</b> and the {len(self._tree_pids)} processes that belong to "
             "it to quit?<br><br>Unsaved progress is lost. The game gets the chance to close "
-            "cleanly; if it hangs and stays, use Force kill in the Processes tab.",
+            "cleanly; if it hangs and stays, ArchPM says so after a few seconds and offers "
+            f"to force it.<br><br>{CANNOT_UNDO}",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
         )

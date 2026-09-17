@@ -501,9 +501,16 @@ QGroupBox::title {{
 }}
 /* toast: one line over the content, in the OSD pair in both modes */
 #toast {{
-    background: {OSD}; color: {ON_OSD}; border: 1px solid {BORDER_HI};
-    border-radius: {BUTTON_H}px; padding: 8px 20px;
+    background: {OSD}; border: 1px solid {BORDER_HI}; border-radius: {BUTTON_H}px;
 }}
+#toast QLabel {{ color: {ON_OSD}; background: transparent; border: none; }}
+/* the toast's one button: outlined, in the OSD pair */
+#toast QPushButton {{
+    background: transparent; color: {ON_OSD}; border: 1px solid {BORDER_HI};
+    border-radius: {RADIUS_CONTROL}px; padding: 0 12px; min-height: 26px; font-weight: 600;
+}}
+#toast QPushButton:hover {{ background: {BORDER_HI}; }}
+#toast QPushButton:focus {{ border: {FOCUS_W}px solid {FOCUS}; }}
 QToolTip {{
     background: {SURFACE_HI}; color: {TEXT}; border: 1px solid {BORDER_HI};
     padding: 5px 7px; border-radius: {RADIUS_CONTROL}px;

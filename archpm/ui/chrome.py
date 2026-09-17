@@ -27,10 +27,12 @@ from PySide6.QtCore import (
 from PySide6.QtGui import QPainter
 from PySide6.QtWidgets import (
     QAbstractScrollArea,
+    QFrame,
     QGraphicsOpacityEffect,
     QHBoxLayout,
     QLabel,
     QProxyStyle,
+    QPushButton,
     QScrollBar,
     QStyle,
     QStyleFactory,
@@ -45,6 +47,8 @@ TOAST_MS = 4000        # the default stay; a caller with more to say asks for lo
 TOAST_IN_MS = 150
 TOAST_OUT_MS = 300
 TOAST_MARGIN = 24      # from the bottom edge of the content
+TOAST_PAD_X, TOAST_PAD_Y = 20, 8
+TOAST_ACTION_MS = 12000  # a notice with a button stays long enough to press it
 SCROLL_IDLE_MS = 1200  # a scrollbar stays this long after the last movement
 SCROLL_FADE_MS = 250
 SCROLL_RESTING = 0.0
@@ -112,10 +116,11 @@ class HeaderBar(QWidget):
         self._place()
 
 
-class Toast(QLabel):
+class Toast(QFrame):
     """One short notice over the content: bottom centre of its parent,
     fades in, stays for the message's time, fades out. A new message
-    replaces the one showing; a click dismisses it."""
+    replaces the one showing; a click dismisses it. A notice may carry one
+    button, for the one thing the user may want to do about it."""
 
     def __init__(self, parent: QWidget, left=lambda: 0) -> None:
         """`left()` says where the content starts inside the parent, so the
@@ -124,8 +129,19 @@ class Toast(QLabel):
         self._left = left
         self.setObjectName("toast")
         self.setAccessibleName("Notification")
-        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        lay = QHBoxLayout(self)
+        lay.setContentsMargins(TOAST_PAD_X, TOAST_PAD_Y, TOAST_PAD_X, TOAST_PAD_Y)
+        lay.setSpacing(14)
+        self.label = QLabel()
+        self.label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        lay.addWidget(self.label, 1)
+        self.button = QPushButton()
+        self.button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.button.clicked.connect(self._pressed)
+        self.button.hide()
+        lay.addWidget(self.button, 0, Qt.AlignmentFlag.AlignVCenter)
+        self._action = None
         self._fx = QGraphicsOpacityEffect(self)
         self._fx.setOpacity(0.0)
         self.setGraphicsEffect(self._fx)
@@ -138,14 +154,35 @@ class Toast(QLabel):
         parent.installEventFilter(self)
         self.hide()
 
+    def text(self) -> str:
+        return self.label.text()
+
     def show_message(self, text: str, msec: int = TOAST_MS) -> None:
-        self.setWordWrap(False)
-        self.setText(text)
+        self._action = None
+        self.button.hide()
+        self._show(text, msec)
+
+    def show_action(self, text: str, button: str, action, msec: int = TOAST_ACTION_MS) -> None:
+        """A notice with one button; `action` runs when it is pressed."""
+        self._action = action
+        self.button.setText(button)
+        self.button.show()
+        self._show(text, msec)
+
+    def _show(self, text: str, msec: int) -> None:
+        self.label.setWordWrap(False)
+        self.label.setText(text)
         self._place()
         self.show()
         self.raise_()
         self._fade(1.0, TOAST_IN_MS)
         self._timer.start(msec)
+
+    def _pressed(self) -> None:
+        action, self._action = self._action, None
+        self.dismiss()
+        if action is not None:
+            action()
 
     def dismiss(self) -> None:
         self._timer.stop()
@@ -154,7 +191,7 @@ class Toast(QLabel):
 
     def showing(self) -> str:
         """The text on screen, "" when none."""
-        return self.text() if self.isVisible() and self._fx.opacity() > 0 else ""
+        return self.label.text() if self.isVisible() and self._fx.opacity() > 0 else ""
 
     def _fade(self, to: float, msec: int) -> None:
         self._anim.stop()
@@ -171,10 +208,11 @@ class Toast(QLabel):
         parent = self.parentWidget()
         left = self._left()
         room = parent.width() - left
-        width = min(self.sizeHint().width(), room - 2 * TOAST_MARGIN)
-        if width < self.sizeHint().width():
-            self.setWordWrap(True)
-        height = self.heightForWidth(width) if self.wordWrap() else self.sizeHint().height()
+        hint = self.sizeHint()
+        width = min(hint.width(), room - 2 * TOAST_MARGIN)
+        if width < hint.width():
+            self.label.setWordWrap(True)
+        height = self.heightForWidth(width) if self.label.wordWrap() else hint.height()
         self.setGeometry(left + (room - width) // 2, parent.height() - height - TOAST_MARGIN,
                          width, height)
 
@@ -188,7 +226,6 @@ class Toast(QLabel):
         event.accept()
 
 
-# -- overlay scrollbars ---------------------------------------------------------
 SC = QStyle.SubControl
 SCROLL_EDGE = 2       # from the content's edge to the handle
 GUTTER_PAD = 4        # a gutter bar: this much air on each side of its handle

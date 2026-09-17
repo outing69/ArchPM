@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
 
 from ..actions import ActionError
 from ..cleanup import Cleaner, CleanupItem, human, running_owner
+from ..helptext import CANNOT_UNDO
 from ..root.client import RootClient, check
 from . import theme
 from .widgets import BoxedList, ElidedLabel, FlowLayout, ListRow, mono, scrolling
@@ -336,7 +337,7 @@ class CleanupView(QWidget):
                         "older than the newest 100 MB is removed for good, including the logs "
                         "of an earlier crash you might still want to look up "
                         "(<code>journalctl -b -1</code> shows the previous boot). If you are "
-                        "chasing a problem, keep them for now.</span>")
+                        f"chasing a problem, keep them for now. {CANNOT_UNDO}</span>")
         answer = QMessageBox.question(
             self, "Remove these?",
             f"This frees about <b>{human(total)}</b> by emptying:<br><br>{names}{caution}"
