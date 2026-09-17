@@ -203,7 +203,8 @@ class Grouped(unittest.TestCase):
 
         from archpm.ui.proc_model import COL_CPU, COL_NAME, PID_ROLE
         self.view.table.sortByColumn(COL_CPU, Qt.SortOrder.DescendingOrder)
-        names = [self.proxy.index(r, COL_NAME).data() for r in range(self.proxy.rowCount())]
+        names = [self.proxy.index(r, COL_NAME).data().split(" (")[0]
+                 for r in range(self.proxy.rowCount())]
         self.assertEqual(names, ["Konsole", "Brave", "Steam"], "50 > 26 > 11")
         brave = self.proxy.index(1, 0)
         members = [self.proxy.index(r, 0, brave).data(PID_ROLE)
@@ -221,8 +222,8 @@ class Grouped(unittest.TestCase):
     def test_a_group_row_stands_for_every_member_when_signalled(self):
         from archpm import signalguard
         from archpm.ui.proc_model import COL_NAME
-        gid = next(pid for pid in self.roots() if pid < 0
-                   and self.model.index_for_pid(pid).siblingAtColumn(COL_NAME).data() == "Brave")
+        gid = next(pid for pid in self.roots() if pid < 0 and self.model.index_for_pid(pid)
+                   .siblingAtColumn(COL_NAME).data().startswith("Brave"))
         procs = self.model.procs_under(gid)
         self.assertEqual(sorted(p.pid for p in procs), [100, 101, 102])
         v = signalguard.check(procs, "TERM", tree=True, always_ask=True, list_all=True,
@@ -239,7 +240,7 @@ class Grouped(unittest.TestCase):
         self.view.update_view(Snapshot(system=SystemSample(), procs=GROUPED + [helper]))
         from archpm.ui.proc_model import COL_NAME, PID_ROLE
         brave = next(self.proxy.index(r, 0) for r in range(self.proxy.rowCount())
-                     if self.proxy.index(r, COL_NAME).data() == "Brave")
+                     if self.proxy.index(r, COL_NAME).data().startswith("Brave"))
         members = {self.proxy.index(r, 0, brave).data(PID_ROLE)
                    for r in range(self.proxy.rowCount(brave))}
         self.assertEqual(members, {100, 101, 102, 103})

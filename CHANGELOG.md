@@ -3,6 +3,19 @@
 All notable changes, newest first. Versions are git tags on
 [github.com/outing69/ArchPM](https://github.com/outing69/ArchPM).
 
+## 0.2.36 (2026-09-17)
+
+- Processes: a section header counts what it names. "Apps (55)" counted
+  processes and read as fifty-five programs; it now counts the rows under
+  it at its top level, so a program with twenty processes is one, and
+  reads "Apps (5)". The number of processes is in the header's tooltip:
+  "5 rows here, 57 processes in all: a program with several processes is
+  one row."
+- A closed group row carries its number of processes: "Brave (20)". When
+  the group is open the number goes, since the rows are then visible.
+  In the flat view with every process shown there are no groups, so the
+  header's count is the number of processes, as before.
+
 ## 0.2.35 (2026-09-17)
 
 - The words on the five paths a Windows user walks, last of the beginner

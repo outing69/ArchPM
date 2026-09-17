@@ -129,10 +129,19 @@ class ModelRows(unittest.TestCase):
         self.assertEqual(self.under(v, "system"), ["kthreadd", "mystery", "sddm", "systemd"])
         self.assertEqual(v.model.fallbacks, 1, "mystery: owner uid 0, no cgroup")
 
-    def test_grouped_puts_the_group_row_under_apps(self):
+    def test_grouped_puts_the_group_row_under_apps_and_counts_rows_not_processes(self):
         v = self.view("grouped")
-        self.assertEqual(self.roots(v)[0], "Apps (2)")
-        self.assertEqual(self.under(v, "apps"), ["brave"], "one group row for the two")
+        self.assertEqual(self.roots(v)[0], "Apps (1)", "one program, whatever its processes")
+        self.assertEqual(self.under(v, "apps"), ["brave (2)"], "closed: the name with its count")
+        gid = next(pid for pid, n in v.model._nodes.items()
+                   if pid < 0 and not sections.is_section(pid) and n.proc.members)
+        v.table.expand(v.proxy.mapFromSource(v.model.index_for_pid(gid)))
+        self.assertEqual(self.under(v, "apps"), ["brave"], "open: the rows are visible")
+        v.table.collapse(v.proxy.mapFromSource(v.model.index_for_pid(gid)))
+        self.assertEqual(self.under(v, "apps"), ["brave (2)"])
+        tip = v.proxy.mapFromSource(v.model.index_for_pid(sections.SECTION_PID["apps"])).data(
+            Qt.ItemDataRole.ToolTipRole)
+        self.assertIn("1 rows here, 2 processes in all", tip)
 
     def test_tree_keeps_its_hierarchy(self):
         v = self.view("tree")

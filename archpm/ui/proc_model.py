@@ -167,6 +167,7 @@ class ProcModel(QAbstractItemModel):
         # parent hierarchy, which is its whole point.
         self.sections = False
         self._section_of: dict[int, int] = {}    # pid or group pid -> section pid, this tick
+        self._section_procs: dict[str, int] = {}  # section -> processes in it, for the tooltip
         self._uid_min = uid_min()
         self.fallbacks = 0                       # processes placed by owner, not by cgroup
 
@@ -266,7 +267,10 @@ class ProcModel(QAbstractItemModel):
             return None if icon.isNull() else icon
         if role == Qt.ItemDataRole.ToolTipRole:
             if is_section(p.pid):
-                return wrap_tip([ABOUT[KEY_OF_PID[p.pid]]])
+                key = KEY_OF_PID[p.pid]
+                n = self._section_procs.get(key, 0)
+                return wrap_tip([ABOUT[key], f"{p.members} rows here, {n} processes in all: a "
+                                             "program with several processes is one row."])
             if totals and col in _SUMMED:
                 return f"Total of {totals.count} processes in this tree"
             if p.members and col == COL_MEM:
@@ -316,7 +320,11 @@ class ProcModel(QAbstractItemModel):
         if col == COL_PID:
             return "" if p.members else str(p.pid)
         if col == COL_NAME:
-            # a member of a browser says what it is: "Brave · page"
+            # a member of a browser says what it is: "Brave · page"; a group
+            # row carries its number of processes while it is closed, and
+            # not while it is open, since the rows are then visible
+            if p.members and p.pid not in self._expanded:
+                return f"{p.display_name} ({p.members})"
             return f"{p.display_name} · {p.role}" if p.role else p.display_name
         if col == COL_CPU:
             v = cpu / self.ncpu if self.normalize_cpu else cpu
@@ -529,9 +537,12 @@ class ProcModel(QAbstractItemModel):
     def _with_sections(self, incoming: dict[int, ProcSample]) -> dict[int, ProcSample]:
         """Place every process (by cgroup, or by owner when the cgroup could not
         be read) and every group row (where most of its members are), and add
-        the three section rows, each carrying its count of processes."""
+        the three section rows. A section's count is what it names: the rows
+        under it at its top level, so "Apps (5)" is five programs, with a
+        group row counting once; the number of processes goes in its tooltip."""
         self._section_of = {}
-        counts = dict.fromkeys(SECTION_PID, 0)
+        procs = dict.fromkeys(SECTION_PID, 0)
+        rows = dict.fromkeys(SECTION_PID, 0)
         self.fallbacks = 0
         members_of: dict[int, list[int]] = {}
         for pid, p in incoming.items():
@@ -539,19 +550,25 @@ class ProcModel(QAbstractItemModel):
                 continue
             key, fell_back = section_of(p.cgroup, p.uid, self._uid_min)
             self._section_of[pid] = SECTION_PID[key]
-            counts[key] += 1
+            procs[key] += 1
             self.fallbacks += fell_back
             gid = self._group_of.get(pid, 0)
             if gid:
                 members_of.setdefault(gid, []).append(SECTION_PID[key])
+            else:
+                rows[key] += 1
         for gid, homes in members_of.items():
-            self._section_of[gid] = max(set(homes), key=homes.count)
+            spid = max(set(homes), key=homes.count)
+            self._section_of[gid] = spid
+            rows[KEY_OF_PID[spid]] += 1
+        self._section_procs = procs
         out = dict(incoming)
         for key, spid in SECTION_PID.items():
-            out[spid] = ProcSample(pid=spid, name=LABEL[key], members=counts[key], cgroup=key)
+            out[spid] = ProcSample(pid=spid, name=LABEL[key], members=rows[key], cgroup=key)
         return out
 
     def section_counts(self) -> dict[str, int]:
+        """Rows at the top level of each section, as the headers say."""
         return {key: self._nodes[spid].proc.members for key, spid in SECTION_PID.items()
                 if spid in self._nodes}
 
