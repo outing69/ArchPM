@@ -1,6 +1,6 @@
 pkgbase = archpm
 	pkgdesc = Process manager and monitor for a Linux gaming PC: PySide6 GUI, sampler agent and two Plasma 6 widgets
-	pkgver = 0.2.28
+	pkgver = 0.2.29
 	pkgrel = 1
 	url = https://github.com/outing69/ArchPM
 	install = archpm.install
@@ -20,7 +20,7 @@ pkgbase = archpm
 	optdepends = pacman-contrib: clean the package cache from the Cleanup tab
 	optdepends = nvidia-utils: NVIDIA GPU telemetry via nvidia-smi
 	optdepends = hwdata: proper names for AMD GPUs
-	source = archpm-0.2.28.tar.gz::https://github.com/outing69/ArchPM/archive/refs/tags/v0.2.28.tar.gz
-	sha256sums = 8ce4f7a57d1dcebd840dab126bf54848b7d72e720098ca39e11e886721beb138
+	source = archpm-0.2.29.tar.gz::https://github.com/outing69/ArchPM/archive/refs/tags/v0.2.29.tar.gz
+	sha256sums = eb700b52fad85c901266bac22e818b496ccdfc3fb317b8e2af3d07d7518f3195
 
 pkgname = archpm
