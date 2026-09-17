@@ -6,8 +6,10 @@ as the content pane's own header in a split layout: the title in the
 middle, the window's few controls on the right, the desktop's own title
 bar and window buttons above it. Its controls are flat: no border or fill
 until hovered. The toast is one line over the content, bottom centre, that
-fades by itself. The scrollbars lie over the content's edge instead of
-taking a column of their own, and fade when nothing moves.
+fades by itself. A table's scrollbar lies over the content's edge instead
+of taking a column of its own, and fades when nothing moves. A page's
+scrollbar (a VScrollArea, marked "gutter") is the exception: it stands
+beside the page on a thin track, so it never covers a row or a card.
 """
 from __future__ import annotations
 
@@ -189,7 +191,13 @@ class Toast(QLabel):
 # -- overlay scrollbars ---------------------------------------------------------
 SC = QStyle.SubControl
 SCROLL_EDGE = 2       # from the content's edge to the handle
+GUTTER_PAD = 4        # a gutter bar: this much air on each side of its handle
 SLIDER_MIN = 34
+
+
+def in_gutter(widget) -> bool:
+    """A scrollbar that asked for a column of its own (a page's bar)."""
+    return widget is not None and bool(widget.property("gutter"))
 
 
 class OverlayScrollStyle(QProxyStyle):
@@ -197,14 +205,18 @@ class OverlayScrollStyle(QProxyStyle):
     them over the viewport instead of beside it, and draws them itself: a
     round handle in the theme's colours, no track, no arrows, on Breeze and
     Fusion alike. The stylesheet must not give QScrollBar a box of its own,
-    since a scrollbar with one is never transient to Qt."""
+    since a scrollbar with one is never transient to Qt. A bar marked
+    "gutter" is not transient: Qt gives it a column beside the viewport,
+    and it is drawn on a track, the handle centred with air on both sides."""
 
     def styleHint(self, hint, option=None, widget=None, return_data=None):
         if hint == QStyle.StyleHint.SH_ScrollBar_Transient:
-            return 1
+            return 0 if in_gutter(widget) else 1
         return super().styleHint(hint, option, widget, return_data)
 
     def pixelMetric(self, metric, option=None, widget=None):
+        if metric == QStyle.PixelMetric.PM_ScrollBarExtent and in_gutter(widget):
+            return theme.SCROLL_W + 2 * GUTTER_PAD
         if metric in (QStyle.PixelMetric.PM_ScrollBarExtent,
                       QStyle.PixelMetric.PM_ScrollView_ScrollBarOverlap):
             return theme.SCROLL_W + 2 * SCROLL_EDGE
@@ -253,24 +265,41 @@ class OverlayScrollStyle(QProxyStyle):
         active = bool(option.state & QStyle.StateFlag.State_MouseOver) or bool(
             option.state & QStyle.StateFlag.State_Sunken)
         thick = theme.SCROLL_W + (2 if active else 0)
-        if option.orientation == Qt.Orientation.Horizontal:
+        horizontal = option.orientation == Qt.Orientation.Horizontal
+        painter.save()
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setPen(Qt.PenStyle.NoPen)
+        if in_gutter(widget):
+            # the track, the bar's whole length, and the handle centred on it
+            groove = QRectF(option.rect)
+            if horizontal:
+                track = QRectF(groove.x() + SCROLL_EDGE, groove.center().y() - thick / 2,
+                               groove.width() - 2 * SCROLL_EDGE, thick)
+                handle = QRectF(slider.x() + SCROLL_EDGE, track.y(),
+                                slider.width() - 2 * SCROLL_EDGE, thick)
+            else:
+                track = QRectF(groove.center().x() - thick / 2, groove.y() + SCROLL_EDGE,
+                               thick, groove.height() - 2 * SCROLL_EDGE)
+                handle = QRectF(track.x(), slider.y() + SCROLL_EDGE,
+                                thick, slider.height() - 2 * SCROLL_EDGE)
+            painter.setBrush(theme.color("BORDER"))
+            painter.drawRoundedRect(track, thick / 2, thick / 2)
+        elif horizontal:
             handle = QRectF(slider.x() + SCROLL_EDGE, slider.bottom() - SCROLL_EDGE - thick,
                             slider.width() - 2 * SCROLL_EDGE, thick)
         else:
             handle = QRectF(slider.right() - SCROLL_EDGE - thick, slider.y() + SCROLL_EDGE,
                             thick, slider.height() - 2 * SCROLL_EDGE)
-        painter.save()
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(theme.color("TEXT" if active else "MUTED"))
         painter.drawRoundedRect(handle, thick / 2, thick / 2)
         painter.restore()
 
 
 class ScrollFade(QObject):
-    """Every scrollbar in the application fades out when nothing has moved
-    for a moment and comes back on a wheel turn, a scroll, or the pointer
-    entering its area; the pointer on the bar itself keeps it there."""
+    """Every overlay scrollbar fades out when nothing has moved for a moment
+    and comes back on a wheel turn, a scroll, or the pointer entering its
+    area; the pointer on the bar itself keeps it there. A gutter bar does
+    not fade: it has a column of its own and nothing to get out of the way of."""
 
     def __init__(self, app) -> None:
         super().__init__(app)
@@ -308,7 +337,7 @@ class ScrollFade(QObject):
         return None
 
     def _attach(self, bar: QScrollBar) -> None:
-        if bar in self._bars:
+        if bar in self._bars or in_gutter(bar):   # a gutter bar stays: it has the room
             return
         fx = QGraphicsOpacityEffect(bar)
         fx.setOpacity(1.0)

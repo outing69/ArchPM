@@ -33,6 +33,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QLayout,
     QScrollArea,
+    QScrollBar,
     QSizePolicy,
     QSpacerItem,
     QVBoxLayout,
@@ -480,10 +481,19 @@ class TextLink(QLabel):
             p.end()
 
 
+class GutterScrollBar(QScrollBar):
+    """A scrollbar that asks for a column of its own; see chrome.in_gutter."""
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(Qt.Orientation.Vertical, parent)
+        self.setProperty("gutter", True)
+
+
 class VScrollArea(QScrollArea):
     """A page that scrolls up and down and never sideways: its minimum width
     is the page's own, so the window cannot be made narrower than the page,
-    while the height is free and gains a scrollbar when the window is short."""
+    while the height is free and gains a scrollbar when the window is short.
+    That scrollbar has a gutter beside the page, not a place over it."""
 
     def __init__(self, widget: QWidget, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -491,6 +501,10 @@ class VScrollArea(QScrollArea):
         self.setFrameShape(QScrollArea.Shape.NoFrame)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.viewport().setAutoFillBackground(False)
+        # A page's bar stands beside the page in a gutter of its own, on a
+        # track, and never over a row or a card; see chrome.OverlayScrollStyle.
+        # Marked before it is ever polished, so the fade never takes it.
+        self.setVerticalScrollBar(GutterScrollBar())
         self.setWidget(widget)
         # A scroll area does not pass its page's size hints up. When the
         # page lays itself out again, the window's minimum must follow.
@@ -935,7 +949,8 @@ class BoxedList(QWidget):
         head.setSpacing(12)
         self.title = QLabel(title)
         theme.style(self.title, "font-weight: 700;")
-        head.addWidget(self.title, 1)
+        head.addWidget(self.title)
+        head.addStretch(1)
         self._suffix: QWidget | None = None
         lay.addWidget(self.head)
         self.description = QLabel(description)
@@ -966,9 +981,10 @@ class BoxedList(QWidget):
         self._show_head()
 
     def set_suffix(self, widget: QWidget) -> None:
-        """The one control of the group, at the head's right."""
+        """The one control of the group, on the title's line right after it,
+        so it reads as the group's and not as one more page button."""
         self._suffix = widget
-        self.head.layout().addWidget(widget, 0, Qt.AlignmentFlag.AlignVCenter)
+        self.head.layout().insertWidget(1, widget, 0, Qt.AlignmentFlag.AlignVCenter)
         self._show_head()
 
     def rows(self) -> list[ListRow]:

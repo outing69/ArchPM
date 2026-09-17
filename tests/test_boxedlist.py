@@ -243,6 +243,80 @@ class Pages(unittest.TestCase):
         self.assertIn("failed since Mon", row.subtitle.text())
         self.assertIs(v.failed_list._suffix, v.btn_failed)
 
+    def test_a_root_row_with_nothing_to_remove_says_so_instead_of_promising_a_prompt(self):
+        from archpm.root.client import RootClient
+        from archpm.ui.cleanup import CleanupView
+        v = CleanupView(RootClient())
+        v.scan = lambda: None
+        empty = CleanupItem(id="journal", name="System logs", description="", size=0,
+                            needs_root=True, helper_command="journal-vacuum")
+        text, colour = v._note_for(empty, root_ok=False)
+        self.assertEqual((text, colour), ("root · nothing to remove", "MUTED"))
+        self.assertEqual(v._note_for(empty, root_ok=True)[0], "root · nothing to remove")
+        some = CleanupItem(id="journal", name="System logs", description="", size=1 << 20,
+                           needs_root=True, helper_command="journal-vacuum")
+        self.assertIn("asks for your password on Remove", v._note_for(some, root_ok=False)[0])
+        v.items = [empty, some]
+        v._fill()
+        rows = v.list.rows()
+        self.assertFalse(rows[0].prefix.isEnabled(), "nothing to tick when there is nothing")
+        self.assertEqual(rows[0].suffix[0].text(), "root · nothing to remove")
+        if v.items[1].helper_command and rows[1].prefix.isEnabled():
+            self.assertIn("password", rows[1].suffix[0].text(), "and this one keeps its promise")
+
+    def test_the_groups_control_sits_right_after_its_title(self):
+        from archpm.ui.sysinfo import SystemView
+        v = SystemView()
+        v.reload = lambda: None
+        v.show()
+        v.resize(1200, 700)
+        QTest.qWait(20)
+        head = v.failed_list.head.layout()
+        self.assertIs(head.itemAt(1).widget(), v.btn_failed)
+        title = v.failed_list.title
+        self.assertLess(v.btn_failed.x() - (title.x() + title.width()), 20,
+                        "next to the title, not at the far right under the page buttons")
+        self.assertLess(v.btn_failed.x() + v.btn_failed.width(), v.failed_list.width() // 2)
+        v.close()
+
+    def test_a_pages_scrollbar_has_a_gutter_beside_the_page_and_does_not_fade(self):
+        from PySide6.QtWidgets import QLabel, QStyle, QVBoxLayout, QWidget
+
+        from archpm.ui import chrome
+        chrome.install(self.app)
+        tall = QWidget()
+        lay = QVBoxLayout(tall)
+        for i in range(60):
+            lay.addWidget(QLabel(f"row {i}"))
+        from archpm.ui.widgets import VScrollArea
+        area = VScrollArea(tall)
+        area.resize(400, 300)
+        area.show()
+        QTest.qWait(30)
+        bar = area.verticalScrollBar()
+        self.assertTrue(bar.isVisible())
+        self.assertEqual(self.app.style().styleHint(QStyle.StyleHint.SH_ScrollBar_Transient,
+                                                     None, bar), 0)
+        from PySide6.QtCore import QPoint
+        bar_left = bar.mapTo(area, QPoint(0, 0)).x()
+        page_right = area.viewport().mapTo(area, QPoint(0, 0)).x() + area.viewport().width()
+        self.assertGreaterEqual(bar_left, page_right, "beside the page, never over it")
+        self.assertEqual(bar.width(), theme.SCROLL_W + 2 * chrome.GUTTER_PAD)
+        self.assertIsNone(bar.graphicsEffect(), "no fade for a bar with room of its own")
+        # a table's bar is still the overlay one
+        from PySide6.QtWidgets import QTableWidget
+        table = QTableWidget(80, 2)
+        table.resize(300, 200)
+        table.show()
+        QTest.qWait(30)
+        tbar = table.verticalScrollBar()
+        self.assertEqual(self.app.style().styleHint(QStyle.StyleHint.SH_ScrollBar_Transient,
+                                                     None, tbar), 1)
+        self.assertLess(tbar.mapTo(table, QPoint(0, 0)).x(),
+                        table.viewport().mapTo(table, QPoint(0, 0)).x() + table.viewport().width())
+        table.close()
+        area.close()
+
     def test_the_status_file_is_on_the_system_page_and_not_a_toast(self):
         import inspect
 

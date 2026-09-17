@@ -226,13 +226,19 @@ class CleanupView(QWidget):
             self._refresh_notes()
 
     def _note_for(self, it: CleanupItem, root_ok: bool) -> tuple[str, str]:
-        """(text, colour token) for the row's note."""
+        """(text, colour token) for the row's note. It says what blocks the
+        row when something does: a missing tool, or nothing to remove, which
+        is what an empty size means and what makes the row untickable."""
         if it.needs_root:
             if it.note:
                 return "root · " + it.note, "WARN"
+            if it.size <= 0:
+                return "root · nothing to remove", "MUTED"
             if root_ok:
                 return "root · unlocked", "OK"
             return "root · asks for your password on Remove", "MUTED"
+        if it.size <= 0:
+            return "nothing to remove", "MUTED"
         owner = running_owner(it, self._procs)
         if owner:
             return f"running now: {owner}", "WARN"

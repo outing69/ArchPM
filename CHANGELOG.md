@@ -3,6 +3,29 @@
 All notable changes, newest first. Versions are git tags on
 [github.com/outing69/ArchPM](https://github.com/outing69/ArchPM).
 
+## 0.2.29 (2026-09-17)
+
+- Cleanup: a root row with nothing to remove says so. The two root rows
+  read "asks for your password on Remove" while they could not be ticked,
+  because the tick needs a size above zero and the note only looked at the
+  root state; on a machine where every package is one of its last two
+  versions and the journal is under the 100 MB kept, both sizes are zero.
+  The note now reads "root · nothing to remove", in the quiet colour, and
+  the same for a user item; the password line is shown only when there is
+  something the password would remove.
+- System: the "Refresh failed services" button sits on the group's title
+  line, right after "Failed services", instead of at the far right under
+  the page's Copy as text and Refresh, where it read as one more page
+  button on a row of its own.
+- A page's scrollbar no longer runs over the rows. The overlay scrollbar of
+  0.2.27 told Qt every bar is transient, which lays it over the content,
+  and its handle was painted over the box's edge. A page that scrolls as a
+  whole (Overview, Startup, Cleanup, System) now has a bar of its own
+  beside the page: a 14 px gutter with a thin track the bar's whole length
+  and the handle centred on it, and it does not fade, since it has nothing
+  to get out of the way of. A table's bar (Processes, Network, the
+  Overview's top processes) is the overlay one still, over its own rows.
+
 ## 0.2.28 (2026-09-17)
 
 - Stage three of the GNOME look, second part: boxed lists. Startup, Cleanup
