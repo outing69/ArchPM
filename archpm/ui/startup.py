@@ -140,8 +140,8 @@ class StartupView(QWidget):
 
     @staticmethod
     def _meta(e: StartupEntry) -> str:
-        """Kind and source in one short line: 'App · User', 'System · User (override)'."""
-        source = e.source + (" (override)" if e.is_override else "")
+        """Kind and source in one short line: 'App · User', 'System · your own copy'."""
+        source = "your own copy" if e.is_override else e.source
         return f"{KIND_LABEL.get(e.kind, e.kind)} · {source}"
 
     def _header(self, enabled: bool) -> ListRow:
@@ -165,7 +165,7 @@ class StartupView(QWidget):
         self.list.add_row(self._header(True))
         seen_off = False
         # the status and the kind stand in columns: one width for each
-        status_w = QFontMetrics(theme.font("body")).horizontalAdvance("Running · pid 9999999")
+        status_w = QFontMetrics(theme.font("body")).horizontalAdvance("Running · process 9999999")
         small = QFontMetrics(theme.font("small"))
         meta_w = max((small.horizontalAdvance(self._meta(e)) for e in self.entries), default=0)
         for e in self.entries:
@@ -223,7 +223,7 @@ class StartupView(QWidget):
             if not e.for_this_desktop:
                 text, colour = "Other desktop", "FAINT"
             elif e.id in running:
-                text, colour = f"Running · pid {running[e.id]}", "OK"
+                text, colour = f"Running · process {running[e.id]}", "OK"
             else:
                 text, colour = "Not running", "MUTED"
             if label.text() != text:

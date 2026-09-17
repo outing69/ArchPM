@@ -3,6 +3,41 @@
 All notable changes, newest first. Versions are git tags on
 [github.com/outing69/ArchPM](https://github.com/outing69/ArchPM).
 
+## 0.2.35 (2026-09-17)
+
+- The words on the five paths a Windows user walks, last of the beginner
+  audit. Where a plain word carries the same meaning it replaces the term;
+  where the term is the thing itself it stays, with the plain word first.
+  Processes: the columns read Threads, Video memory, Priority and Disk
+  instead of Thr, VRAM, Nice and Disk I/O; PID stays, since the id is the
+  thing itself, and the search field says "Find a program by name, command
+  or process id". The context menu reads "Terminate: ask it to quit",
+  "Force kill: end it at once", "Pause", "Resume", "… with everything it
+  started" and "Cores it may use…"; SIGTERM, SIGKILL, SIGSTOP, SIGCONT and
+  "affinity" are gone from it. The toast after an action is a sentence:
+  "Asked 1 process to quit", "Force-killed 3 processes", "Priority changed
+  for 2 processes"; "process(es)" is gone everywhere. The checkbox "CPU%
+  ÷ cores" reads "CPU as % of all cores".
+- One scale for one thing on the game card: CPU reads "19%" with "of all
+  16 cores" under it, as the tile at the top of the page, instead of "9%"
+  beside "1.4 of 16 cores"; video memory reads "of the card's 12 GB"
+  instead of the same number again in MB. The captions read "with
+  everything it started", "across 3 processes" and "it may use" instead of
+  "Whole tree", "In 3 processes" and "Allowed"; the line under the name
+  says "Priority raised" instead of "Nice -4" and "process 4562" instead
+  of "pid 4562".
+- A temperature carries its reference on the tile, not only in a tooltip:
+  "normal" under 80°, "warm" to 90°, "hot" above, with the colour by the
+  same rule, so 61° under load is green and not amber as the heat scale
+  had it. The machine line reads "8 cores, 16 threads" instead of
+  "8c/16t"; the memory card reads "On disk (swap)"; the Startup page
+  reads "System · your own copy" instead of "User (override)" and
+  "Running · process 1323" instead of "pid".
+- Kept, and why: PID as a column header and "swap", "threads" and "cores"
+  as words, each the thing itself with no plain word that means the same;
+  "Force kill" as the button; and the Help glossary's own definitions,
+  untouched on purpose.
+
 ## 0.2.34 (2026-09-17)
 
 - Overview: a verdict line at the top, above the tiles, in words. "Nothing

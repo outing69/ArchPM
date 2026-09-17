@@ -38,6 +38,7 @@ from PySide6.QtWidgets import (
 from .. import signalguard
 from ..actions import ActionError, UserBackend
 from ..appinfo import CATEGORIES
+from ..helptext import plural
 from ..model import ProcSample
 from ..sections import KEY_OF_PID, SECTION_PID, is_section
 from . import hints, theme
@@ -67,6 +68,13 @@ from .proc_model import (
 from .widgets import FlowLayout, Graph, app_icon, human_bytes, mono
 
 WATCH_S = 5.0     # after a Terminate: this long before the toast offers to force it
+# the toast after a signal, in plain words; {n} becomes "3 processes"
+SIGNAL_DONE = {
+    signal.SIGTERM: "Asked {n} to quit",
+    signal.SIGKILL: "Force-killed {n}",
+    signal.SIGSTOP: "Paused {n}",
+    signal.SIGCONT: "Resumed {n}",
+}
 NICE_PRESETS = [
     ("Game priority (nice -10)", -10),
     ("High (nice -5)", -5),
@@ -158,7 +166,8 @@ class HistoryPanel(QWidget):
 
     def show_track(self, p: ProcSample, track, tree_size: int,
                    ended_ago: float | None = None) -> None:
-        scope = f"Whole tree, {tree_size} processes" if tree_size > 1 else f"PID {p.pid}"
+        scope = (f"With everything it started, {tree_size} processes" if tree_size > 1
+                 else f"process {p.pid}")
         if ended_ago is not None:
             when = "just now" if ended_ago < 10 else f"{age_text(ended_ago)} ago"
             scope += (f"&nbsp;&nbsp;·&nbsp;&nbsp;"
@@ -200,7 +209,7 @@ class ProcessView(QWidget):
         # -- toolbar: one row when it fits, wrapped when the window is narrow
         bar = FlowLayout(spacing=10)
         self.search = QLineEdit()
-        self.search.setPlaceholderText("Search by name, command or PID…   (Ctrl+F)")
+        self.search.setPlaceholderText("Find a program by name, command or process id…   (Ctrl+F)")
         self.search.setClearButtonEnabled(True)
         self.search.setMinimumWidth(240)
         bar.addWidget(self.search)
@@ -231,7 +240,7 @@ class ProcessView(QWidget):
             "sections: Apps, Background processes, System processes (Grouped and Flat)."
         )
         self.cb_gpu = QCheckBox("GPU only")
-        self.cb_norm = QCheckBox("CPU% ÷ cores")
+        self.cb_norm = QCheckBox("CPU as % of all cores")
         self.cb_norm.setToolTip(
             "Off: 100% = one core fully used (like top).\nOn: 100% = all cores fully used."
         )
@@ -305,7 +314,7 @@ class ProcessView(QWidget):
         # nothing is left for the command.
         for col, w in (
             (COL_PID, 64), (COL_NAME, 280), (COL_CPU, 74), (COL_MEM, 86),
-            (COL_GPU, 58), (COL_VRAM, 74), (COL_THREADS, 46), (COL_NICE, 48),
+            (COL_GPU, 58), (COL_VRAM, 100), (COL_THREADS, 66), (COL_NICE, 64),
             (COL_IO, 84), (COL_USER, 78), (COL_STATUS, 74), (COL_STARTED, 76),
             (COL_CATEGORY, 104),
         ):
@@ -590,26 +599,26 @@ class ProcessView(QWidget):
         title = one.display_name if one else f"{len(procs)} processes"
         menu = QMenu(self)
         detail = "" if one is None else (f"  ·  {one.members} processes" if one.members
-                                         else f"  ·  pid {one.pid}")
+                                         else f"  ·  process {one.pid}")
         header = menu.addAction(f"{title}{detail}")
         header.setEnabled(False)
         menu.addSeparator()
 
-        menu.addAction("Terminate  (SIGTERM)",
+        menu.addAction("Terminate: ask it to quit",
                        lambda: self._signal_selected(signal.SIGTERM))
-        menu.addAction("Force kill  (SIGKILL)",
+        menu.addAction("Force kill: end it at once",
                        lambda: self._signal_selected(signal.SIGKILL, confirm=True))
         if self.model.tree and any(self.model.has_children(p.pid) for p in procs):
             n = len(self._selected_trees())
-            menu.addAction(f"Terminate with children  ({n} processes)",
+            menu.addAction(f"Terminate with everything it started  ({n} processes)",
                            lambda: self._signal_selected(signal.SIGTERM, tree=True))
-            menu.addAction(f"Force kill with children  ({n} processes)",
+            menu.addAction(f"Force kill with everything it started  ({n} processes)",
                            lambda: self._signal_selected(signal.SIGKILL, confirm=True, tree=True))
         if one and one.status == "stopped":
-            menu.addAction("Resume  (SIGCONT)",
+            menu.addAction("Resume",
                            lambda: self._signal_selected(signal.SIGCONT))
         else:
-            menu.addAction("Suspend  (SIGSTOP)",
+            menu.addAction("Pause",
                            lambda: self._signal_selected(signal.SIGSTOP))
         menu.addSeparator()
 
@@ -625,10 +634,10 @@ class ProcessView(QWidget):
         io.addAction("Idle only", lambda: self._set_ionice(psutil.IOPRIO_CLASS_IDLE))
 
         if one:
-            menu.addAction("CPU affinity…", lambda: self._affinity(one))
+            menu.addAction("Cores it may use…", lambda: self._affinity(one))
         menu.addSeparator()
         copy = menu.addMenu("Copy")
-        copy.addAction("PID", lambda: self._copy(" ".join(str(p.pid) for p in procs)))
+        copy.addAction("Process id (PID)", lambda: self._copy(" ".join(str(p.pid) for p in procs)))
         copy.addAction("Name", lambda: self._copy(" ".join(p.name for p in procs)))
         if one:
             copy.addAction("Command line", lambda: self._copy(one.cmdline))
@@ -656,24 +665,25 @@ class ProcessView(QWidget):
         return True
 
     # -- actions ----------------------------------------------------------
-    def _run(self, fn, procs: list[ProcSample], verb: str) -> None:
+    def _run(self, fn, procs: list[ProcSample], done: str) -> None:
         """Every outcome is shown: a count for what was done, a box for what
         was not. An action that silently does nothing is worse than an error,
         so even a fault in our own code lands in the box instead of in a
-        traceback on stderr that nobody sees."""
-        done, errors = 0, []
+        traceback on stderr that nobody sees. `done` is the toast, in plain
+        words, with {n} for "3 processes"."""
+        done_n, errors = 0, []
         for p in procs:
             try:
                 fn(p)
-                done += 1
+                done_n += 1
             except ActionError as exc:
                 errors.append(f"{p.display_name} ({p.pid}): {exc}")
             except Exception as exc:  # noqa: BLE001 - reported, never swallowed
                 errors.append(f"{p.display_name} ({p.pid}): {type(exc).__name__}: {exc}")
-        if done:
-            self.status.emit(f"{verb}: {done} process(es)")
+        if done_n:
+            self.status.emit(done.format(n=plural(done_n, "process")))
         elif not procs:
-            self.status.emit(f"{verb}: nothing selected")
+            self.status.emit("Nothing selected")
         if errors:
             box = QMessageBox(self)
             box.setIcon(QMessageBox.Icon.Warning)
@@ -709,7 +719,7 @@ class ProcessView(QWidget):
             verdict.text = f"{verdict.text}\n\n{note}".strip()
         if verdict.confirm and not self._confirm(verdict):
             return
-        self._run(lambda p: self.backend.send_signal(p.pid, sig), procs, sig.name)
+        self._run(lambda p: self.backend.send_signal(p.pid, sig), procs, SIGNAL_DONE[sig])
         if sig == signal.SIGTERM:
             self.watch(procs)
 
@@ -756,7 +766,8 @@ class ProcessView(QWidget):
             return
         if verdict.confirm and not self._confirm(verdict):
             return
-        self._run(lambda p: self.backend.send_signal(p.pid, signal.SIGKILL), procs, "SIGKILL")
+        self._run(lambda p: self.backend.send_signal(p.pid, signal.SIGKILL), procs,
+                  SIGNAL_DONE[signal.SIGKILL])
 
     def _confirm(self, verdict: signalguard.Verdict) -> bool:
         box = QMessageBox(self)
@@ -782,25 +793,25 @@ class ProcessView(QWidget):
 
     def _set_nice(self, value: int) -> None:
         self._run(lambda p: self.backend.set_nice(p.pid, value),
-                  self._selected_real(), f"nice {value}")
+                  self._selected_real(), "Priority changed for {n}")
 
     def _set_ionice(self, klass, value: int = 4) -> None:
         self._run(lambda p: self.backend.set_ionice(p.pid, klass, value),
-                  self._selected_real(), "disk priority")
+                  self._selected_real(), "Disk priority changed for {n}")
 
     def _affinity(self, proc: ProcSample) -> None:
         """For a group row the dialog starts from the first member's mask and
         the choice goes to every member."""
         targets = [proc] if proc.pid > 0 else self.model.procs_under(proc.pid)
         if not targets:
-            self.status.emit("affinity: nothing selected")
+            self.status.emit("Nothing selected")
             return
         current = self.backend.get_affinity(targets[0].pid) or list(range(self.ncpu))
         dlg = AffinityDialog(proc, current, self.ncpu, self)
         if dlg.exec() != QDialog.DialogCode.Accepted:
             return
         self._run(lambda p: self.backend.set_affinity(p.pid, dlg.selection()),
-                  targets, "affinity")
+                  targets, "Cores set for {n}")
 
     @staticmethod
     def _copy(text: str) -> None:

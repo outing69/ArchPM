@@ -13,6 +13,11 @@ from . import __version__
 # and the journal cleanup.
 CANNOT_UNDO = "This cannot be undone."
 
+
+def plural(n: int, noun: str, nouns: str | None = None) -> str:
+    """"1 process", "3 processes": never "process(es)" on screen."""
+    return f"{n} {noun if n == 1 else (nouns or noun + 'es' if noun.endswith('s') else noun + 's')}"
+
 REPO = "https://github.com/outing69/ArchPM"
 ISSUES = f"{REPO}/issues"
 LICENSE = "MIT"

@@ -19,10 +19,17 @@ from PySide6.QtWidgets import (
 )
 
 from ..game import game_tree, pick_game
-from ..helptext import CANNOT_UNDO
+from ..helptext import CANNOT_UNDO, plural
 from ..model import ProcSample, Snapshot, SystemSample
 from ..sysinfo import cpu_model, short_cpu_name
-from ..verdict import GAME_GPU_FULL, StrainWatch, Verdict, game_verdict, gpu_caption
+from ..verdict import (
+    GAME_GPU_FULL,
+    StrainWatch,
+    Verdict,
+    game_verdict,
+    gpu_caption,
+    temp_level,
+)
 from . import hints, theme
 from .history import ProcHistory
 from .proc_model import age_text
@@ -75,8 +82,8 @@ class GameCard(Card):
         name_row.addWidget(self.lbl_name, 1)
         self.btn_kill = QPushButton("End game")
         self.btn_kill.setObjectName("kill")
-        self.btn_kill.setToolTip("Ask the game and everything it started to quit (SIGTERM). "
-                                 "For a game that does not react, use Force kill in Processes.")
+        self.btn_kill.setToolTip("Ask the game and everything it started to quit. If it stays, "
+                                 "ArchPM says so after a few seconds and offers to force it.")
         self.btn_kill.clicked.connect(self._confirm_terminate)
         name_row.addWidget(self.btn_kill)
         left.addLayout(name_row)
@@ -94,7 +101,7 @@ class GameCard(Card):
         left.addWidget(self.lbl_sub)
         self.t_cpu = StatTile("cpu", "CPU")
         self.t_gpu = StatTile("gpu", "GPU")
-        self.t_vram = StatTile("vram", "GPU")
+        self.t_vram = StatTile("video memory", "GPU")
         self.t_mem = StatTile("ram", "MEM")
         self.t_thr = StatTile("threads", "CPU")
         self.t_cores = StatTile("cores", "CPU")
@@ -176,12 +183,13 @@ class GameCard(Card):
         icon = app_icon(game.icon)
         self.lbl_name.setText(
             f"<span style='color:{theme.ACCENT}'>{game.display_name}</span>"
-            f"<span style='color:{theme.FAINT}'>&nbsp;&nbsp;·&nbsp;&nbsp;pid {game.pid}"
-            f"&nbsp;&nbsp;·&nbsp;&nbsp;{len(tree)} processes</span>"
+            f"<span style='color:{theme.FAINT}'>&nbsp;&nbsp;·&nbsp;&nbsp;process {game.pid}"
+            f"&nbsp;&nbsp;·&nbsp;&nbsp;{plural(len(tree), 'process')}</span>"
         )
         self.lbl_name.setToolTip(game.cmdline)
         started = age_text(time.time() - game.create_time) if game.create_time else "?"
-        self.lbl_sub.setText(f"Running {started}  ·  Nice {game.nice}"
+        priority = ("raised" if game.nice < 0 else "lowered" if game.nice > 0 else "normal")
+        self.lbl_sub.setText(f"Running {started}  ·  Priority {priority}"
                              + (f"  ·  {game.name}" if game.app_name else ""))
         # The card's own rule, not the heat scale: for a game the card fully
         # used is the good outcome, so it is green and never red.
@@ -191,15 +199,19 @@ class GameCard(Card):
         self.lbl_verdict.setText(text)
         theme.text(self.lbl_verdict, token)
         self.lbl_verdict.show()
-        self.t_cpu.set(f"{cpu / self.ncpu:.0f}%", f"{cpu / 100:.1f} of {self.ncpu} cores",
+        # one scale for one thing: the share of the whole processor, as the
+        # tile at the top of the page; not "9%" beside "1.4 of 16 cores"
+        self.t_cpu.set(f"{cpu / self.ncpu:.0f}%", f"of all {self.ncpu} cores",
                        "WARN" if token == "WARN" else "TEXT")
         self.t_gpu.set(f"{gpu:.0f}%", gpu_caption(gpu),
                        "OK" if gpu >= GAME_GPU_FULL else "TEXT")
-        self.t_vram.set(f"{vram / 1024:.1f} GB", f"{vram:.0f} MB")
-        self.t_mem.set(human_bytes(rss), "Whole tree")
-        self.t_thr.set(str(threads), f"In {len(tree)} processes")
+        total = system.gpu.mem_total_mb if system and system.gpu else 0.0
+        self.t_vram.set(f"{vram / 1024:.1f} GB", f"of the card's {total / 1024:.0f} GB"
+                        if total else "")
+        self.t_mem.set(human_bytes(rss), "with everything it started")
+        self.t_thr.set(str(threads), f"across {plural(len(tree), 'process')}")
         cores = self._cores_allowed(game.pid)
-        self.t_cores.set(f"{cores or '?'} of {self.ncpu}", "Allowed")
+        self.t_cores.set(f"{cores or '?'} of {self.ncpu}", "it may use")
         if history is not None:
             track = history.tree([p.pid for p in tree])
             # same notation as the tile next to it: share of the whole machine
@@ -318,7 +330,7 @@ class Dashboard(QWidget):
         self._machine = (
             platform.node(),
             platform.release(),
-            f"{psutil.cpu_count(logical=False) or ncpu}c/{ncpu}t",
+            f"{psutil.cpu_count(logical=False) or ncpu} cores, {ncpu} threads",
         )
         self._render_machine(0.0)
         # Root tasks: made here, placed at the foot of the page below
@@ -335,7 +347,7 @@ class Dashboard(QWidget):
         self.t_gpu = StatTile("gpu", "GPU")
         self.t_gputemp = StatTile("gpu temp", "GPU")
         self.t_mem = StatTile("memory", "MEM")
-        self.t_vram = StatTile("vram", "GPU")
+        self.t_vram = StatTile("video memory", "GPU")
         for t, key in ((self.t_cpu, "tile.cpu"), (self.t_cputemp, "tile.cpu temp"),
                        (self.t_gpu, "tile.gpu"), (self.t_gputemp, "tile.gpu temp"),
                        (self.t_mem, "tile.memory"), (self.t_vram, "tile.vram")):
@@ -361,7 +373,7 @@ class Dashboard(QWidget):
 
         # -- GPU -----------------------------------------------------------
         gpu_card = Card("graphics card", color="GPU")
-        self.g_gpu = Graph([("GPU load", "GPU"), ("VRAM", "DISK")], maximum=100.0)
+        self.g_gpu = Graph([("GPU load", "GPU"), ("Video memory", "DISK")], maximum=100.0)
         gpu_card.body.addWidget(self.g_gpu, 1)
         hints.attach(self.g_gpu, "graph.gpu", self.help_requested.emit)
         self.gpu_sub = QLabel("--")
@@ -373,7 +385,7 @@ class Dashboard(QWidget):
 
         # -- memory --------------------------------------------------------
         mem_card = Card("memory", color="MEM")
-        self.g_mem = Graph([("RAM", "MEM"), ("Swap", "SWAP")], maximum=100.0)
+        self.g_mem = Graph([("RAM", "MEM"), ("On disk (swap)", "SWAP")], maximum=100.0)
         mem_card.body.addWidget(self.g_mem, 1)
         hints.attach(self.g_mem, "graph.mem", self.help_requested.emit)
         self.mem_sub = QLabel("--")
@@ -414,7 +426,7 @@ class Dashboard(QWidget):
         self.top_mem = TopProcList("MEM", " MB")
         mem_col.addWidget(self.top_mem)
         gpu_col = QVBoxLayout()
-        gpu_col.addWidget(self._sublabel("vram", "GPU"))
+        gpu_col.addWidget(self._sublabel("video memory", "GPU"))
         self.top_gpu = TopProcList("GPU", " MB")
         gpu_col.addWidget(self.top_gpu)
         for col in (cpu_col, mem_col, gpu_col):
@@ -540,16 +552,18 @@ class Dashboard(QWidget):
         self.cores.set_values(s.per_core)
         self.t_cpu.set(f"{s.cpu_percent:.0f}%", self._cpu_name, theme.heat(s.cpu_percent).name())
         if s.cpu_temp_c:
-            self.t_cputemp.set(f"{s.cpu_temp_c:.0f}°", "",
-                               theme.heat(min(s.cpu_temp_c, 100)).name())
+            # the reference on the tile, not only in the tooltip: normal,
+            # warm or hot, and the colour by the same rule, not the heat scale
+            word, token = temp_level(s.cpu_temp_c)
+            self.t_cputemp.set(f"{s.cpu_temp_c:.0f}°", word, token)
 
         if s.gpu:
             g = s.gpu
             self.g_gpu.push(g.util, g.mem_pct)
             self.t_gpu.set(f"{g.util:.0f}%", g.name.replace("NVIDIA GeForce ", ""),
                            theme.heat(g.util).name())
-            self.t_gputemp.set(f"{g.temp_c:.0f}°", f"Fan {g.fan_pct:.0f}%",
-                               theme.heat(min(g.temp_c * 1.15, 100)).name())
+            word, token = temp_level(g.temp_c)
+            self.t_gputemp.set(f"{g.temp_c:.0f}°", f"{word}  ·  fan {g.fan_pct:.0f}%", token)
             self.t_vram.set(f"{g.mem_used_mb / 1024:.1f} GB",
                             f"{g.mem_pct:.0f}% of {g.mem_total_mb / 1024:.0f} GB")
             self.gpu_sub.setText(
@@ -565,7 +579,7 @@ class Dashboard(QWidget):
                        f"{s.mem_pct:.0f}% of {s.mem_total / 2**30:.0f} GB",
                        theme.heat(s.mem_pct).name())
         self.mem_sub.setText(
-            f"Free {s.mem_available / 2**30:.1f} GB  ·  Swap "
+            f"Free {s.mem_available / 2**30:.1f} GB  ·  On disk (swap) "
             f"{s.swap_used / 2**30:.1f}/{s.swap_total / 2**30:.0f} GB  ·  "
             f"{s.proc_count} processes, {s.thread_count} threads"
         )

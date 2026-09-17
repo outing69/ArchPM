@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
 
 from .. import APP_NAME, __version__, failed, signalguard
 from ..actions import ActionError, get_backend
+from ..helptext import plural
 from ..model import Snapshot
 from ..root.client import ElevatedBackend, RootClient
 from . import chrome, theme
@@ -366,7 +367,7 @@ class MainWindow(QMainWindow):
                 done += 1
             except ActionError:
                 failed += 1
-        self._flash(f"{name}: asked {done} process(es) to quit"
+        self._flash(f"{name}: asked {plural(done, 'process')} to quit"
                     + (f", {failed} refused" if failed else ""))
         self.procs.watch([by_pid[pid] for pid in pids if pid in by_pid], name)
 
@@ -394,7 +395,7 @@ class MainWindow(QMainWindow):
             cpu_temp = f" · {s.cpu_temp_c:.0f}°" if s.cpu_temp_c else ""
             tip = [f"CPU {s.cpu_percent:.0f}%{cpu_temp}"]
             if gpu is not None:
-                tip.append(f"GPU {gpu.util:.0f}% · {gpu.temp_c:.0f}° · VRAM "
+                tip.append(f"GPU {gpu.util:.0f}% · {gpu.temp_c:.0f}° · video memory "
                            f"{gpu.mem_used_mb / 1024:.1f} / {gpu.mem_total_mb / 1024:.0f} GB")
             tip.append(f"RAM {s.mem_used / 2**30:.1f} / {s.mem_total / 2**30:.0f} GB")
             if self.dashboard.game_name():

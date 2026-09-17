@@ -38,8 +38,8 @@ COL_PID, COL_NAME, COL_CPU, COL_MEM, COL_GPU, COL_VRAM, COL_THREADS, \
     COL_NICE, COL_IO, COL_USER, COL_STATUS, COL_STARTED, COL_CATEGORY, COL_CMD = range(14)
 
 HEADERS = [
-    "PID", "Name", "CPU %", "Memory", "GPU %", "VRAM", "Thr",
-    "Nice", "Disk I/O", "User", "Status", "Started", "Category", "Command",
+    "PID", "Name", "CPU %", "Memory", "GPU %", "Video memory", "Threads",
+    "Priority", "Disk", "User", "Status", "Started", "Category", "Command",
 ]
 HINT_KEYS = [
     "col.pid", "col.name", "col.cpu", "col.mem", "col.gpu", "col.vram", "col.threads",

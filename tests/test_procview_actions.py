@@ -100,7 +100,7 @@ class GroupRowActions(unittest.TestCase):
         self.view._set_nice(10)
         self.assertEqual(sorted(self.backend.calls),
                          [("nice", 4558, 10), ("nice", 4573, 10), ("nice", 4574, 10)])
-        self.assertEqual(self.messages, ["nice 10: 3 process(es)"])
+        self.assertEqual(self.messages, ["Priority changed for 3 processes"])
 
     def test_disk_priority_on_the_group_row_reaches_every_member(self):
         self.select(self.group_pid())
@@ -140,7 +140,7 @@ class GroupRowActions(unittest.TestCase):
     def test_nothing_selected_says_so(self):
         self.view.table.clearSelection()
         self.view._set_nice(0)
-        self.assertEqual(self.messages, ["nice 0: nothing selected"])
+        self.assertEqual(self.messages, ["Nothing selected"])
 
 
 if __name__ == "__main__":

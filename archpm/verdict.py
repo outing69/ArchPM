@@ -39,6 +39,7 @@ MEM_FULL_PCT = 85.0
 PROGRAM_SHARE = 25.0
 MACHINE_BUSY = 85.0
 HOT_C = 90.0
+WARM_C = 80.0     # the temperature tiles: "normal" under this, "warm" to HOT_C, then "hot"
 SUSTAIN = 3
 GAME_GPU_FULL = 85.0
 GAME_GPU_IDLE = 50.0
@@ -151,3 +152,14 @@ def gpu_caption(gpu: float) -> str:
     if gpu < GAME_GPU_IDLE:
         return "mostly idle"
     return "room to spare"
+
+
+def temp_level(temp_c: float) -> tuple[str, str]:
+    """(word, colour token) for a temperature tile: the reference a user
+    needs to judge the number, on the tile and not only in a tooltip.
+    60 to 80 under load is by design, so it is "normal" and not amber."""
+    if temp_c >= HOT_C:
+        return "hot", "CRIT"
+    if temp_c >= WARM_C:
+        return "warm", "WARN"
+    return "normal", "OK"
