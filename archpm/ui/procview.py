@@ -5,7 +5,15 @@ import signal
 import time
 
 import psutil
-from PySide6.QtCore import QModelIndex, QSettings, QSize, Qt, QTimer, Signal
+from PySide6.QtCore import (
+    QItemSelectionModel,
+    QModelIndex,
+    QSettings,
+    QSize,
+    Qt,
+    QTimer,
+    Signal,
+)
 from PySide6.QtGui import QAction, QGuiApplication, QKeySequence, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -625,6 +633,27 @@ class ProcessView(QWidget):
         if one:
             copy.addAction("Command line", lambda: self._copy(one.cmdline))
         menu.exec(self.table.viewport().mapToGlobal(pos))
+
+    def show_pid(self, pid: int) -> bool:
+        """Select this process's row and bring it into view: the search is
+        cleared and its parents opened. False when the list does not have it."""
+        if self.search.text():
+            self.search.setText("")
+        src = self.model.index_for_pid(pid)
+        if not src.isValid():
+            return False
+        idx = self.proxy.mapFromSource(src)
+        if not idx.isValid():
+            return False
+        parent = idx.parent()
+        while parent.isValid():
+            self.table.expand(parent)
+            parent = parent.parent()
+        flag = QItemSelectionModel.SelectionFlag
+        self.table.selectionModel().select(idx, flag.ClearAndSelect | flag.Rows)
+        self.table.setCurrentIndex(idx)
+        self.table.scrollTo(idx, QAbstractItemView.ScrollHint.PositionAtCenter)
+        return True
 
     # -- actions ----------------------------------------------------------
     def _run(self, fn, procs: list[ProcSample], verb: str) -> None:

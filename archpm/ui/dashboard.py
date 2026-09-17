@@ -20,8 +20,9 @@ from PySide6.QtWidgets import (
 
 from ..game import game_tree, pick_game
 from ..helptext import CANNOT_UNDO
-from ..model import ProcSample, Snapshot
+from ..model import ProcSample, Snapshot, SystemSample
 from ..sysinfo import cpu_model, short_cpu_name
+from ..verdict import GAME_GPU_FULL, StrainWatch, Verdict, game_verdict, gpu_caption
 from . import hints, theme
 from .history import ProcHistory
 from .proc_model import age_text
@@ -79,6 +80,11 @@ class GameCard(Card):
         self.btn_kill.clicked.connect(self._confirm_terminate)
         name_row.addWidget(self.btn_kill)
         left.addLayout(name_row)
+        self.lbl_verdict = QLabel()
+        self.lbl_verdict.setFont(theme.font("body", bold=True))
+        self.lbl_verdict.setWordWrap(True)
+        self.lbl_verdict.hide()
+        left.addWidget(self.lbl_verdict)
         self.lbl_sub = QLabel("A Steam game, or any program doing real GPU work, shows up here "
                               "the moment it starts.")
         self.lbl_sub.setWordWrap(True)
@@ -143,7 +149,8 @@ class GameCard(Card):
         self._affinity = (pid, cores, self._tick)
         return cores
 
-    def update_view(self, procs: list[ProcSample], history: ProcHistory | None) -> None:
+    def update_view(self, procs: list[ProcSample], history: ProcHistory | None,
+                    system: SystemSample | None = None) -> None:
         game = pick_game(procs, self.pid)
         if game is None:
             if self.pid:
@@ -151,6 +158,7 @@ class GameCard(Card):
                 self.lbl_name.setText("No game running")
                 self.lbl_sub.setText("A Steam game, or any program doing real GPU work, "
                                      "shows up here the moment it starts.")
+                self.lbl_verdict.hide()
                 self._set_tiles_visible(False)
             return
         if not self.pid:
@@ -175,9 +183,18 @@ class GameCard(Card):
         started = age_text(time.time() - game.create_time) if game.create_time else "?"
         self.lbl_sub.setText(f"Running {started}  ·  Nice {game.nice}"
                              + (f"  ·  {game.name}" if game.app_name else ""))
+        # The card's own rule, not the heat scale: for a game the card fully
+        # used is the good outcome, so it is green and never red.
+        cpu_t = system.cpu_temp_c if system else 0.0
+        gpu_t = system.gpu.temp_c if system and system.gpu else 0.0
+        text, token = game_verdict(cpu, gpu, cpu_t, gpu_t)
+        self.lbl_verdict.setText(text)
+        theme.text(self.lbl_verdict, token)
+        self.lbl_verdict.show()
         self.t_cpu.set(f"{cpu / self.ncpu:.0f}%", f"{cpu / 100:.1f} of {self.ncpu} cores",
-                       theme.heat(cpu / self.ncpu).name())
-        self.t_gpu.set(f"{gpu:.0f}%", "GPU busy", theme.heat(gpu).name())
+                       "WARN" if token == "WARN" else "TEXT")
+        self.t_gpu.set(f"{gpu:.0f}%", gpu_caption(gpu),
+                       "OK" if gpu >= GAME_GPU_FULL else "TEXT")
         self.t_vram.set(f"{vram / 1024:.1f} GB", f"{vram:.0f} MB")
         self.t_mem.set(human_bytes(rss), "Whole tree")
         self.t_thr.set(str(threads), f"In {len(tree)} processes")
@@ -249,6 +266,7 @@ class TopProcList(QWidget):
 
 class Dashboard(QWidget):
     root_requested = Signal()
+    process_requested = Signal(int)   # the verdict was clicked: show this pid in Processes
     failed_clicked = Signal()     # "N services failed" was clicked: show the System page
     help_requested = Signal(str)
 
@@ -260,32 +278,41 @@ class Dashboard(QWidget):
         outer.setContentsMargins(*theme.page_margins())
         outer.setSpacing(theme.CARD_GAP)
 
-        # -- header: what machine is this, and the entry point to root -----
+        # -- header: the verdict first, in words; the machine line under it --
+        # The one line a beginner needs: is anything straining the machine,
+        # and which program. A link to that program's row when there is one.
         head = FlowLayout(spacing=12)   # the controls drop to a second row when narrow
-        self.lbl_machine = QLabel()
-        self.lbl_machine.setFont(mono("body"))
-        self.lbl_machine.setTextFormat(Qt.TextFormat.RichText)
-        self.lbl_machine.setWordWrap(True)      # two lines in a narrow window
-        self.lbl_machine.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
-        head.addWidget(self.lbl_machine)
+        self.lbl_verdict = TextLink()
+        self.lbl_verdict.set_css("font-size: {FONT_TITLE}pt; font-weight: 700;")
+        self.lbl_verdict.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        self.lbl_verdict.setAccessibleName("Verdict")
+        self.lbl_verdict.activated.connect(self._verdict_clicked)
+        hints.attach(self.lbl_verdict, "tile.verdict", self.help_requested.emit)
+        head.addWidget(self.lbl_verdict)
         head.addStretch(1)
-        self.lbl_root_state = QLabel()
-        self.lbl_root_state.setFont(mono("small"))
-        theme.style(self.lbl_root_state, "color: {MUTED};")
-        head.addWidget(self.lbl_root_state)
         # Failed services: a snapshot taken at start (and on Refresh on the
         # System page). Plain muted text when there are none, a link when
         # there are; never a button, never on the sampling cycle.
         self.lbl_failed = TextLink()
         self.lbl_failed.activated.connect(self.failed_clicked.emit)
         head.addWidget(self.lbl_failed)
-        self.btn_root = QPushButton("Root tasks")
-        self.btn_root.setToolTip(
-            "Root actions (raising priority, memory) and your own session's services."
-        )
-        self.btn_root.clicked.connect(self.root_requested.emit)
-        head.addWidget(self.btn_root)
         outer.addLayout(head)
+        sub = FlowLayout(spacing=12)
+        self.lbl_machine = QLabel()
+        self.lbl_machine.setFont(mono("small"))
+        self.lbl_machine.setTextFormat(Qt.TextFormat.RichText)
+        self.lbl_machine.setWordWrap(True)      # two lines in a narrow window
+        self.lbl_machine.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        sub.addWidget(self.lbl_machine)
+        sub.addStretch(1)
+        self.lbl_root_state = QLabel()
+        self.lbl_root_state.setFont(mono("small"))
+        theme.style(self.lbl_root_state, "color: {MUTED};")
+        sub.addWidget(self.lbl_root_state)
+        outer.addLayout(sub)
+        self.strain = StrainWatch()
+        self._verdict = Verdict()
+        self._show_verdict(self._verdict)
 
         self._cpu_name = short_cpu_name(cpu_model())
         self._machine = (
@@ -294,6 +321,12 @@ class Dashboard(QWidget):
             f"{psutil.cpu_count(logical=False) or ncpu}c/{ncpu}t",
         )
         self._render_machine(0.0)
+        # Root tasks: made here, placed at the foot of the page below
+        self.btn_root = QPushButton("Root tasks")
+        self.btn_root.setToolTip(
+            "Root actions (raising priority, memory) and your own session's services."
+        )
+        self.btn_root.clicked.connect(self.root_requested.emit)
         self.set_root_state(False)
 
         # -- tiles: six across, or two rows of three when the window is narrow
@@ -398,6 +431,14 @@ class Dashboard(QWidget):
         self._columns = 0
         self._place_cards(2)
 
+        # -- foot: the entry point to root, last on the page on purpose ------
+        # It was the first button, always there, one click from Drop caches:
+        # where a Windows user goes to free memory and should not.
+        foot = QHBoxLayout()
+        foot.addStretch(1)
+        foot.addWidget(self.btn_root)
+        outer.addLayout(foot)
+
     def _place_cards(self, cols: int) -> None:
         if cols == self._columns:
             return
@@ -439,19 +480,38 @@ class Dashboard(QWidget):
         return self.game.name if self.game.pid else ""
 
     def _render_machine(self, uptime_s: float) -> None:
-        """Header line in the same role split as the rest: yellow highlights the
-        machine itself, the rest recedes in brightness."""
+        """The machine line, quiet: the verdict above it is what the eye
+        should land on, so the hostname is no longer the yellow headline."""
         node, release, cores = self._machine
         sep = f"<span style='color:{theme.FAINT}'>&nbsp;&nbsp;·&nbsp;&nbsp;</span>"
         up = (f"{int(uptime_s // 86400)}d "
               f"{int(uptime_s % 86400 // 3600):02d}:{int(uptime_s % 3600 // 60):02d}")
         self.lbl_machine.setText(
-            f"<span style='color:{theme.ACCENT}; font-size:{theme.FONT_TITLE}pt; font-weight:700'>"
-            f"{node}</span>{sep}"
-            f"<span style='color:{theme.TEXT}'>{release}</span>{sep}"
-            f"<span style='color:{theme.MEM}'>{cores}</span>{sep}"
+            f"<span style='color:{theme.LABEL}'>{node}</span>{sep}"
+            f"<span style='color:{theme.MUTED}'>{release}</span>{sep}"
+            f"<span style='color:{theme.MUTED}'>{cores}</span>{sep}"
             f"<span style='color:{theme.MUTED}'>Up {up}</span>"
         )
+
+    # -- the verdict ----------------------------------------------------------
+    VERDICT_COLOUR = {"calm": "TEXT", "game": "TEXT", "strain": "ACCENT", "hot": "CRIT"}
+
+    def _show_verdict(self, v: Verdict) -> None:
+        self._verdict = v
+        colour = self.VERDICT_COLOUR[v.level]
+        if v.pid:
+            self.lbl_verdict.set_link(v.text, colour)
+            self.lbl_verdict.setToolTip(f"Open Processes with {v.program} selected.")
+        else:
+            self.lbl_verdict.set_plain(v.text, colour)
+            self.lbl_verdict.setToolTip("")
+
+    def _verdict_clicked(self) -> None:
+        if self._verdict.pid:
+            self.process_requested.emit(self._verdict.pid)
+
+    def verdict(self) -> Verdict:
+        return self._verdict
 
     def set_root_state(self, elevated: bool) -> None:
         """Colours the button as soon as root actions are active -- that should be visible."""
@@ -514,7 +574,8 @@ class Dashboard(QWidget):
         self.g_disk.push(s.disk_r_bps, s.disk_w_bps)
 
         procs = snap.procs
-        self.game.update_view(procs, self.history)
+        self._show_verdict(self.strain.update(s, procs, self.ncpu))
+        self.game.update_view(procs, self.history, s)
         # Shown as a share of the whole machine, like the CPU tile above it;
         # "135%" (top's one-core notation) reads as an error to most people.
         # Bars are relative to the busiest entry, like the two lists next to

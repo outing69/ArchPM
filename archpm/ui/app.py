@@ -156,6 +156,7 @@ class MainWindow(QMainWindow):
         self.startup.status.connect(self._flash)
         self.system.status.connect(self._flash)
         self.dashboard.root_requested.connect(self._open_root)
+        self.dashboard.process_requested.connect(self._show_process)
         self.dashboard.failed_clicked.connect(lambda: self.shell.set_current(self.system))
         theme.signals.changed.connect(self._retheme)
         self.system.refresh_failed.connect(self.check_failed_services)
@@ -368,6 +369,12 @@ class MainWindow(QMainWindow):
         self._flash(f"{name}: asked {done} process(es) to quit"
                     + (f", {failed} refused" if failed else ""))
         self.procs.watch([by_pid[pid] for pid in pids if pid in by_pid], name)
+
+    def _show_process(self, pid: int) -> None:
+        """The verdict was clicked: Processes, with that row selected."""
+        self.shell.set_current(self.procs)
+        if not self.procs.show_pid(pid):
+            self._flash("That process is gone.")
 
     def _show_help(self, term: str) -> None:
         self.help.show_term(term)

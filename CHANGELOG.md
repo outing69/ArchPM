@@ -3,6 +3,34 @@
 All notable changes, newest first. Versions are git tags on
 [github.com/outing69/ArchPM](https://github.com/outing69/ArchPM).
 
+## 0.2.34 (2026-09-17)
+
+- Overview: a verdict line at the top, above the tiles, in words. "Nothing
+  is straining the machine." is the normal state; otherwise the program
+  that is: "PyCharm is using 44% of the processor.", "Memory is nearly
+  full: Brave holds 8.0 GB.", "The processor is fully busy; the biggest
+  user is X (12%)." or "The processor is running hot: 92°." A game at that
+  share reads "that is the game" and is not a strain. When a program is
+  named the line is a link that opens Processes with that row selected.
+  Computed from the sample already taken, in verdict.py: memory above 85%
+  of RAM, one program above a quarter of the whole processor, the whole
+  processor above 85% with no single culprit, a part above 90°; a strain
+  is named only when it holds for three samples in a row, so a page load
+  or a compile step does not flash a name. Calm and hot show at once.
+- Root tasks is no longer the first button on the page. It sits at the
+  foot of the Overview, last, and the machine line under the verdict is
+  quiet: the hostname is no longer the yellow headline. The verdict is
+  what the eye lands on.
+- The game card has its own verdict and its own colour rule, not the heat
+  scale: "The graphics card is fully used: the game is the limit, as it
+  should be." in green at 85% and above; "The processor is the limit: the
+  graphics card is waiting for it." in amber when the card idles while
+  the game's tree holds a core; "Neither is busy: a menu, a loading
+  screen, a frame cap or waiting for the network." in the quiet colour;
+  and "Running hot" in red above 90°. The GPU tile's caption says "fully
+  used", "room to spare" or "mostly idle" instead of "GPU busy" at every
+  value, and 93% is green, not red. The graphs are untouched.
+
 ## 0.2.33 (2026-09-17)
 
 - Processes: a member of a browser is named for what it is, from what its

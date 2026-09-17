@@ -409,15 +409,26 @@ class TextLink(QLabel):
         self._color = "ACCENT"
         self._link = False
         self._hover = False
+        self._css = ""       # font rules, kept through link and plain (see set_css)
         self.setTextFormat(Qt.TextFormat.RichText)
         self.setOpenExternalLinks(False)
         self.linkActivated.connect(lambda _: self.activated.emit())
         self.set_plain("", "MUTED")
 
+    def set_css(self, css: str) -> None:
+        """Font rules as stylesheet text, e.g. "font-size: {FONT_TITLE}pt;
+        font-weight: 700;". A font set with setFont() is lost when the
+        stylesheet changes with the state; this one is written each time."""
+        self._css = css
+        if self._link:
+            self.set_link(self._text, self._color)
+        else:
+            self.set_plain(self._text, self._color)
+
     def set_plain(self, text: str, color: str) -> None:
         self._link = False
-        self._text = text
-        theme.text(self, color)
+        self._text, self._color = text, color
+        theme.style(self, f"color: {{{color}}}; " + self._css)
         self.setText(text)
         self.setCursor(Qt.CursorShape.ArrowCursor)
         self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
@@ -427,7 +438,7 @@ class TextLink(QLabel):
     def set_link(self, text: str, color: str) -> None:
         self._link = True
         self._text, self._color = text, color
-        self.setStyleSheet("")
+        theme.style(self, self._css)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setFocusPolicy(Qt.FocusPolicy.TabFocus)
         self.setTextInteractionFlags(Qt.TextInteractionFlag.LinksAccessibleByMouse

@@ -370,6 +370,11 @@ class Hint:
 
 HINTS: dict[str, Hint] = {
     # -- Overview tiles ------------------------------------------------------
+    "tile.verdict": Hint(
+        "Is anything straining the machine, and which program. Named when it holds for "
+        "three samples in a row; a click opens that program in Processes.", "CPU %",
+        "\"Nothing is straining the machine\" is the normal state. A program above a quarter "
+        "of the processor, memory above 85%, or a part above 90° gets a line."),
     "tile.cpu": Hint(
         "How busy the whole processor is, all cores together.", "CPU %",
         "Idle desktop 1–5%. A browser playing video 10–20%. A game 20–60%. "
