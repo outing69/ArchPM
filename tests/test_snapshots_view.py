@@ -189,6 +189,107 @@ class Page(unittest.TestCase):
         self.assertFalse(deletes[0].isEnabled())
         self.assertIn("last snapshot stays", deletes[0].toolTip())
 
+    # -- the helper route and what a fault does --------------------------------
+    class FakeProc:
+        """What _helper_done reads from a finished QProcess."""
+        def __init__(self, out: str, err: str = ""):
+            self.out, self.err = out.encode(), err.encode()
+
+        def readAllStandardOutput(self):
+            return self.out
+
+        def readAllStandardError(self):
+            return self.err
+
+    def helper_reply(self, v, result, pending=("list",), code=0):
+        """The helper answered: its one JSON line, as pkexec hands it over."""
+        import json
+        v._proc = self.FakeProc(json.dumps({"ok": True, "result": result}))
+        v._pending = pending
+        v._helper_done(code)
+
+    def test_read_snapshots_goes_through_the_helper_not_the_plain_read_again(self):
+        """Until 0.2.41 the button repeated the refused plain read: no
+        helper call, no error, no rows."""
+        from archpm.ui import snapshots as view
+        v = self.view(S.Setup(snapper=True, configs=["root"]),
+                      S.Listing(tool="snapper", needs_root=True), ready=True)
+        del v.read                                 # the real one, not the test stub
+        calls, threads = [], []
+        v._run_helper = lambda pending, *args: calls.append((pending, args))
+        real_read = view._Read
+        view._Read = lambda parent: threads.append("plain read") or real_read(parent)
+        self.addCleanup(setattr, view, "_Read", real_read)
+        v.btn_read.click()
+        self.assertEqual(calls, [(("list",), ("snapshots-list",))])
+        self.assertEqual(threads, [])
+        self.assertEqual(v.lbl_state.text(), "reading as root…")
+
+    def test_the_helper_reply_becomes_rows(self):
+        v = self.view(S.Setup(snapper=True, configs=["root"]),
+                      S.Listing(tool="snapper", needs_root=True), ready=True)
+        self.helper_reply(v, {"tool": "snapper", "outputs": [["root", SNAPPER_JSON]],
+                              "took_ms": 13.0})
+        self.assertTrue(v.listing.as_root)
+        self.assertEqual(len(v.listing.snapshots), 5)
+        self.assertEqual(len(self.shown(v)), 7)
+        self.assertIn("as root", v.lbl_state.text())
+        self.assertEqual(v.btn_read.text(), "Refresh")
+
+    def test_a_fault_between_the_reply_and_the_list_is_shown(self):
+        """The process list's rule: a fault of our own lands where the user
+        looks, never in a traceback on stderr. Here the parser is made to
+        raise something that is not an ActionError."""
+        from archpm.ui import snapshots as view
+        v = self.view(S.Setup(snapper=True, configs=["root"]),
+                      S.Listing(tool="snapper", needs_root=True), ready=True)
+        real = view.snapshots.from_helper
+
+        def broken(result):
+            raise ValueError("a shape the parser did not expect")
+        view.snapshots.from_helper = broken
+        self.addCleanup(setattr, view.snapshots, "from_helper", real)
+        self.helper_reply(v, {"tool": "snapper", "outputs": [["root", SNAPPER_JSON]]})
+        self.assertEqual(v.lbl_state.text(),
+                         "Not read: ValueError: a shape the parser did not expect")
+        self.assertEqual(self.shown(v), [])
+        self.assertTrue(v.btn_read.isEnabled())
+        # and the same for a fault while the rows are built
+        view.snapshots.from_helper = real
+        real_fill = v._fill
+        v._fill = lambda: (_ for _ in ()).throw(KeyError("origin"))
+        self.helper_reply(v, {"tool": "snapper", "outputs": [["root", SNAPPER_JSON]]})
+        self.assertEqual(v.lbl_state.text(), "Not shown: KeyError: 'origin'")
+        v._fill = real_fill
+
+    def test_a_fault_in_create_or_delete_goes_to_the_status_bar(self):
+        v = self.view(S.Setup(snapper=True, configs=["root"]),
+                      S.Listing(tool="snapper", needs_root=True), ready=True)
+        said = []
+        v.status.connect(said.append)
+        v._proc = self.FakeProc("not json at all")
+        v._pending = ("create",)
+        v._helper_done(0)
+        self.assertEqual(said, ["Not done: helper returned exit code 0"])
+        v._after_change = lambda: (_ for _ in ()).throw(RuntimeError("boom"))
+        self.helper_reply(v, {"id": "270"}, pending=("create",))
+        self.assertEqual(said[-2:], ["Snapshot #270 taken", "Not done: RuntimeError: boom"])
+
+    def test_a_plain_read_that_raises_reports_instead_of_hanging(self):
+        from archpm.ui import snapshots as view
+        real = view.snapshots.detect
+
+        def broken():
+            raise OSError("snapper exploded")
+        view.snapshots.detect = broken
+        self.addCleanup(setattr, view.snapshots, "detect", real)
+        got = []
+        thread = view._Read()
+        thread.done.connect(lambda setup, listing: got.append((setup, listing)))
+        thread.run()
+        self.assertEqual(len(got), 1)
+        self.assertEqual(got[0][1].error, "Not read: OSError: snapper exploded")
+
     def test_confirmation_says_what_is_lost_and_what_remains(self):
         rows = S.parse("snapper", [("root", SNAPPER_JSON)])
         v = self.view(S.Setup(snapper=True, configs=["root"]),

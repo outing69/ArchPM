@@ -3,6 +3,30 @@
 All notable changes, newest first. Versions are git tags on
 [github.com/outing69/ArchPM](https://github.com/outing69/ArchPM).
 
+## 0.2.41 (2026-09-18)
+
+- Fixed: "Read snapshots" showed nothing. The button and Refresh share one
+  read, which went to the root helper only after a list had already been
+  read as root; on a machine where Snapper refuses the plain read (its
+  config names no one in ALLOW_USERS) the first click repeated that refused
+  plain read, so the helper was never called, no error existed to show, and
+  the page stayed empty. Reproduced offscreen: the click started the plain
+  read thread and made no helper call. The read now goes through the helper
+  as soon as the plain read has been refused, the route the reread after
+  taking or deleting already took.
+- The same silent gap the 0.2.16 audit found in the process list: the
+  helper's reply was handled with only the helper's own refusal caught, so
+  any other exception between the reply and the list (a reply in a shape
+  the parser does not expect, a fault of our own building the rows) left
+  the slot to Qt, which drops it on stderr, and the page just stayed empty.
+  Now every outcome is shown, the process list's rule: a fault in reading
+  goes on the state line as "Not read: ValueError: …" with the list as it
+  was, a fault in building the rows as "Not shown: …", a fault after taking
+  or deleting to the status bar as "Not done: …", and the plain read thread
+  hands a fault to the page as the listing's error instead of dying with it
+  and leaving "reading…" on the page. Tests drive the slot with the helper's
+  real reply shape, and with the parser and the row builder made to raise.
+
 ## 0.2.40 (2026-09-18)
 
 - The Snapshots list is grouped by who took each snapshot, in the process

@@ -58,12 +58,26 @@ LAST_ONE = ("The last snapshot stays: ArchPM does not delete the only way back. 
 
 
 class _Read(QThread):
-    """Detection and the plain read: two or three short commands, off the UI thread."""
+    """Detection and the plain read: two or three short commands, off the UI
+    thread. A fault in either is handed to the page as the listing's error,
+    since an exception in a thread's run() goes nowhere."""
     done = Signal(object, object)
 
     def run(self) -> None:
-        setup = snapshots.detect()
-        self.done.emit(setup, snapshots.read_as_user(setup))
+        setup = snapshots.Setup()
+        try:
+            setup = snapshots.detect()
+            listing = snapshots.read_as_user(setup)
+        except Exception as exc:  # noqa: BLE001 - reported, never swallowed
+            listing = snapshots.Listing(tool=setup.tool, taken_at=time.time(),
+                                        error=f"Not read: {fault(exc)}")
+        self.done.emit(setup, listing)
+
+
+def fault(exc: BaseException) -> str:
+    """An unexpected exception as one line for the page: the type and the
+    message, the process list's failure box's shape."""
+    return f"{type(exc).__name__}: {exc}" if str(exc) else type(exc).__name__
 
 
 class SnapshotsView(QWidget):
@@ -123,13 +137,16 @@ class SnapshotsView(QWidget):
             self.read()
 
     def read(self) -> None:
-        """The plain read first. Once the list has been read as root, the
-        button reads as root again: polkit keeps the authentication for a
-        few minutes, so that is silent, and the plain read would only be
-        refused again."""
+        """The plain read first. Once the plain read has been refused, or
+        the list has been read as root, the button reads through the helper:
+        the plain read would only be refused again, and polkit keeps the
+        authentication for a few minutes, so a second root read is silent.
+        (Until 0.2.41 only the second case went to the helper, so Read
+        snapshots repeated the refused plain read and showed nothing.)"""
         if self._proc is not None or self._thread is not None:
             return
-        if self.listing is not None and self.listing.as_root:
+        if (self.listing is not None and (self.listing.as_root or self.listing.needs_root)
+                and check().ready):
             self.read_root()
             return
         self.lbl_state.setText("reading…")
@@ -147,7 +164,19 @@ class SnapshotsView(QWidget):
     @Slot(object, object)
     def _plain_done(self, setup, listing) -> None:
         self.setup = setup
-        self._show(listing)
+        self._show_or_report(listing)
+
+    def _show_or_report(self, listing: snapshots.Listing) -> None:
+        """The list on the page; a fault in building it lands on the state
+        line instead of in a traceback on stderr that nobody sees (a slot
+        that raises is dropped by Qt, and the page would just stay empty)."""
+        try:
+            self._show(listing)
+        except Exception as exc:  # noqa: BLE001 - reported, never swallowed
+            self.list.clear()
+            self._pairs = {}
+            self.lbl_state.setText(f"Not shown: {fault(exc)}")
+            theme.style(self.lbl_state, "color: {WARN};")
 
     def read_root(self) -> None:
         """Through the helper: pkexec asks for the password the first time."""
@@ -437,34 +466,44 @@ class SnapshotsView(QWidget):
         out = bytes(proc.readAllStandardOutput()).decode(errors="replace")
         err = bytes(proc.readAllStandardError()).decode(errors="replace")
         elapsed = (time.perf_counter() - self._t0) * 1000
+        # Every outcome is shown. The helper's refusal is an ActionError;
+        # anything else that goes wrong between its reply and the list (a
+        # reply in a shape the parser does not expect, a fault of our own)
+        # is shown the same way, never left to Qt to drop on stderr.
         try:
             result = self.client.parse(code, out, err)
-        except ActionError as exc:
             if pending[0] == "list":
-                listing = self.listing or snapshots.Listing(tool=self.setup.tool if self.setup
-                                                            else "")
-                listing.error = f"Not read: {exc}"
-                self._show(listing)
-                listing.error = ""
+                listing = snapshots.from_helper(result)
+                listing.call_ms = elapsed
+                self._show_or_report(listing)
+                return
+            if pending[0] == "create":
+                label = result.get("id", "")
+                self.status.emit(f"Snapshot {'#' + label if label.isdigit() else label} taken"
+                                 if label else "Snapshot taken")
             else:
-                self.status.emit(f"Not done: {exc}")
-            return
+                snap = pending[1]
+                left = result.get("remaining")
+                self.status.emit(f"Snapshot {snap.label} deleted"
+                                 + (f", {plural(int(left), 'snapshot')} left" if left is not None
+                                    else ""))
+            self._after_change()
+        except ActionError as exc:
+            self._failed(pending, str(exc))
+        except Exception as exc:  # noqa: BLE001 - reported, never swallowed
+            self._failed(pending, fault(exc))
+
+    def _failed(self, pending: tuple, why: str) -> None:
+        """A read that failed goes on the state line, with the list as it
+        was; a create or delete that failed goes to the status bar."""
         if pending[0] == "list":
-            listing = snapshots.from_helper(result)
-            listing.call_ms = elapsed
-            self._show(listing)
-            return
-        if pending[0] == "create":
-            label = result.get("id", "")
-            self.status.emit(f"Snapshot {'#' + label if label.isdigit() else label} taken"
-                             if label else "Snapshot taken")
+            listing = self.listing or snapshots.Listing(tool=self.setup.tool if self.setup
+                                                        else "")
+            listing.error = f"Not read: {why}"
+            self._show_or_report(listing)
+            listing.error = ""
         else:
-            snap = pending[1]
-            left = result.get("remaining")
-            self.status.emit(f"Snapshot {snap.label} deleted"
-                             + (f", {plural(int(left), 'snapshot')} left" if left is not None
-                                else ""))
-        self._after_change()
+            self.status.emit(f"Not done: {why}")
 
     def _after_change(self) -> None:
         """The list again, by the route that worked: the helper's authentication
