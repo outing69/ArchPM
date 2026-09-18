@@ -5,7 +5,6 @@ touched; the last test only reads this machine."""
 from __future__ import annotations
 
 import json
-import subprocess
 import time
 import unittest
 from types import SimpleNamespace
@@ -260,8 +259,10 @@ class PlainRead(unittest.TestCase):
 class Description(unittest.TestCase):
     def test_sanitise_keeps_the_fixed_set_only(self):
         self.assertEqual(S.sanitise("before nvidia 580"), "before nvidia 580")
-        self.assertEqual(S.sanitise("  before;rm -rf /  $(x) `y` 'z' \"q\"\n"), "before rm -rf x y z q")
-        self.assertEqual(S.sanitise("é ünïcode – dash"), "n code dash")
+        self.assertEqual(S.sanitise("  before;rm -rf /  $(x) `y` 'z' \"q\"\n"),
+                         "before rm -rf x y z q")
+        self.assertEqual(S.sanitise("é ünïcode – dash"),
+                         "n code dash")
         self.assertEqual(S.sanitise("a" * 100), "a" * S.DESCRIPTION_MAX)
         self.assertEqual(S.sanitise(""), "")
         self.assertEqual(S.sanitise("<b>bold</b>"), "b bold b")

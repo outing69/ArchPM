@@ -538,8 +538,9 @@ class Snapshots(unittest.TestCase):
     def test_the_last_snapshot_is_never_deleted(self):
         helper.run = self.fake({"snapper --jsonout list-configs": self.CONFIGS,
                                 "snapper --jsonout --utc --iso -c root list":
-                                json.dumps({"root": [{"number": 0}, {"number": 265, "type": "single",
-                                                                     "date": "2026-09-17 19:02:11"}]})},
+                                json.dumps({"root": [{"number": 0},
+                                                     {"number": 265, "type": "single",
+                                                      "date": "2026-09-17 19:02:11"}]})},
                                self.calls)
         with self.assertRaises(helper.HelperError) as cm:
             helper.cmd_snapshots_delete(args(config="root", id="265"))

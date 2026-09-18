@@ -299,6 +299,7 @@ SNAPPER_CONFIG_RE = re.compile(r"[A-Za-z0-9_-]{1,32}")
 # letters, digits, space, dot, underscore, hyphen; at most 72 (snap-pac's limit)
 DESCRIPTION_RE = re.compile(r"[A-Za-z0-9 ._-]{0,72}")
 TIMESHIFT_NAME_RE = re.compile(r"\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}")
+TIMESHIFT_ROW_RE = re.compile(r"\s*\d+\s+>?\s*(\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2})")
 TIMESHIFT = "timeshift"
 SNAPPER_BIN, TIMESHIFT_BIN = "/usr/bin/snapper", "/usr/bin/timeshift"
 
@@ -345,7 +346,8 @@ def check_description(text: str) -> str:
 def snapper_numbers(config: str) -> list[int]:
     """The snapshot numbers of a config, from the same listing the page reads."""
     try:
-        data = json.loads(run("snapper", "--jsonout", "--utc", "--iso", "-c", config, "list") or "{}")
+        data = json.loads(run("snapper", "--jsonout", "--utc", "--iso", "-c", config, "list")
+                          or "{}")
     except ValueError:
         raise HelperError("snapper list gave no JSON") from None
     rows = data.get(config) if isinstance(data, dict) else None
@@ -358,8 +360,8 @@ def snapper_numbers(config: str) -> list[int]:
 
 def timeshift_names() -> list[str]:
     out = run("timeshift", "--list", timeout=60)
-    return [m.group(1) for m in (re.match(r"\s*\d+\s+>?\s*(\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2})", l)
-                                 for l in out.splitlines()) if m]
+    found = (TIMESHIFT_ROW_RE.match(line) for line in out.splitlines())
+    return [m.group(1) for m in found if m]
 
 
 def cmd_snapshots_list(_args) -> dict:

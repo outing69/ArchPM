@@ -23,10 +23,11 @@ try:
         QVBoxLayout,
         QWidget,
     )
-except ImportError:                       # pragma: no cover
-    QApplication = None
 
-from archpm.ui import theme
+    from archpm.ui import theme
+except ImportError:                       # pragma: no cover
+    QApplication = theme = None
+
 
 NARROW = 640   # the window may be made this narrow; see test_the_window_can_be_narrow
 
@@ -183,6 +184,37 @@ class Window(unittest.TestCase):
                 self.assertGreaterEqual(lbl.height() + 1, lbl.heightForWidth(lbl.width()),
                                         lbl.text()[:40])
         self.win.network.lbl_fw_doors.activated.emit()
+        self.win.shell.set_current(0)
+        self.win.resize(1200, 700)
+        QTest.qWait(50)
+
+    def test_no_page_cuts_a_wrapped_label_at_the_window_floor(self):
+        """Every page at the window's minimum height, the pointer away from
+        the rail: no wrapped label is squeezed below its text and none runs
+        past its viewport on the right, gutter bar or not. (A grab with the
+        pointer at the origin hovers the rail open over the page's left
+        edge, which once read as a cut.)"""
+        from PySide6.QtGui import QCursor
+        from PySide6.QtWidgets import QLabel
+        QCursor.setPos(self.win.mapToGlobal(QPoint(700, 250)))
+        self.win.cleanup._acknowledged = True
+        floor = self.win.minimumSizeHint().height()
+        for i in range(self.win.shell.pages.count()):
+            self.win.shell.set_current(i)
+            self.win.resize(1180, floor)
+            QTest.qWait(120)
+            page = self.win.shell.pages.widget(i)
+            areas = [page] if isinstance(page, QScrollArea) else page.findChildren(QScrollArea)
+            for area in areas:
+                vp = area.viewport()
+                for lbl in area.widget().findChildren(QLabel):
+                    if not (lbl.isVisible() and lbl.wordWrap() and lbl.text()):
+                        continue
+                    where = f"{self.win.shell.label_of(i)}: {lbl.text()[:40]}"
+                    self.assertGreaterEqual(lbl.height() + 1, lbl.heightForWidth(lbl.width()),
+                                            where)
+                    right = lbl.mapTo(vp, lbl.rect().bottomRight()).x()
+                    self.assertLessEqual(right, vp.width() + 1, where)
         self.win.shell.set_current(0)
         self.win.resize(1200, 700)
         QTest.qWait(50)

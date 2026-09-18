@@ -3,6 +3,31 @@
 All notable changes, newest first. Versions are git tags on
 [github.com/outing69/ArchPM](https://github.com/outing69/ArchPM).
 
+## 0.2.50 (2026-09-18)
+
+- The Startup page's description was reported cut on the right once the
+  gutter bar appeared (0.2.49's notes). It is not: the pointer of an
+  offscreen grab sits at the window's origin, which hovers the rail open
+  over the page's first 200 px, and the description's short fourth line
+  sat under it. Measured with the pointer away, on every page at 700, 400
+  and 287 px: each wrapped label spans exactly its viewport, gutter bar or
+  not, and none is squeezed below its text. No page had the fault, so no
+  page changed; a test in the chrome suite now walks every page at the
+  window's floor and checks both.
+- CI had been red on every push since 17 September, and the lint job with
+  it, so the checks were not the guard they were taken for. The test jobs
+  failed because five test modules imported Qt, or the theme that imports
+  Qt, outside the "PySide6 not installed" guard: the theme, boxed list and
+  chrome suites failed to import at all, and the Adwaita set and two of
+  the words tests errored. They are guarded like the rest; without PySide6
+  the suite passes with those skipped, which is CI's shape, and with it
+  nothing is skipped that was not before. The lint job failed on eighteen
+  findings, all style: fourteen lines over 100 characters (test fixtures,
+  a path, a comment in the rail's icon table), three unused imports, two
+  unsorted import blocks, one ambiguous name (`l` in the helper's
+  Timeshift parser, now `line` with the pattern named), and one pair of
+  comparisons to merge. None was a defect. The lint run is clean.
+
 ## 0.2.49 (2026-09-18)
 
 - No page clips its content in a short window any more: a page that does

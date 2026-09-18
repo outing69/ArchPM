@@ -15,13 +15,14 @@ try:
     from PySide6.QtCore import QSettings, Qt
     from PySide6.QtTest import QTest
     from PySide6.QtWidgets import QApplication, QCheckBox
+
+    from archpm.ui import theme
 except ImportError:                       # pragma: no cover
-    QApplication = None
+    QApplication = theme = None
 
 from archpm.autostart import StartupEntry
 from archpm.cleanup import CleanupItem
 from archpm.failed import FailedReport, FailedUnit
-from archpm.ui import theme
 
 
 def app_and_settings():

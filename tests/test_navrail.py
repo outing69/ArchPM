@@ -221,6 +221,7 @@ if __name__ == "__main__":
     unittest.main()
 
 
+@unittest.skipUnless(QApplication, "PySide6 not installed")
 class AdwaitaSet(unittest.TestCase):
     """The rail takes the Adwaita set only when every one of the nine names
     resolves; one missing name keeps the whole rail on Breeze."""

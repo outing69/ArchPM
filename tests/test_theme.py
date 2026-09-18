@@ -14,10 +14,11 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 try:
     from PySide6.QtCore import Qt
     from PySide6.QtWidgets import QApplication, QLabel
-except ImportError:                       # pragma: no cover
-    QApplication = None
 
-from archpm.ui import theme
+    from archpm.ui import theme
+except ImportError:                       # pragma: no cover
+    QApplication = theme = None
+
 
 UI = Path(__file__).resolve().parent.parent / "archpm"
 
@@ -36,6 +37,7 @@ def contrast(a: str, b: str) -> float:
     return (hi + 0.05) / (lo + 0.05)
 
 
+@unittest.skipUnless(QApplication, "PySide6 not installed")
 class Tokens(unittest.TestCase):
     def test_every_token_has_both_values_and_they_are_hex(self):
         self.assertEqual(set(theme.DARK), set(theme.LIGHT))
@@ -85,6 +87,7 @@ class Tokens(unittest.TestCase):
         self.assertGreater(g, b)
 
 
+@unittest.skipUnless(QApplication, "PySide6 not installed")
 class Shape(unittest.TestCase):
     def test_shape_tokens_exist_and_are_adwaita_sized(self):
         for name in theme.SHAPE_TOKENS:
@@ -119,6 +122,7 @@ class Shape(unittest.TestCase):
         self.assertEqual(theme.font("small").pointSizeF(), theme.FONT_SMALL)
 
 
+@unittest.skipUnless(QApplication, "PySide6 not installed")
 class Preference(unittest.TestCase):
     def test_hints_first_then_portal_then_dark(self):
         def app_with(scheme):

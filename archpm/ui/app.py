@@ -27,11 +27,11 @@ from .chrome import HeaderBar, Toast
 from .cleanup import CleanupView
 from .dashboard import Dashboard
 from .help import HelpView
-from .snapshots import SnapshotsView
 from .history import ProcHistory
 from .navrail import NavShell
 from .network import NetworkView
 from .procview import ProcessView
+from .snapshots import SnapshotsView
 from .startup import StartupView
 from .sysinfo import SystemView
 from .widgets import scrolling

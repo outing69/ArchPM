@@ -77,9 +77,10 @@ ADWAITA_ICONS = {
 # Icons for a kind of thing that has no icon of its own: the four kinds of
 # a Startup entry, the three sections of the process list and the origins
 # of a snapshot (pacman, a person, a timer) and the chevron of a pacman pair
-# row, closed and open. (Adwaita symbolic name, Breeze
-# name); both checked with QIcon.hasThemeIcon on the development machine. The Adwaita names count towards the all-or-nothing
-# rule: one missing keeps the whole application on Breeze.
+# row, closed and open. (Adwaita symbolic name, Breeze name); both checked
+# with QIcon.hasThemeIcon on the development machine. The Adwaita names count
+# towards the all-or-nothing rule: one missing keeps the whole application on
+# Breeze.
 KIND_ICONS = {
     "App": ("application-x-executable-symbolic", "application-x-executable"),
     "System": ("package-x-generic-symbolic", "package-x-generic"),

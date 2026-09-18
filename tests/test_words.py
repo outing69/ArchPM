@@ -8,6 +8,11 @@ import signal
 import tempfile
 import unittest
 
+try:
+    from PySide6.QtWidgets import QApplication
+except ImportError:                       # pragma: no cover
+    QApplication = None
+
 from archpm.helptext import plural
 from archpm.verdict import temp_level
 
@@ -18,6 +23,7 @@ class Plain(unittest.TestCase):
         self.assertEqual(plural(3, "process"), "3 processes")
         self.assertEqual(plural(2, "page"), "2 pages")
 
+    @unittest.skipUnless(QApplication, "PySide6 not installed")
     def test_the_process_columns_have_no_abbreviations(self):
         from archpm.ui.proc_model import HEADERS
         for hard in ("Thr", "VRAM", "Nice", "Disk I/O"):
@@ -26,6 +32,7 @@ class Plain(unittest.TestCase):
             self.assertIn(plain, HEADERS)
         self.assertIn("PID", HEADERS, "the id is the thing itself; the column keeps it")
 
+    @unittest.skipUnless(QApplication, "PySide6 not installed")
     def test_the_toasts_after_a_signal_are_sentences(self):
         from archpm.ui.procview import SIGNAL_DONE
         self.assertEqual(SIGNAL_DONE[signal.SIGTERM].format(n=plural(1, "process")),

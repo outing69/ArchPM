@@ -33,7 +33,17 @@ from ..actions import ActionError
 from ..helptext import CANNOT_UNDO, plural
 from ..root.client import HELPER, RootClient, check
 from ..snapshots import (
-    ARCHPM, BY_HAND, PACMAN, PACMANS, SCHEDULED, SNAPPER, TIMED, TIMELINE, TIMESHIFT, YOURS, Pair,
+    ARCHPM,
+    BY_HAND,
+    PACMAN,
+    PACMANS,
+    SCHEDULED,
+    SNAPPER,
+    TIMED,
+    TIMELINE,
+    TIMESHIFT,
+    YOURS,
+    Pair,
 )
 from . import theme
 from .navrail import kind_icon

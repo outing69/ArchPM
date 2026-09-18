@@ -5,7 +5,6 @@ else, the width reserved for the widest number, the theme's colours, and
 no settings left that the strip no longer reads."""
 from __future__ import annotations
 
-import re
 import unittest
 from pathlib import Path
 
@@ -33,8 +32,8 @@ class CompactForm(unittest.TestCase):
     def test_both_representations_and_the_panel_gets_the_compact_one(self):
         self.assertIn("fullRepresentation:", self.qml)
         self.assertIn("compactRepresentation:", self.qml)
-        self.assertIn("preferredRepresentation: inPanel ? compactRepresentation : fullRepresentation",
-                      self.qml)
+        self.assertIn("preferredRepresentation: inPanel ? compactRepresentation : "
+                      "fullRepresentation", self.qml)
         self.assertIn("PlasmaCore.Types.Vertical", self.qml)
 
     def test_the_strip_is_two_rates_and_nothing_else(self):

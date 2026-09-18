@@ -10,7 +10,8 @@ from pathlib import Path
 
 from archpm import verdict
 
-MAIN = Path(__file__).resolve().parent.parent / "plasmoid" / "package" / "contents" / "ui" / "main.qml"
+MAIN = (Path(__file__).resolve().parent.parent / "plasmoid" / "package" / "contents" / "ui"
+        / "main.qml")
 
 
 def block(text: str, head: str, start: int = 0) -> str:
@@ -45,7 +46,8 @@ class CompactForm(unittest.TestCase):
 
     def test_three_meters_with_theme_icons_and_fallbacks(self):
         icons = re.findall(r'icon: "([a-z-]+)"; iconFallback: "([a-z-]+)"', self.compact)
-        self.assertEqual(icons, [("cpu", "computer"), ("video-display", "preferences-desktop-display"),
+        self.assertEqual(icons, [("cpu", "computer"),
+                                 ("video-display", "preferences-desktop-display"),
                                  ("memory", "media-flash")])
         self.assertIn("Kirigami.Icon {", self.compact)
         self.assertIn("fallback: meter.iconFallback", self.compact)
@@ -54,7 +56,8 @@ class CompactForm(unittest.TestCase):
             self.assertNotIn(word, self.compact, word)
 
     def test_a_bar_beside_each_number_in_the_themes_colours(self):
-        self.assertIn("high ? Kirigami.Theme.negativeTextColor : Kirigami.Theme.highlightColor", self.compact)
+        self.assertIn("high ? Kirigami.Theme.negativeTextColor : Kirigami.Theme.highlightColor",
+                      self.compact)
         self.assertEqual(self.compact.count("visible: !compact.vertical && compact.withPct"), 1)
         self.assertEqual(self.compact.count("visible: compact.vertical && compact.withPct"), 1)
         self.assertNotRegex(self.compact, r"#[0-9a-fA-F]{6}")

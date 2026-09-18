@@ -133,8 +133,8 @@ class Page(unittest.TestCase):
         self.assertTrue(shown[4].title.text().endswith("  ·  pacman"))
         self.assertTrue(shown[6].title.text().endswith("timeline"))
         # the pacman group sits between yours and the timer's even when yours is empty
-        v._show(S.Listing(tool="snapper", snapshots=[s for s in rows if s.origin != S.ARCHPM
-                                                     and s.origin != S.BY_HAND]))
+        v._show(S.Listing(tool="snapper",
+                          snapshots=[s for s in rows if s.origin not in (S.ARCHPM, S.BY_HAND)]))
         QTest.qWait(10)
         self.assertEqual([h.title.text() for h in self.shown(v) if h.property("header")],
                          ["Taken by pacman (1)", "Taken on a timer (1)"])

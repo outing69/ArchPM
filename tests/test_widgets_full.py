@@ -5,7 +5,6 @@ and no row holds a text that can neither shrink nor wrap next to one that
 cannot either. No Plasma here; the QML is not run."""
 from __future__ import annotations
 
-import re
 import unittest
 from pathlib import Path
 
@@ -85,8 +84,10 @@ class FitLists(unittest.TestCase):
 
     def test_the_lists_are_fitlists_and_the_footers_keep_their_place(self):
         monitor = block(MONITOR.read_text(), "fullRepresentation:")
-        self.assertIn("FitList {\n                id: topList\n                model: root.stats.top_cpu", monitor)
-        self.assertNotIn("Repeater {\n                model: root.stats.top_cpu", monitor)
+        self.assertIn("FitList {\n                id: topList\n"
+                      "                model: root.stats.top_cpu", monitor)
+        self.assertNotIn("Repeater {\n                model: root.stats.top_cpu",
+                         monitor)
         self.assertIn("visible: topList.shown > 0", monitor)
         spacer = monitor.index("Item { Layout.fillHeight: true }")
         self.assertLess(monitor.index("id: topList"), spacer)
@@ -105,7 +106,8 @@ class MonitorFull(unittest.TestCase):
         self.full = block(self.qml, "fullRepresentation:")
 
     def test_top_processes_elide_the_name_with_a_tooltip(self):
-        rows = block(self.full, "delegate: RowLayout {", self.full.index("model: root.stats.top_cpu"))
+        rows = block(self.full, "delegate: RowLayout {",
+                     self.full.index("model: root.stats.top_cpu"))
         self.assertIn("elide: Text.ElideRight", rows)
         self.assertIn("Layout.fillWidth: true", rows)
         self.assertIn("QQC2.ToolTip.visible: nameHover.hovered && truncated", rows)
