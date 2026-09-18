@@ -1,7 +1,22 @@
-"""The Network tab: who talks to the internet, what listens, and over which wire."""
+"""The Network tab: who talks to the internet, what listens, and over which wire.
+
+The open doors card ends with the firewall's state, read-only: whether one
+runs and which, what it does with incoming traffic no rule covers, and
+which ports it opens to other machines. The doors say which programs
+accept connections; the firewall says whether those doors are reachable
+from outside, so the two answer one question together. Read when the page
+opens and on the block's own Refresh, never on the sampling cycle (the
+failed services check's pattern). ufw refuses a plain user, so on this
+route the block reads through the root helper on request, the way the
+Snapshots page does; without the helper it says the state needs it, the
+way the Cleanup root rows do. ArchPM changes no rule and switches no
+firewall on or off.
+"""
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, Signal
+import time
+
+from PySide6.QtCore import QProcess, Qt, QThread, Signal, Slot
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -15,10 +30,13 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from .. import firewall
+from ..actions import ActionError
 from ..model import ProcSample, Snapshot
 from ..net import Conn, NetSnapshot, ProcNet
+from ..root.client import HELPER, RootClient, check
 from . import hints, theme
-from .widgets import Card, ElidedLabel, FlowLayout, app_icon, human_bytes, mono
+from .widgets import Card, ElidedLabel, FlowLayout, TextLink, app_icon, human_bytes, mono
 
 COL_NAME, COL_CONNS, COL_RX, COL_TX, COL_LISTEN, COL_INFO = range(6)
 HEADERS = ["Program", "Connections", "Download", "Upload", "Listening", "Details"]
@@ -36,15 +54,38 @@ def _rate(v: float) -> str:
 ONE_COLUMN_BELOW = 640
 
 
+class _ReadFirewall(QThread):
+    """Detection and the plain read, off the UI thread: a handful of short
+    commands and one file. A fault in either is handed to the page as the
+    state's error, since an exception in a thread's run() goes nowhere."""
+    done = Signal(object, object)
+
+    def run(self) -> None:
+        setup = firewall.Setup()
+        try:
+            setup = firewall.detect()
+            state = firewall.read_as_user(setup)
+        except Exception as exc:  # noqa: BLE001 - reported, never swallowed
+            state = firewall.State(tool=setup.tool, taken_at=time.time(),
+                                   error=f"{type(exc).__name__}: {exc}")
+        self.done.emit(setup, state)
+
+
 class NetworkView(QWidget):
     status = Signal(str)
     help_requested = Signal(str)
 
-    def __init__(self, services, parent=None) -> None:
+    def __init__(self, services, client: RootClient | None = None, parent=None) -> None:
         super().__init__(parent)
         self.service = services              # port -> name
+        self.client = client                 # None: the firewall block never reads
         self._last: NetSnapshot | None = None
         self._expanded: set[str] = set()
+        self.fw_setup: firewall.Setup | None = None
+        self.fw_state: firewall.State | None = None
+        self._fw_thread: _ReadFirewall | None = None
+        self._fw_proc: QProcess | None = None
+        self._fw_t0 = 0.0
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(*theme.page_margins())
@@ -91,6 +132,17 @@ class NetworkView(QWidget):
         self.lbl_doors.setTextFormat(Qt.TextFormat.RichText)
         self.lbl_doors.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         self.card_doors.body.addWidget(self.lbl_doors)
+        # the firewall: three lines at most, and one link that reads it
+        self.lbl_fw = QLabel("")
+        self.lbl_fw.setWordWrap(True)
+        self.lbl_fw.setTextFormat(Qt.TextFormat.RichText)
+        self.lbl_fw.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        self.lbl_fw.hide()
+        self.card_doors.body.addWidget(self.lbl_fw)
+        self.link_fw = TextLink()
+        self.link_fw.activated.connect(self._fw_link)
+        self.link_fw.hide()
+        self.card_doors.body.addWidget(self.link_fw)
         hints.attach(self.card_doors, "net.doors", self.help_requested.emit)
         self._columns = 0
         self._place_cards(2)
@@ -132,6 +184,107 @@ class NetworkView(QWidget):
         super().showEvent(event)
         if self._last is not None:
             self._rebuild()
+        if self.client is not None and self.fw_state is None and self._fw_thread is None:
+            self.read_firewall()
+
+    # -- the firewall ------------------------------------------------------------
+    def read_firewall(self) -> None:
+        """The plain read: detection, and the tool's own status where it
+        answers a plain user. Never the helper by itself: that can ask for
+        a password, and a page that opens must not."""
+        if self._fw_thread is not None or self._fw_proc is not None:
+            return
+        self._fw_thread = _ReadFirewall(self)
+        self._fw_thread.done.connect(self._fw_plain_done)
+        self._fw_thread.finished.connect(self._fw_thread_done)
+        self._fw_thread.start()
+
+    @Slot()
+    def _fw_thread_done(self) -> None:
+        if self._fw_thread is not None:
+            self._fw_thread.deleteLater()
+            self._fw_thread = None
+
+    @Slot(object, object)
+    def _fw_plain_done(self, setup, state) -> None:
+        self.set_firewall(setup, state)
+
+    def read_firewall_root(self) -> None:
+        """Through the helper: pkexec asks for the password the first time,
+        and polkit keeps it for a few minutes, so a Refresh soon after is
+        silent."""
+        if self.client is None or self._fw_proc is not None or not check().ready:
+            return
+        self._fw_t0 = time.perf_counter()
+        self.link_fw.set_plain("reading as root…", "MUTED")
+        self._fw_proc = QProcess(self)
+        self._fw_proc.finished.connect(self._fw_helper_done)
+        argv = self.client.argv("firewall-status")
+        self._fw_proc.start(argv[0], argv[1:])
+
+    def _fw_helper_done(self, code: int, *_) -> None:
+        proc, self._fw_proc = self._fw_proc, None
+        if proc is None or self.client is None:
+            return
+        out = bytes(proc.readAllStandardOutput()).decode(errors="replace")
+        err = bytes(proc.readAllStandardError()).decode(errors="replace")
+        elapsed = (time.perf_counter() - self._fw_t0) * 1000
+        try:
+            state = firewall.from_helper(self.client.parse(code, out, err))
+            state.call_ms = elapsed
+        except ActionError as exc:
+            state = self.fw_state or firewall.State(tool=self.fw_setup.tool if self.fw_setup
+                                                    else "")
+            state.error = str(exc)
+        except Exception as exc:  # noqa: BLE001 - reported, never swallowed
+            state = self.fw_state or firewall.State()
+            state.error = f"{type(exc).__name__}: {exc}"
+        self.set_firewall(self.fw_setup or firewall.Setup(), state)
+
+    def _fw_link(self) -> None:
+        """Read the firewall when it needs root, Refresh by the route that
+        worked otherwise."""
+        st = self.fw_state
+        if st is not None and (st.as_root or st.needs_root) and check().ready:
+            self.read_firewall_root()
+        else:
+            self.read_firewall()
+
+    def set_firewall(self, setup: firewall.Setup, state: firewall.State) -> None:
+        """The block's text and link from a setup and a state; the tests
+        hand these in directly."""
+        self.fw_setup, self.fw_state = setup, state
+        ready = check().ready and self.client is not None
+        lines = firewall.lines(setup, state, self.service, helper_ready=ready,
+                               helper_path=str(HELPER))
+        first, rest = lines[0], lines[1:]
+        text = f"<b>Firewall</b> · {first}"
+        if rest:
+            text += "<br>" + "<br>".join(rest)
+        self.lbl_fw.setText(text)
+        self.lbl_fw.show()
+        self.link_fw.show()
+        if state.needs_root and not state.as_root:
+            if ready:
+                self.link_fw.set_link("Read the firewall", "ACCENT")
+                self.link_fw.setToolTip("Reads the firewall's state through the root helper. "
+                                        "Nothing is changed. This and Refresh are the only "
+                                        "times it is read; it is not on a timer.")
+            else:
+                self.link_fw.hide()
+            return
+        self.link_fw.set_link("Refresh", "ACCENT")
+        when = time.strftime("%H:%M:%S", time.localtime(state.taken_at)) if state.taken_at \
+            else ""
+        cost = f"read at {when} in {state.took_ms:.0f} ms" if when else "not read yet"
+        if state.as_root:
+            cost += f" as root (the whole helper call {state.call_ms:.0f} ms)"
+        self.link_fw.setToolTip(f"Reads the firewall's state again ({cost}). This and opening "
+                                "the page are the only times it is read; it is not on a timer.")
+
+    def firewall_text(self) -> str:
+        """The block's lines as plain text, for the tests."""
+        return self.lbl_fw.text().replace("<b>", "").replace("</b>", "").replace("<br>", "\n")
 
     def _place_cards(self, cols: int) -> None:
         if cols == self._columns:

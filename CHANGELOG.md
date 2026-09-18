@@ -3,6 +3,48 @@
 All notable changes, newest first. Versions are git tags on
 [github.com/outing69/ArchPM](https://github.com/outing69/ArchPM).
 
+## 0.2.46 (2026-09-18)
+
+- The Network page's Open doors card ends with the firewall's state,
+  read-only. The doors say which programs accept connections; whether those
+  doors are reachable from outside depends on the firewall, so the two
+  answer one question together and the firewall gets no page of its own.
+  Three lines at most: whether a firewall runs and which (ufw or
+  firewalld); what it does with incoming traffic no rule covers, in plain
+  words ("dropped without a reply", "refused, and the sender is told", "let
+  in unless a rule blocks it") instead of the tool's deny/reject/allow or a
+  zone target; and how many doors it opens to other machines, named while
+  there are six or fewer ("2 doors open to other machines: 53/udp (domain)
+  on virbr0, 67/udp (bootps) on virbr0"), the IPv6 twins folded into their
+  IPv4 lines, a comment dropped, a rate-limited rule marked, a rule bound
+  to one interface or one source said so. The tool's own status output is
+  what is read (`ufw status verbose`, `firewall-cmd --state`,
+  `--get-default-zone`, `--list-all`); the raw nftables ruleset is shown to
+  nobody. A machine with only nftables.service or iptables.service gets
+  one line: it runs, its rules are not summarised here. A machine with no
+  firewall at all gets one line too, without advice: that is a choice, and
+  CachyOS ships without one.
+- Read when the page opens and on the block's own Refresh, never on the
+  sampling cycle (the failed services check's pattern). The plain read is
+  detection (the binaries, `systemctl is-active` on five units, ufw's
+  world-readable ENABLED flag) plus the tool's status where it answers a
+  plain user: firewalld does over D-Bus; ufw refuses outright, so it is
+  not even asked. On this machine the plain read costs 8 ms, off the UI
+  thread. Where the plain read is refused, the block reads through the
+  root helper on request, the Snapshots page's route: "Read the firewall"
+  asks for the password once, the next few minutes need none, and Refresh
+  then reads the same way. Without the root helper the block says the
+  state needs it, the Cleanup root rows' pattern. Each read's cost is in
+  the Refresh link's tooltip.
+- The helper gains one subcommand, `firewall-status`: fixed argv, nothing
+  from the caller, read-only, `ufw status verbose` or firewalld's three
+  reads. It never runs `nft` or `iptables`. The polkit message names the
+  read. The helper has to be reinstalled (`./install.sh --root`, or the
+  package) before the block can read as root; until then the helper
+  refuses the unknown subcommand and the block shows that refusal.
+- ArchPM changes no firewall rule and switches no firewall on or off. No
+  page, no button that changes anything, no switch.
+
 ## 0.2.45 (2026-09-18)
 
 - Fixed: the Monitor widget's full view cut at the bottom, a row of the

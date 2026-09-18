@@ -14,8 +14,10 @@ The helper assumes its caller is **an unprivileged process in your own desktop
 session** and treats every argument as hostile. It defends against:
 
 - **Command injection.** No shell is ever started. Every external command
-  (`ionice`, `paccache`, `journalctl`) is run as an argv list with a fixed,
-  clean `PATH`. The helper never runs `systemctl`.
+  (`ionice`, `paccache`, `journalctl`, `snapper`, `timeshift`, `ufw status`,
+  `firewall-cmd`) is run as an argv list with a fixed, clean `PATH`. The
+  helper never runs `systemctl`. The firewall command is read-only: it
+  returns the tool's own status text and takes nothing from the caller.
 - **Arbitrary actions.** Only a fixed set of subcommands exists. Signals are
   limited to an allow-list and every numeric value has explicit bounds. The
   helper does not manage services at all (see below).

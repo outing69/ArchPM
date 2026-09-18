@@ -157,3 +157,80 @@ class ProcessLevel(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+@unittest.skipUnless(QApplication, "PySide6 not installed")
+class FirewallBlock(unittest.TestCase):
+    """The firewall lines under the open doors: read-only, three lines at
+    most, the link reads or refreshes, and without a client the block
+    never reads by itself."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.app = QApplication.instance() or QApplication([])
+
+    def view(self, ready: bool, client=True):
+        from archpm.root.client import RootClient, RootStatus
+        from archpm.ui import network as N
+        view = N.NetworkView(lambda port: {443: "https", 53: "domain"}.get(port, ""),
+                             RootClient() if client else None)
+        fake = RootStatus(helper=ready, policy=ready, pkexec=ready)
+        original = N.check
+        N.check = lambda: fake
+        self.addCleanup(setattr, N, "check", original)
+        return view
+
+    def test_without_a_client_nothing_is_read_and_nothing_shown(self):
+        view = self.view(ready=True, client=False)
+        view.show()
+        self.app.processEvents()
+        self.assertIsNone(view.fw_state)
+        self.assertFalse(view.lbl_fw.isVisibleTo(view))
+
+    def test_ufw_before_the_helper_offers_the_read_link(self):
+        from archpm import firewall as F
+        view = self.view(ready=True)
+        setup = F.Setup(ufw=True, active={"ufw.service": True}, ufw_enabled=True)
+        view.set_firewall(setup, F.read_as_user(setup, run=lambda *a, **k: None))
+        text = view.firewall_text()
+        self.assertTrue(text.startswith("Firewall · ufw is installed"))
+        self.assertIn("Read the firewall", text)
+        self.assertTrue(view.link_fw.isVisibleTo(view))
+        self.assertEqual(view.link_fw._text, "Read the firewall")
+
+    def test_ufw_without_the_helper_says_so_and_offers_nothing(self):
+        from archpm import firewall as F
+        view = self.view(ready=False)
+        setup = F.Setup(ufw=True, active={"ufw.service": True}, ufw_enabled=True)
+        view.set_firewall(setup, F.read_as_user(setup, run=lambda *a, **k: None))
+        self.assertIn("root helper is not installed", view.firewall_text())
+        self.assertFalse(view.link_fw.isVisibleTo(view))
+
+    def test_read_as_root_shows_three_lines_and_a_refresh(self):
+        from archpm import firewall as F
+        view = self.view(ready=True)
+        st = F.State(tool=F.UFW, running=True, incoming=F.DROP, as_root=True,
+                     rules=[F.Rule("53/udp", "", "virbr0")], took_ms=80, call_ms=900,
+                     taken_at=1000.0)
+        view.set_firewall(F.Setup(ufw=True, active={"ufw.service": True}), st)
+        lines = view.firewall_text().split("\n")
+        self.assertEqual(len(lines), 3)
+        self.assertEqual(lines[0], "Firewall · ufw is on.")
+        self.assertIn("53/udp (domain) on virbr0", lines[2])
+        self.assertEqual(view.link_fw._text, "Refresh")
+        self.assertIn("80 ms as root (the whole helper call 900 ms)", view.link_fw.toolTip())
+
+    def test_no_firewall_is_one_line(self):
+        from archpm import firewall as F
+        view = self.view(ready=True)
+        view.set_firewall(F.Setup(), F.State())
+        lines = view.firewall_text().split("\n")
+        self.assertEqual(len(lines), 1)
+        self.assertIn("No firewall", lines[0])
+        self.assertEqual(view.link_fw._text, "Refresh")
+
+    def test_no_control_to_change_anything(self):
+        """Read-only: no button, switch or box in the doors card."""
+        from PySide6.QtWidgets import QAbstractButton
+        view = self.view(ready=True)
+        self.assertEqual(view.card_doors.findChildren(QAbstractButton), [])

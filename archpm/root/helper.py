@@ -3,8 +3,10 @@
 
 Invoked via pkexec, one action per call, and replies with JSON on stdout.
 Limited to process management, memory, two fixed cleanup commands (package
-cache, journal) and filesystem snapshots (list, take, delete; never restore:
-that changes what the machine boots and stays outside ArchPM); GPU tuning
+cache, journal), filesystem snapshots (list, take, delete; never restore:
+that changes what the machine boots and stays outside ArchPM) and one look
+at the firewall's own status output (ufw's or firewalld's; it changes no
+rule and switches nothing on or off); GPU tuning
 belongs in a different tool, and services are not managed here at all: ArchPM
 only touches your own session's services, which need no root (see actions.py).
 Deliberately stdlib-only and without imports from the archpm package: this
@@ -418,6 +420,37 @@ def cmd_snapshots_delete(args) -> dict:
     return {"deleted": args.id, "remaining": len(have) - 1}
 
 
+# -- firewall: one fixed, read-only command, nothing from the caller ---------
+UFW_BIN, FIREWALL_CMD_BIN = "/usr/bin/ufw", "/usr/bin/firewall-cmd"
+
+
+def cmd_firewall_status(_args) -> dict:
+    """The firewall's own status text, for the Network page to parse: `ufw
+    status verbose` when ufw is installed, else firewalld's state, default
+    zone and that zone's listing. Read-only: no rule is added or removed
+    and the firewall is not switched on or off, here or anywhere in ArchPM.
+    The raw nftables ruleset is never returned."""
+    start = time.perf_counter()
+    if os.path.isfile(UFW_BIN):
+        outputs = [["status", run("ufw", "status", "verbose")]]
+        return {"tool": "ufw", "outputs": outputs,
+                "took_ms": (time.perf_counter() - start) * 1000}
+    if os.path.isfile(FIREWALL_CMD_BIN):
+        try:
+            state = run("firewall-cmd", "--state")
+        except HelperError as exc:      # exit 252: "not running"
+            if "not running" not in str(exc):
+                raise
+            outputs = [["state", "not running"]]
+        else:
+            zone = run("firewall-cmd", "--get-default-zone")
+            outputs = [["state", state], ["zone", zone],
+                       ["list-all", run("firewall-cmd", f"--zone={zone}", "--list-all")]]
+        return {"tool": "firewalld", "outputs": outputs,
+                "took_ms": (time.perf_counter() - start) * 1000}
+    raise HelperError("neither ufw nor firewalld is installed")
+
+
 # -- status -------------------------------------------------------------------
 def cmd_status(_args) -> dict:
     out: dict = {"uid": os.getuid()}
@@ -454,6 +487,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.set_defaults(fn=cmd_snapshots_create)
     p = sub.add_parser("snapshots-delete"); p.add_argument("config"); p.add_argument("id")
     p.set_defaults(fn=cmd_snapshots_delete)
+    sub.add_parser("firewall-status").set_defaults(fn=cmd_firewall_status)
     sub.add_parser("status").set_defaults(fn=cmd_status)
     return ap
 

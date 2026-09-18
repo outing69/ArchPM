@@ -43,9 +43,11 @@ may use.
 
 **Network**: which of your programs talk to the network, at what speed, to
 which addresses, and which ones are "open doors" that other devices can reach.
-A browser opens to one row per process that holds sockets, each with its
-ports. Interfaces with a VPN mark, so you can see the tunnel carrying the
-traffic.
+Under the doors, the firewall's state: whether one runs (ufw or firewalld),
+what it does with incoming traffic no rule covers, and which ports it opens
+to other machines; read-only, and never on the sampling cycle. A browser
+opens to one row per process that holds sockets, each with its ports.
+Interfaces with a VPN mark, so you can see the tunnel carrying the traffic.
 
 ![Network page](docs/network.png)
 
@@ -269,7 +271,14 @@ that route myself.
   program and its sockets, with that process's ports summarised on the row.
   Games mostly use UDP, which the kernel does not count, so a game shows its
   connections but not a speed. No root, no packet capture, no DNS or location
-  lookups.
+  lookups. The open doors card ends with the firewall: which one runs, what
+  it does with incoming traffic no rule covers, and which ports it opens to
+  other machines, from the tool's own status output (never the raw nftables
+  ruleset). Read when the page opens and on the block's Refresh. ufw keeps
+  its status for root, so that read goes through the root helper on request
+  and asks for your password once; firewalld answers without root. ArchPM
+  changes no rule and switches no firewall on or off, and a machine without
+  one is told so in one line, without advice.
 - **Startup**: what starts when you log in (XDG autostart), in two groups,
   Enabled and Disabled, each with its count, a switch per entry and whether it
   is running now. Switching off a part of the desktop or a system entry asks

@@ -140,7 +140,7 @@ class MainWindow(QMainWindow):
         # scrolls when the window is shorter than its content.
         self.shell.add_page(scrolling(self.dashboard), "Overview")
         self.shell.add_page(self.procs, "Processes")
-        self.network = NetworkView(self.worker_services)
+        self.network = NetworkView(self.worker_services, self.root_client)
         self.shell.add_page(self.network, "Network")
         self.shell.add_page(self.startup, "Startup")
         self.shell.add_page(self.system, "System")

@@ -154,6 +154,16 @@ GLOSSARY: tuple[Section, ...] = (
              "reach it: normal for KDE Connect or Steam, worth a look for something you do "
              "not recognise.",
              "Network tab, Open doors card"),
+        Term("Firewall",
+             "What stands between the network and your open doors. A door is reachable from "
+             "other machines only when the firewall lets that port through. ArchPM shows "
+             "whether one is running (ufw or firewalld), what it does with incoming traffic "
+             "no rule covers, and which ports it opens; it reads this when the Network page "
+             "opens and on the block's Refresh, and it never changes a rule or switches the "
+             "firewall on or off. ufw keeps its state for root, so reading it goes through "
+             "the root helper and asks for your password once. Without any firewall, every "
+             "open door is reachable; that is a choice, not a fault.",
+             "Network tab, Open doors card"),
         Term("TCP and UDP",
              "Two ways to send data. TCP checks that everything arrives, and the kernel counts "
              "its bytes, so ArchPM can show a speed per program. UDP just sends, which games "
@@ -500,10 +510,13 @@ HINTS: dict[str, Hint] = {
                            "Interface and VPN",
                            "With a VPN on, the tunnel carries the traffic and the Wi-Fi "
                            "or cable shows about the same amount."),
-    "net.doors": Hint("Programs that other devices on your network can connect to.",
+    "net.doors": Hint("Programs that other devices on your network can connect to, and "
+                      "whether the firewall lets them through.",
                       "Listening / open door",
                       "KDE Connect, Steam and a printer helper are normal here. A "
-                      "program you do not recognise deserves a look."),
+                      "program you do not recognise deserves a look. The firewall lines "
+                      "say what reaches these doors from outside; ArchPM reads them and "
+                      "changes nothing."),
     "net.program": Hint("The program; expand it to see each connection. A program that "
                         "holds sockets in several processes, like a browser, shows one row "
                         "per process in between.", "Connection"),

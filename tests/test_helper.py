@@ -338,6 +338,75 @@ class CleanupCommands(unittest.TestCase):
         self.assertEqual(calls, [("paccache", "-rk2"), ("journalctl", "--vacuum-size=100M")])
 
 
+class FirewallCommand(unittest.TestCase):
+    """One read-only subcommand: the tool's own status text, fixed argv,
+    nothing from the caller, and never the raw nftables ruleset."""
+
+    def setUp(self):
+        self.calls = []
+        self._run, self._isfile = helper.run, helper.os.path.isfile
+        self.addCleanup(setattr, helper, "run", self._run)
+        self.addCleanup(setattr, helper.os.path, "isfile", self._isfile)
+
+    def fake(self, answers):
+        def run(*cmd, timeout=20):
+            self.calls.append(cmd)
+            key = " ".join(cmd)
+            for k, v in answers.items():
+                if key.startswith(k):
+                    if isinstance(v, Exception):
+                        raise v
+                    return v
+            raise AssertionError(f"unexpected command {cmd}")
+        return run
+
+    def test_takes_no_arguments(self):
+        for argv in (["firewall-status", "enable"], ["firewall-status", "--x"]):
+            with self.subTest(argv=argv), self.assertRaises(SystemExit), \
+                    redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                helper.main(argv)
+
+    def test_ufw_runs_status_verbose_and_nothing_else(self):
+        helper.os.path.isfile = lambda p: p == helper.UFW_BIN
+        helper.run = self.fake({"ufw status verbose": "Status: active\n"})
+        out = helper.cmd_firewall_status(None)
+        self.assertEqual(out["tool"], "ufw")
+        self.assertEqual(out["outputs"], [["status", "Status: active\n"]])
+        self.assertIsInstance(out["took_ms"], float)
+        self.assertEqual(self.calls, [("ufw", "status", "verbose")])
+
+    def test_firewalld_three_reads_or_one_when_not_running(self):
+        helper.os.path.isfile = lambda p: p == helper.FIREWALL_CMD_BIN
+        helper.run = self.fake({"firewall-cmd --state": "running",
+                                "firewall-cmd --get-default-zone": "public",
+                                "firewall-cmd --zone=public --list-all":
+                                "public\n  target: default"})
+        out = helper.cmd_firewall_status(None)
+        self.assertEqual(out["tool"], "firewalld")
+        self.assertEqual([o[0] for o in out["outputs"]], ["state", "zone", "list-all"])
+        self.assertEqual(self.calls[-1], ("firewall-cmd", "--zone=public", "--list-all"))
+        self.calls.clear()
+        helper.run = self.fake({"firewall-cmd --state": helper.HelperError("not running")})
+        out = helper.cmd_firewall_status(None)
+        self.assertEqual(out["outputs"], [["state", "not running"]])
+        self.assertEqual(len(self.calls), 1)
+
+    def test_neither_tool_is_refused_and_nft_is_never_run(self):
+        helper.os.path.isfile = lambda p: False
+        helper.run = self.fake({})
+        with self.assertRaises(helper.HelperError):
+            helper.cmd_firewall_status(None)
+        self.assertEqual(self.calls, [])
+        with open(helper.__file__) as fh:
+            src = fh.read()
+        self.assertNotIn('"nft"', src)
+        self.assertNotIn("iptables", src.replace("nf_tables", ""))
+
+    def test_parser_knows_it(self):
+        ap = helper.build_parser()
+        self.assertIs(ap.parse_args(["firewall-status"]).fn, helper.cmd_firewall_status)
+
+
 class MainProtocol(unittest.TestCase):
     """The GUI relies on the JSON contract: one object per call with an `ok` key."""
 
