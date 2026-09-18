@@ -46,7 +46,13 @@ PlasmoidItem {
     readonly property color memColor: "#f2a65a"
     readonly property color vramColor: "#e2749c"
     readonly property color hotColor: "#ff5f6d"
-    readonly property int hotTemp: 85
+    // Where the application itself calls a part busy, full or hot, so the
+    // panel strip agrees with the window: archpm/verdict.py's MACHINE_BUSY,
+    // GAME_GPU_FULL, MEM_FULL_PCT and HOT_C. A test holds them together.
+    readonly property real busyPct: 85
+    readonly property real gpuFullPct: 85
+    readonly property real memFullPct: 85
+    readonly property real hotC: 90
 
     // Panel strip settings (right-click -> Configure): 0 percentages, 1 temperatures, 2 both
     readonly property int panelMode: Plasmoid.configuration.panelMode
@@ -94,6 +100,23 @@ PlasmoidItem {
                                     || Plasmoid.formFactor === PlasmaCore.Types.Vertical
     preferredRepresentation: inPanel ? compactRepresentation : fullRepresentation
     Plasmoid.backgroundHints: PlasmaCore.Types.DefaultBackground | PlasmaCore.Types.ConfigurableBackground
+    // The tooltip of the strip: the figures in words, since the icons no
+    // longer say what a number is.
+    toolTipMainText: "ArchPM"
+    toolTipSubText: {
+        if (!root.online)
+            return "No data. Start the agent: systemctl --user start archpm-agent"
+        var parts = ["Processor " + root.pct(root.stats.cpu)
+                     + (root.stats.cpu_temp ? " at " + root.deg(root.stats.cpu_temp) : "")]
+        if (root.stats.gpu)
+            parts.push("graphics card " + root.pct(root.stats.gpu.util) + " at " + root.deg(root.stats.gpu.temp))
+        parts.push("memory " + root.pct(root.stats.mem_pct) + " (" + root.fmtBytes(root.stats.mem_used || 0)
+                   + " of " + root.fmtBytes(root.stats.mem_total || 0) + ")")
+        var text = parts.join(", ")
+        if (root.game)
+            text += "\nGame: " + root.game.name
+        return text
+    }
 
     Layout.minimumWidth: Kirigami.Units.gridUnit * 13
     Layout.minimumHeight: Kirigami.Units.gridUnit * 16
@@ -402,61 +425,166 @@ PlasmoidItem {
         }
     }
 
-    // In the panel: one line in the app's colours. What it shows is a setting;
-    // a value goes red when its part runs hot. The full view opens on click.
+    // In the panel: three meters, each a theme icon (the processor, the
+    // graphics card, the memory), a thin vertical bar and the number, in the
+    // theme's colours; the bar fills with the theme's highlight and turns
+    // to its negative colour where the application itself calls the part
+    // busy or full, a temperature turns negative where it calls it hot.
+    // Each number has the width of its widest form reserved ("100%", or
+    // "100°", or "100% 100°" by the panel setting), so nothing moves with
+    // a value. A vertical panel is a narrow column: there each meter is the
+    // icon over the number over a thin horizontal bar. The game's name, by
+    // its setting, stays in front. A click opens the full view.
     compactRepresentation: MouseArea {
         id: compact
-        Layout.minimumWidth: strip.implicitWidth + Kirigami.Units.smallSpacing * 2
-        Layout.preferredWidth: Layout.minimumWidth
-        onClicked: root.expanded = !root.expanded
-        hoverEnabled: true
+        readonly property bool vertical: Plasmoid.formFactor === PlasmaCore.Types.Vertical
+        readonly property real pad: Kirigami.Units.smallSpacing
+        readonly property real gap: Kirigami.Units.smallSpacing
+        readonly property real smallPt: Kirigami.Theme.smallFont.pointSize
+        readonly property int iconSize: Kirigami.Units.iconSizes.small
+        readonly property int barThickness: 3
+        readonly property bool withPct: root.panelMode !== 1
+        readonly property bool withTemp: root.panelMode !== 0
+        // the widest form a number takes in this panel setting
+        readonly property string widestText: root.panelMode === 1 ? "100°"
+                                             : root.panelMode === 2 ? "100% 100°" : "100%"
 
-        RowLayout {
+        TextMetrics {
+            id: widest
+            font.family: "monospace"
+            font.pointSize: compact.smallPt
+            text: compact.widestText
+        }
+        readonly property int cell: Math.ceil(widest.advanceWidth)
+        readonly property int lineH: Math.ceil(widest.height)
+        // one meter across: icon, bar, number, with a gap between each
+        readonly property real meterWidth: iconSize + gap + (withPct ? barThickness + gap : 0) + cell
+        readonly property int meters: root.stats.gpu !== undefined ? 3 : 2
+        readonly property real stripWidth: meters * meterWidth + (meters - 1) * gap * 2 + pad * 2
+                                           + (gameLabel.visible ? gameLabel.width + gap * 2 : 0)
+        // one meter down, in a column: icon over number over bar
+        readonly property real meterHeight: iconSize + lineH + (withPct ? barThickness + 2 : 0)
+        readonly property real stackHeight: meters * meterHeight + (meters - 1) * gap * 2 + pad * 2
+
+        Layout.fillWidth: vertical
+        Layout.fillHeight: !vertical
+        Layout.minimumWidth: vertical ? 0 : stripWidth
+        Layout.preferredWidth: vertical ? 0 : stripWidth
+        Layout.minimumHeight: vertical ? stackHeight : 0
+        Layout.preferredHeight: vertical ? stackHeight : 0
+        hoverEnabled: true
+        onClicked: root.expanded = !root.expanded
+
+        // One meter: the icon, the bar and the number; across in a panel,
+        // stacked in a column. The icon is the theme's, with a fallback name
+        // from the freedesktop set for a theme that lacks the first; when
+        // both are missing Kirigami paints its "unknown" placeholder, so the
+        // slot is never blank. It is drawn as a mask in the text colour.
+        component Meter: GridLayout {
+            id: meter
+            property string icon
+            property string iconFallback
+            property real value: 0        // the percentage, 0..100
+            property real temp: 0         // degrees, 0 when unknown
+            property real limit: 100      // where the application calls it busy or full
+            property bool isPct: true
+            readonly property bool high: value >= limit
+            readonly property bool hot: temp >= root.hotC
+            readonly property color fill: high ? Kirigami.Theme.negativeTextColor : Kirigami.Theme.highlightColor
+            readonly property string label: root.panelMode === 1 ? root.deg(temp)
+                                            : root.panelMode === 2 ? root.pct(value) + " " + root.deg(temp)
+                                            : root.pct(value)
+            columns: compact.vertical ? 1 : 3
+            rowSpacing: compact.vertical ? 2 : 0
+            columnSpacing: compact.gap
+            opacity: root.online ? 1 : 0.5
+
+            Kirigami.Icon {
+                source: meter.icon
+                fallback: meter.iconFallback
+                isMask: true
+                color: Kirigami.Theme.textColor
+                Layout.preferredWidth: compact.iconSize
+                Layout.preferredHeight: compact.iconSize
+                Layout.alignment: Qt.AlignCenter
+            }
+            // across: the thin vertical bar, the height of the text
+            Item {
+                visible: !compact.vertical && compact.withPct
+                Layout.preferredWidth: compact.barThickness
+                Layout.preferredHeight: compact.lineH
+                Layout.alignment: Qt.AlignCenter
+                Rectangle { anchors.fill: parent; radius: width / 2; color: Kirigami.Theme.textColor; opacity: 0.25 }
+                Rectangle {
+                    anchors.bottom: parent.bottom
+                    width: parent.width
+                    radius: width / 2
+                    height: Math.max(width, parent.height * Math.max(0, Math.min(1, meter.value / 100)))
+                    color: meter.fill
+                }
+            }
+            Text {
+                text: meter.label
+                color: (meter.hot && compact.withTemp) ? Kirigami.Theme.negativeTextColor : Kirigami.Theme.textColor
+                font.family: "monospace"
+                font.pointSize: compact.smallPt
+                horizontalAlignment: compact.vertical ? Text.AlignHCenter : Text.AlignLeft
+                verticalAlignment: Text.AlignVCenter
+                Layout.preferredWidth: compact.vertical ? Math.max(1, compact.width - 2 * compact.pad) : compact.cell
+                Layout.minimumWidth: Layout.preferredWidth
+                Layout.maximumWidth: Layout.preferredWidth
+                fontSizeMode: compact.vertical ? Text.HorizontalFit : Text.FixedSize
+                minimumPointSize: 5
+            }
+            // down: the thin horizontal bar under the number
+            Item {
+                visible: compact.vertical && compact.withPct
+                Layout.preferredWidth: Math.max(1, compact.width - 2 * compact.pad)
+                Layout.preferredHeight: compact.barThickness
+                Rectangle { anchors.fill: parent; radius: height / 2; color: Kirigami.Theme.textColor; opacity: 0.25 }
+                Rectangle {
+                    anchors.left: parent.left
+                    height: parent.height
+                    radius: height / 2
+                    width: Math.max(height, parent.width * Math.max(0, Math.min(1, meter.value / 100)))
+                    color: meter.fill
+                }
+            }
+        }
+
+        GridLayout {
             id: strip
             anchors.centerIn: parent
-            spacing: Kirigami.Units.smallSpacing
+            columns: compact.vertical ? 1 : 4
+            columnSpacing: compact.gap * 2
+            rowSpacing: compact.gap * 2
 
-            Rectangle {
-                width: Kirigami.Units.gridUnit * 0.35
-                height: width
-                radius: width / 2
-                color: root.online ? "#59d98e" : root.hotColor
-                visible: !root.online
-            }
             Text {
+                id: gameLabel
                 visible: root.showGame && root.game !== null
                 text: root.game ? root.game.name : ""
-                color: "#f5c542"
-                font.bold: true
-                font.pointSize: Kirigami.Theme.smallFont.pointSize
-                elide: Text.ElideRight
-                Layout.maximumWidth: Kirigami.Units.gridUnit * 12
-            }
-            Text {
-                visible: root.showGame && root.game !== null
-                text: "·"
-                opacity: 0.5
                 color: Kirigami.Theme.textColor
+                font.bold: true
+                font.pointSize: compact.smallPt
+                elide: Text.ElideRight
+                Layout.maximumWidth: compact.vertical ? Math.max(1, compact.width - 2 * compact.pad)
+                                                      : Kirigami.Units.gridUnit * 12
+                opacity: root.online ? 1 : 0.5
             }
-            Text {
-                text: "CPU " + root.cpuText()
-                color: (root.stats.cpu_temp || 0) >= root.hotTemp ? root.hotColor : root.cpuColor
-                font.family: "monospace"
-                font.pointSize: Kirigami.Theme.smallFont.pointSize
+            Meter {
+                icon: "cpu"; iconFallback: "computer"
+                value: root.stats.cpu || 0; temp: root.stats.cpu_temp || 0; limit: root.busyPct
             }
-            Text {
+            Meter {
                 visible: root.stats.gpu !== undefined
-                text: "GPU " + root.gpuText()
-                color: (root.stats.gpu && root.stats.gpu.temp >= root.hotTemp) ? root.hotColor : root.gpuColor
-                font.family: "monospace"
-                font.pointSize: Kirigami.Theme.smallFont.pointSize
+                icon: "video-display"; iconFallback: "preferences-desktop-display"
+                value: root.stats.gpu ? root.stats.gpu.util : 0
+                temp: root.stats.gpu ? root.stats.gpu.temp : 0
+                limit: root.gpuFullPct
             }
-            Text {
-                visible: root.panelMode !== 1
-                text: "RAM " + root.pct(root.stats.mem_pct)
-                color: (root.stats.mem_pct || 0) >= 90 ? root.hotColor : root.memColor
-                font.family: "monospace"
-                font.pointSize: Kirigami.Theme.smallFont.pointSize
+            Meter {
+                icon: "memory"; iconFallback: "media-flash"
+                value: root.stats.mem_pct || 0; limit: root.memFullPct
             }
         }
     }

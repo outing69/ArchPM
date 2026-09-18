@@ -3,6 +3,40 @@
 All notable changes, newest first. Versions are git tags on
 [github.com/outing69/ArchPM](https://github.com/outing69/ArchPM).
 
+## 0.2.44 (2026-09-18)
+
+- The Monitor widget's panel form is three meters instead of a line of
+  text. Before, it drew "CPU 1%", "GPU 0%" and "RAM 43%" in monospace in
+  ArchPM's blue, violet and orange (the red of its own palette above 85°),
+  the game's name in front by its setting, and a dot when the agent was
+  down, at the width of the text: 143 px at those values and 175 px at
+  100% everywhere, on a 34 px panel with the default fonts. Now each meter
+  is the icon theme's icon for the part, drawn as a mask in the theme's
+  text colour, a thin vertical bar of 3 px the height of the text, and the
+  number in a cell reserved for its widest form ("100%"; "100°" or
+  "100% 100°" by the panel setting), so nothing moves with a value. The
+  strip is 186 px at any value; the game's name, when shown, adds its own
+  width up to 12 grid units. The icon names are "cpu", "video-display" and
+  "memory", each with a fallback from the freedesktop set that Breeze,
+  Adwaita and the legacy Adwaita all ship, "computer",
+  "preferences-desktop-display" and "media-flash"; when a theme lacks both,
+  Kirigami paints its placeholder, so a slot is never blank.
+- The bar fills with the theme's highlight colour and turns to the theme's
+  negative colour where the application itself calls the part busy or
+  full: 85% for the processor, the graphics card and the memory, the
+  window's own MACHINE_BUSY, GAME_GPU_FULL and MEM_FULL_PCT; a temperature,
+  when the setting shows one, turns negative at the window's HOT_C, 90°,
+  where the strip used to say hot at 85°. A test holds the four numbers in
+  the QML to the ones in archpm/verdict.py. No data dims the strip.
+- In a vertical panel each meter stacks: the icon over the number over a
+  thin horizontal bar the width of the column, at 44 px and at 34 px,
+  where the number is fitted to the column; nothing is dropped. The
+  Network strip is as 0.2.42 left it, 188 px, its arrows being the glyphs;
+  its vertical form and its tooltip in words stand. The Monitor's tooltip
+  now speaks in words too: "Processor 12% at 45°, graphics card 3% at 54°,
+  memory 43% (6.4 GB of 14.7 GB)", and the game's name. Neither full view
+  is touched, and no colour of ArchPM's own is in either strip.
+
 ## 0.2.43 (2026-09-18)
 
 - Fixed: text cut off at the right edge of the Network widget's full view.

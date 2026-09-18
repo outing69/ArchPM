@@ -151,10 +151,14 @@ background, so the widgets keep showing numbers when the window is closed.
 
 **The widgets.** Right-click your desktop → *Add Widgets* → **ArchPM
 Monitor** and, if you want it, **ArchPM Network**. Both can go in a panel too:
-right-click the panel → *Add Widgets*. There they show a one-line strip
-("CPU 12% · GPU 83% · RAM 51%", "↓ 1.2 MB/s  ↑ 88 KB/s") and open the full
-view on click; in a vertical panel the Network strip stacks its two rates in
-a short form ("↓1.2M" over "↑88K"), with the full rates in its tooltip.
+right-click the panel → *Add Widgets*. There they show a strip and open the
+full view on click: the Monitor's is three meters, the processor, graphics
+card and memory icons of your icon theme, each with a thin bar and its
+percentage, the bar in the theme's highlight colour and in its negative
+colour where ArchPM itself calls the part busy; the Network's is
+"↓ 1.2 MB/s  ↑ 88 KB/s". In a vertical panel the meters stack, icon over
+number over bar, and the Network strip stacks its two rates in a short form
+("↓1.2M" over "↑88K"). Both tooltips give the figures in words.
 
 For frame rates and usage *inside* a full-screen game, use MangoHud; ArchPM is
 for before and after: what the game did to the machine, and what else runs.
