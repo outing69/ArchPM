@@ -76,7 +76,8 @@ ADWAITA_ICONS = {
 }
 # Icons for a kind of thing that has no icon of its own: the four kinds of
 # a Startup entry, the three sections of the process list and the origins
-# of a snapshot (pacman, a person, a timer). (Adwaita symbolic name, Breeze
+# of a snapshot (pacman, a person, a timer) and the chevron of a pacman pair
+# row, closed and open. (Adwaita symbolic name, Breeze
 # name); both checked with QIcon.hasThemeIcon on the development machine. The Adwaita names count towards the all-or-nothing
 # rule: one missing keeps the whole application on Breeze.
 KIND_ICONS = {
@@ -90,6 +91,8 @@ KIND_ICONS = {
     "pacman": ("package-x-generic-symbolic", "package-x-generic"),
     "person": ("avatar-default-symbolic", "user-identity"),
     "timer": ("alarm-symbolic", "chronometer"),
+    "expand": ("pan-end-symbolic", "arrow-right"),          # a closed pacman pair
+    "collapse": ("pan-down-symbolic", "arrow-down"),        # an open one
 }
 KIND_SIZE = QSize(16, 16)
 ADWAITA = "Adwaita"

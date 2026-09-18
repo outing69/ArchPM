@@ -3,6 +3,33 @@
 All notable changes, newest first. Versions are git tags on
 [github.com/outing69/ArchPM](https://github.com/outing69/ArchPM).
 
+## 0.2.40 (2026-09-18)
+
+- The Snapshots list is grouped by who took each snapshot, in the process
+  list's shape: a header with a count for "Taken by you" (from the page or by
+  hand), "Taken by pacman" (snap-pac's pairs, or Timeshift's autosnap) and
+  "Taken on a timer" (Snapper's timeline, Timeshift's schedule), newest
+  first inside each. Yours sit on top, since those are the ones a user goes
+  looking for; a group with nothing in it is left out, so a machine with
+  snap-pac alone shows one header.
+- A pacman pair is one row: the transaction's time (the before's), what
+  pacman did (the before's description, the command; the after's names the
+  packages), both numbers, and the size the two hold together where Snapper
+  reports one. The row opens on a click to the two snapshots underneath,
+  after then before, each with its own number and Delete; the pair row has
+  no Delete of its own, so a pair is taken apart one snapshot at a time,
+  and a half whose other half is gone stays a plain row. Open pairs stay
+  open across a refresh. One line above the list says a transaction is one
+  row and that a click opens it.
+- On the development machine (snap-pac only, NUMBER_LIMIT 50) the 50
+  snapshots become 26 rows: one header and 25 transactions, 76 with every
+  pair open.
+- A boxed list rounds its corners on the first and last row that are shown,
+  so a hidden half at the end of the box does not take the pair row's
+  corners. The kind icons gain the chevron of a closed and an open pair
+  (Adwaita pan-end and pan-down, Breeze arrow-right and arrow-down), under
+  the all-or-nothing rule.
+
 ## 0.2.39 (2026-09-18)
 
 - A Snapshots page, for Snapper and Timeshift. Detection is the binary on

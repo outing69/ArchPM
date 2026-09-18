@@ -9,6 +9,9 @@ ALLOW_GROUPS names them (snapperd checks that over D-Bus and says "No
 permissions." otherwise); Timeshift always wants root. When the plain read
 is refused, the page reads through the helper on request.
 
+The rows are the snapshots folded (a pacman pair is one row, its two halves
+under it) and grouped by who took them (yours, pacman's, a timer's).
+
 No Qt in this file.
 """
 from __future__ import annotations
@@ -40,6 +43,11 @@ LIMINE_CONF = "/etc/limine-snapper-sync.conf"
 # origins, as the page names them
 PACMAN, TIMELINE, ARCHPM, BY_HAND, SCHEDULED = ("pacman", "timeline", "ArchPM",
                                                 "by hand", "scheduled")
+# the groups of the list, in the order shown: yours on top, since those are
+# the ones a user goes looking for
+YOURS, PACMANS, TIMED = "Taken by you", "Taken by pacman", "Taken on a timer"
+GROUPS = (YOURS, PACMANS, TIMED)
+GROUP_OF = {ARCHPM: YOURS, BY_HAND: YOURS, PACMAN: PACMANS, TIMELINE: TIMED, SCHEDULED: TIMED}
 
 
 @dataclass
@@ -70,6 +78,60 @@ class Snapshot:
         if self.origin == PACMAN and self.kind in ("pre", "post"):
             return f"pacman, {'before' if self.kind == 'pre' else 'after'}"
         return self.origin
+
+
+@dataclass
+class Pair:
+    """One pacman transaction: snap-pac's before and after as one row of the
+    list. The time is the before's, the description the command it ran (the
+    after's names the packages), the label both numbers, the size what the
+    two hold together. Its halves are the two snapshots, newest first."""
+    pre: Snapshot
+    post: Snapshot
+
+    @property
+    def tool(self) -> str:
+        return self.pre.tool
+
+    @property
+    def config(self) -> str:
+        return self.pre.config
+
+    @property
+    def origin(self) -> str:
+        return PACMAN
+
+    @property
+    def taken_at(self) -> float:
+        return self.pre.taken_at
+
+    @property
+    def when(self) -> str:
+        return self.pre.when
+
+    @property
+    def why(self) -> str:
+        return PACMAN
+
+    @property
+    def label(self) -> str:
+        return f"{self.pre.label} · {self.post.label}"
+
+    @property
+    def description(self) -> str:
+        return self.pre.description or self.post.description
+
+    @property
+    def size(self) -> int | None:
+        sizes = [s.size for s in (self.pre, self.post) if s.size is not None]
+        return sum(sizes) if sizes else None
+
+    @property
+    def halves(self) -> list[Snapshot]:
+        return [self.post, self.pre]
+
+
+Entry = Snapshot | Pair      # one row of the list
 
 
 @dataclass
@@ -244,6 +306,50 @@ def parse(tool: str, outputs: list) -> list[Snapshot]:
 
 def _sort_id(s: Snapshot):
     return int(s.id) if s.id.isdigit() else 0
+
+
+# -- rows ------------------------------------------------------------------------
+def fold(snapshots: list[Snapshot]) -> list[Entry]:
+    """The rows of the list, newest first: a pacman pair whose two halves
+    are both in the list becomes one entry, at its before's time; a half
+    without its other half, and every other snapshot, stays a row of its
+    own."""
+    by_key = {(s.config, s.id): s for s in snapshots}
+    out: list[Entry] = []
+    seen: set[tuple[str, str]] = set()
+    for s in snapshots:
+        key = (s.config, s.id)
+        if key in seen:
+            continue
+        seen.add(key)
+        other = by_key.get((s.config, s.pair)) if s.pair else None
+        if (other is not None and (other.config, other.id) not in seen
+                and {s.kind, other.kind} == {"pre", "post"}):
+            seen.add((other.config, other.id))
+            out.append(Pair(s, other) if s.kind == "pre" else Pair(other, s))
+        else:
+            out.append(s)
+    out.sort(key=lambda e: (e.taken_at, _sort_id(e.pre if isinstance(e, Pair) else e)),
+             reverse=True)
+    return out
+
+
+def grouped(entries: list[Entry]) -> list[tuple[str, list[Entry]]]:
+    """The rows by who took them, in GROUPS order; a group with nothing in
+    it is left out."""
+    buckets: dict[str, list[Entry]] = {g: [] for g in GROUPS}
+    for e in entries:
+        buckets[GROUP_OF.get(e.origin, YOURS)].append(e)
+    return [(g, buckets[g]) for g in GROUPS if buckets[g]]
+
+
+def count_rows(snapshots: list[Snapshot]) -> tuple[int, int]:
+    """(rows the list shows folded, rows with every pair open), headers
+    included: what the page does to a listing."""
+    groups = grouped(fold(snapshots))
+    folded = sum(1 + len(members) for _g, members in groups)
+    pairs = sum(1 for _g, members in groups for e in members if isinstance(e, Pair))
+    return folded, folded + 2 * pairs
 
 
 # -- the plain read ----------------------------------------------------------------

@@ -147,6 +147,76 @@ class ParseTimeshift(unittest.TestCase):
         self.assertEqual(by_id["2026-09-18_09-30-00"].label, "2026-09-18_09-30-00")
 
 
+class Rows(unittest.TestCase):
+    """The list's rows: a pacman pair folded into one, the rest single,
+    grouped by who took them with yours on top."""
+
+    def test_a_pair_is_one_row_at_the_before_time(self):
+        rows = S.parse("snapper", [("root", SNAPPER_JSON)])
+        entries = S.fold(rows)
+        self.assertEqual([e.label for e in entries], ["#266", "#264 · #265", "#200", "#150"])
+        pair = entries[1]
+        self.assertIsInstance(pair, S.Pair)
+        self.assertEqual((pair.pre.id, pair.post.id), ("264", "265"))
+        self.assertEqual(pair.taken_at, pair.pre.taken_at)
+        self.assertEqual(pair.description, "pacman -U archpm-0.2.36-1-any.pkg.tar.zst")
+        self.assertEqual([s.id for s in pair.halves], ["265", "264"])
+        self.assertEqual((pair.why, pair.origin, pair.config), ("pacman", S.PACMAN, "root"))
+        self.assertIsNone(pair.size)
+
+    def test_a_pair_sums_the_sizes_it_has(self):
+        rows = S.parse("snapper", [("root", SNAPPER_JSON)])
+        by_id = {s.id: s for s in rows}
+        by_id["264"].size, by_id["265"].size = 1000, 24
+        self.assertEqual(S.fold(rows)[1].size, 1024)
+        by_id["265"].size = None
+        self.assertEqual(S.fold(rows)[1].size, 1000)
+
+    def test_a_half_without_its_other_half_stays_a_row(self):
+        rows = [s for s in S.parse("snapper", [("root", SNAPPER_JSON)]) if s.id != "265"]
+        entries = S.fold(rows)
+        self.assertEqual([e.label for e in entries], ["#266", "#264", "#200", "#150"])
+        self.assertTrue(all(isinstance(e, S.Snapshot) for e in entries))
+        self.assertEqual(entries[1].why, "pacman, before")
+
+    def test_a_pair_needs_a_before_and_an_after(self):
+        rows = S.parse("snapper", [("root", SNAPPER_JSON)])
+        by_id = {s.id: s for s in rows}
+        by_id["264"].kind = "single"          # the pair claim points at a single
+        self.assertEqual(len(S.fold(rows)), 5)
+
+    def test_grouped_yours_first_and_empty_groups_left_out(self):
+        rows = S.parse("snapper", [("root", SNAPPER_JSON)])
+        groups = S.grouped(S.fold(rows))
+        self.assertEqual([(g, [e.label for e in m]) for g, m in groups],
+                         [(S.YOURS, ["#266", "#150"]), (S.PACMANS, ["#264 · #265"]),
+                          (S.TIMED, ["#200"])])
+        pacman_only = [s for s in rows if s.origin == S.PACMAN]
+        self.assertEqual([g for g, _m in S.grouped(S.fold(pacman_only))], [S.PACMANS])
+        self.assertEqual(S.grouped([]), [])
+
+    def test_timeshift_rows_fold_to_nothing_and_group_by_origin(self):
+        rows = S.parse("timeshift", [("timeshift", TIMESHIFT_LIST)])
+        entries = S.fold(rows)
+        self.assertEqual(len(entries), 3)
+        self.assertEqual([g for g, _m in S.grouped(entries)], [S.YOURS, S.PACMANS, S.TIMED])
+        self.assertEqual(S.count_rows(rows), (6, 6))
+
+    def test_count_rows_as_on_a_machine_of_pairs(self):
+        """snap-pac only, NUMBER_LIMIT 50: 25 transactions, 50 snapshots."""
+        rows = []
+        for i in range(25):
+            pre = S.Snapshot("snapper", "root", str(218 + 2 * i), taken_at=1000.0 + i,
+                             kind="pre", origin=S.PACMAN, pair=str(219 + 2 * i))
+            post = S.Snapshot("snapper", "root", str(219 + 2 * i), taken_at=1001.0 + i,
+                              kind="post", origin=S.PACMAN, pair=str(218 + 2 * i))
+            rows += [post, pre]
+        rows.reverse()
+        self.assertEqual(S.count_rows(rows), (26, 76))
+        self.assertEqual(S.count_rows(S.parse("snapper", [("root", SNAPPER_JSON)])), (7, 9))
+        self.assertEqual(S.count_rows([]), (0, 0))
+
+
 class PlainRead(unittest.TestCase):
     def test_no_tool_is_an_empty_listing(self):
         listing = S.read_as_user(S.Setup(), run=fake_run({}))

@@ -354,9 +354,17 @@ GLOSSARY: tuple[Section, ...] = (
              "Snapshots page"),
         Term("Before and after",
              "snap-pac takes a pair around every pacman transaction: one before, with "
-             "the command in its description, one after, with the packages. That is why "
-             "the list grows by two per update and why most rows say pacman.",
-             "Snapshots page, the reason on each row"),
+             "the command in its description, one after, with the packages. The page "
+             "shows the pair as one row, with the transaction's time, the command and "
+             "both numbers; click it for the two snapshots, each with its own Delete. "
+             "A half whose other half is gone stands on its own again.",
+             "Snapshots page, a row under Taken by pacman"),
+        Term("Taken by you, by pacman, on a timer",
+             "The three groups of the list, each with its count: the ones you took, "
+             "from this page or by hand, on top, since those are the ones you go looking "
+             "for; then pacman's; then a timer's (Snapper's timeline or Timeshift's "
+             "schedule). A group with nothing in it is not shown.",
+             "Snapshots page, the headers in the list"),
         Term("Restoring a snapshot",
              "Not done here. Going back changes what the machine boots, so it stays with "
              "the tool that made the snapshot: with Limine, pick it under Snapshots in "

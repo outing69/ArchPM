@@ -68,10 +68,11 @@ tick, press and confirm.
 
 ![Cleanup page](docs/cleanup.png)
 
-**Snapshots**: what Snapper or Timeshift keeps, newest first, with when each
-was taken, who took it (pacman, a timer, ArchPM or a person) and its
-description; a button to take one and one per row to delete, never the last.
-Restoring stays with the tool.
+**Snapshots**: what Snapper or Timeshift keeps, grouped by who took it (you,
+pacman, a timer) with a count on each header, newest first; a pacman
+transaction is one row that opens to its before and after. A button to take
+one and one per snapshot to delete, never the last. Restoring stays with
+the tool.
 
 **Help**: a glossary in plain language, searched as you type, what the colours
 mean, and About with the version and the changelog.
@@ -288,10 +289,15 @@ that route myself.
   password when you press "Remove selected" with one of them ticked, and a
   row with nothing to remove says so. Nothing is removed until you tick,
   press and confirm. Your files, saves and settings are never touched.
-- **Snapshots**: the snapshots Snapper or Timeshift keeps, newest first: when
-  each was taken, who took it (pacman through snap-pac, a timer, ArchPM or a
-  person), its description, and its size where the tool reports one (Snapper
-  does only with btrfs quota on). Read when the page opens and on its button,
+- **Snapshots**: the snapshots Snapper or Timeshift keeps, grouped by who
+  took them with a count on each header: yours on top (from the page or by
+  hand), then pacman's (snap-pac's pairs, or Timeshift's autosnap), then a
+  timer's (Snapper's timeline, Timeshift's schedule), newest first inside
+  each. A pacman pair is one row with the transaction's time, what pacman
+  did, both numbers and the size the two hold together; a click opens it to
+  the two snapshots underneath, each with its own Delete. Each row shows
+  when it was taken, its description, and its size where the tool reports
+  one (Snapper does only with btrfs quota on). Read when the page opens and on its button,
   never on a timer. Snapper answers a plain user only when its config names
   them in `ALLOW_USERS` or `ALLOW_GROUPS`, and Timeshift answers root only, so
   when the plain read is refused the page says so and "Read snapshots" reads

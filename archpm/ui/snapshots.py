@@ -1,5 +1,8 @@
-"""The Snapshots page: what Snapper or Timeshift keeps, newest first, with
-who made each one and why; a button to take one and one per row to delete.
+"""The Snapshots page: what Snapper or Timeshift keeps, grouped by who took
+it (yours on top, then pacman's, then a timer's) with a count on each
+header, newest first inside a group; a pacman transaction is one row that
+opens to its before and after. A button to take one and one per snapshot
+to delete.
 
 The list is read when the page opens and on its button, never on the
 sampling cycle (the failed services check's pattern). The plain read comes
@@ -15,6 +18,7 @@ import time
 from PySide6.QtCore import QProcess, QRegularExpression, Qt, QThread, Signal, Slot
 from PySide6.QtGui import QFontMetrics, QRegularExpressionValidator
 from PySide6.QtWidgets import (
+    QHBoxLayout,
     QInputDialog,
     QLabel,
     QLineEdit,
@@ -28,7 +32,9 @@ from .. import snapshots
 from ..actions import ActionError
 from ..helptext import CANNOT_UNDO, plural
 from ..root.client import HELPER, RootClient, check
-from ..snapshots import ARCHPM, BY_HAND, PACMAN, SCHEDULED, SNAPPER, TIMELINE, TIMESHIFT
+from ..snapshots import (
+    ARCHPM, BY_HAND, PACMAN, PACMANS, SCHEDULED, SNAPPER, TIMED, TIMELINE, TIMESHIFT, YOURS, Pair,
+)
 from . import theme
 from .navrail import kind_icon
 from .widgets import BoxedList, FlowLayout, ListRow, human_bytes, mono, scrolling
@@ -39,7 +45,13 @@ ORIGIN_TIP = {PACMAN: "Taken by snap-pac around a pacman transaction",
               TIMELINE: "Taken by Snapper's timeline timer",
               SCHEDULED: "Taken by Timeshift's schedule",
               ARCHPM: "Taken from this page", BY_HAND: "Taken by a person, by hand"}
+GROUP_TIP = {YOURS: "Snapshots you took, from this page or by hand.",
+             PACMANS: {SNAPPER: "snap-pac's pair around each pacman transaction, one row per "
+                                "transaction: click it for the before and the after.",
+                       TIMESHIFT: "Timeshift's autosnap before each pacman transaction."},
+             TIMED: {SNAPPER: "Snapper's timeline timer.", TIMESHIFT: "Timeshift's schedule."}}
 ICON = 16
+CHEVRON = 12
 NO_DESCRIPTION = "no description"
 LAST_ONE = ("The last snapshot stays: ArchPM does not delete the only way back. "
             "Take another one first.")
@@ -67,6 +79,8 @@ class SnapshotsView(QWidget):
         self._proc: QProcess | None = None
         self._pending: tuple = ()      # ("list",) | ("create",) | ("delete", snapshot)
         self._t0 = 0.0
+        self._open: set[tuple[str, str]] = set()   # (config, before's id) of open pairs
+        self._pairs: dict[tuple[str, str], tuple[ListRow, QLabel, list[ListRow]]] = {}
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(*theme.page_margins())
@@ -187,6 +201,8 @@ class SnapshotsView(QWidget):
             lines.append("No sizes: Snapper reports what a snapshot holds only when btrfs quota "
                          "is on, and it is off here." if setup.tool == SNAPPER
                          else "No sizes: Timeshift does not report them.")
+        if any(isinstance(e, Pair) for e in snapshots.fold(listing.snapshots)):
+            lines.append("A pacman transaction is one row: click it for its before and after.")
         if setup.limine_entries and listing.snapshots:
             lines.append(f"The Limine boot menu offers the newest "
                          f"{plural(setup.limine_entries, 'snapshot')} of these.")
@@ -221,6 +237,7 @@ class SnapshotsView(QWidget):
 
     def _fill(self) -> None:
         self.list.clear()
+        self._pairs = {}
         setup, listing, st = self.setup, self.listing, check()
         if setup is None or listing is None or not setup.tool:
             return
@@ -233,46 +250,169 @@ class SnapshotsView(QWidget):
                 row.dim("MUTED")
                 self.list.add_row(row)
             return
-        size_w = QFontMetrics(mono("body")).horizontalAdvance("999.9 MB")
-        num_w = max(QFontMetrics(mono("body")).horizontalAdvance(s.label)
-                    for s in listing.snapshots)
+        entries = snapshots.fold(listing.snapshots)
+        metrics = QFontMetrics(mono("body"))
+        widths = (metrics.horizontalAdvance("999.9 MB"),
+                  max(metrics.horizontalAdvance(e.label) for e in entries),
+                  QPushButton("Delete…").sizeHint().width() if st.ready else 0)
         last = len(listing.snapshots) <= 1
-        for s in listing.snapshots:
-            icon = QLabel()
-            icon.setFixedSize(ICON + 4, ICON + 4)
-            icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            pm = kind_icon(ORIGIN_ICON.get(s.origin, "person")).pixmap(ICON, ICON)
-            if not pm.isNull():
-                icon.setPixmap(pm)
-            icon.setToolTip(ORIGIN_TIP.get(s.origin, ""))
-            num = QLabel(s.label)
-            theme.style(num, "color: {MUTED}; font-family: monospace;")
-            num.setMinimumWidth(num_w)
-            size = QLabel(human_bytes(s.size) if s.size is not None else "")
-            theme.style(size, "font-family: monospace;")
-            size.setMinimumWidth(size_w)
-            size.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-            size.setToolTip("What this snapshot holds that no other one does"
-                            if s.size is not None else "")
-            suffix: list[QWidget] = [num, size]
-            if st.ready:
-                btn = QPushButton("Delete…")
-                btn.setObjectName("danger")
-                btn.setAccessibleName(f"Delete snapshot {s.label}")
-                if last:
-                    btn.setEnabled(False)
-                    btn.setToolTip(LAST_ONE)
+        slot = any(isinstance(e, Pair) for e in entries)   # the chevron column, for every row
+        for group, members in snapshots.grouped(entries):
+            header = ListRow()
+            header.make_header()
+            header.set_count(group, len(members))
+            tip = GROUP_TIP[group]
+            tip = tip if isinstance(tip, str) else tip[setup.tool]
+            pairs = sum(1 for e in members if isinstance(e, Pair))
+            if pairs:
+                tip += (f" {plural(len(members), 'row')}, "
+                        f"{plural(len(members) + pairs, 'snapshot')}.")
+            header.setToolTip(tip)
+            self.list.add_row(header)
+            for e in members:
+                if isinstance(e, Pair):
+                    self._add_pair(e, widths, last, st.ready)
                 else:
-                    btn.clicked.connect(lambda _=False, snap=s: self._delete(snap))
-                suffix.append(btn)
-            sub = s.description or NO_DESCRIPTION
-            if s.pair:
-                sub += f"  ·  pair with #{s.pair}"
-            row = ListRow(f"{s.when}  ·  {s.why}", sub, prefix=icon, suffix=suffix)
-            if not s.description:
-                theme.style(row.subtitle, "color: {FAINT}; font-size: {FONT_SMALL}pt;")
-            row.setToolTip(f"{s.label}: {s.description or NO_DESCRIPTION}")
-            self.list.add_row(row)
+                    self.list.add_row(self._row(e, widths, last, st.ready, slot=slot))
+
+    def _icon(self, origin: str) -> QLabel:
+        icon = QLabel()
+        icon.setFixedSize(ICON + 4, ICON + 4)
+        icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        pm = kind_icon(ORIGIN_ICON.get(origin, "person")).pixmap(ICON, ICON)
+        if not pm.isNull():
+            icon.setPixmap(pm)
+        icon.setToolTip(ORIGIN_TIP.get(origin, ""))
+        return icon
+
+    @staticmethod
+    def _chevron(opened: bool) -> QLabel:
+        lbl = QLabel()
+        lbl.setFixedSize(CHEVRON + 4, CHEVRON + 4)
+        lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        pm = kind_icon("collapse" if opened else "expand").pixmap(CHEVRON, CHEVRON)
+        if pm.isNull():
+            lbl.setText("▾" if opened else "▸")
+        else:
+            lbl.setPixmap(pm)
+        return lbl
+
+    @staticmethod
+    def _prefix(*widgets: QWidget) -> QWidget:
+        """The chevron slot and the origin icon side by side, so the titles
+        of every row start in one column; a half gets one more empty slot,
+        which puts it a level under its pair."""
+        box = QWidget()
+        lay = QHBoxLayout(box)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(6)
+        for w in widgets:
+            lay.addWidget(w, 0, Qt.AlignmentFlag.AlignVCenter)
+        return box
+
+    @staticmethod
+    def _slot(size: int) -> QWidget:
+        w = QWidget()
+        w.setFixedSize(size + 4, size + 4)
+        return w
+
+    @staticmethod
+    def _columns(e, widths: tuple) -> tuple[QLabel, QLabel]:
+        """The number and the size, in columns of one width each."""
+        size_w, num_w, _btn_w = widths
+        num = QLabel(e.label)
+        theme.style(num, "color: {MUTED}; font-family: monospace;")
+        num.setMinimumWidth(num_w)
+        size = QLabel(human_bytes(e.size) if e.size is not None else "")
+        theme.style(size, "font-family: monospace;")
+        size.setMinimumWidth(size_w)
+        size.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        return num, size
+
+    def _row(self, s: snapshots.Snapshot, widths: tuple, last: bool, ready: bool,
+             half: bool = False, slot: bool = False) -> ListRow:
+        """One snapshot: its origin's icon, when and who, the description,
+        the number, the size and the Delete button. With `slot` an empty
+        chevron slot in front, so the row's title lines up with a pair's;
+        a half of a pair sits one level further in."""
+        num, size = self._columns(s, widths)
+        size.setToolTip("What this snapshot holds that no other one does"
+                        if s.size is not None else "")
+        suffix: list[QWidget] = [num, size]
+        if ready:
+            btn = QPushButton("Delete…")
+            btn.setObjectName("danger")
+            btn.setAccessibleName(f"Delete snapshot {s.label}")
+            if last:
+                btn.setEnabled(False)
+                btn.setToolTip(LAST_ONE)
+            else:
+                btn.clicked.connect(lambda _=False, snap=s: self._delete(snap))
+            suffix.append(btn)
+        sub = s.description or NO_DESCRIPTION
+        if s.pair and not half:
+            sub += f"  ·  pair with #{s.pair}"
+        icon = self._icon(s.origin)
+        if half:
+            icon = self._prefix(self._slot(CHEVRON), self._slot(ICON), icon)
+        elif slot:
+            icon = self._prefix(self._slot(CHEVRON), icon)
+        row = ListRow(f"{s.when}  ·  {s.why}", sub, prefix=icon, suffix=suffix)
+        if not s.description:
+            theme.style(row.subtitle, "color: {FAINT}; font-size: {FONT_SMALL}pt;")
+        row.setToolTip(f"{s.label}: {s.description or NO_DESCRIPTION}")
+        return row
+
+    def _add_pair(self, pair: Pair, widths: tuple, last: bool, ready: bool) -> None:
+        """The transaction's row, then its two halves, hidden until the row
+        is clicked. The row has no Delete of its own: each half keeps its
+        own, so a pair is taken apart one snapshot at a time."""
+        key = (pair.config, pair.pre.id)
+        opened = key in self._open
+        chevron = self._chevron(opened)
+        num, size = self._columns(pair, widths)
+        size.setToolTip("What the two together hold that no other snapshot does"
+                        if pair.size is not None else "")
+        suffix: list[QWidget] = [num, size]
+        if ready:
+            gap = QWidget()          # the Delete column, so the numbers line up
+            gap.setFixedWidth(widths[2])
+            suffix.append(gap)
+        row = ListRow(f"{pair.when}  ·  {pair.why}", pair.description or NO_DESCRIPTION,
+                      prefix=self._prefix(chevron, self._icon(PACMAN)), suffix=suffix)
+        if not pair.description:
+            theme.style(row.subtitle, "color: {FAINT}; font-size: {FONT_SMALL}pt;")
+        row.setToolTip(f"{pair.pre.label} before and {pair.post.label} after: "
+                       f"{pair.description or NO_DESCRIPTION}. Click for the two snapshots.")
+        row.setAccessibleName(f"pacman transaction {pair.label}, "
+                              + ("open" if opened else "closed"))
+        row.set_activatable(True)
+        row.activated.connect(lambda k=key: self._toggle(k))
+        self.list.add_row(row)
+        halves = []
+        for s in pair.halves:
+            child = self._row(s, widths, last, ready, half=True)
+            self.list.add_row(child)
+            self.list.set_shown(child, opened)
+            halves.append(child)
+        self._pairs[key] = (row, chevron, halves)
+
+    def _toggle(self, key: tuple[str, str]) -> None:
+        entry = self._pairs.get(key)
+        if entry is None:
+            return
+        row, chevron, halves = entry
+        opened = key not in self._open
+        (self._open.add if opened else self._open.discard)(key)
+        pm = kind_icon("collapse" if opened else "expand").pixmap(CHEVRON, CHEVRON)
+        if pm.isNull():
+            chevron.setText("▾" if opened else "▸")
+        else:
+            chevron.setPixmap(pm)
+        row.setAccessibleName(row.accessibleName().rsplit(", ", 1)[0]
+                              + (", open" if opened else ", closed"))
+        for child in halves:
+            self.list.set_shown(child, opened)
 
     # -- the helper ------------------------------------------------------------------------
     def _run_helper(self, pending: tuple, *args: str) -> None:

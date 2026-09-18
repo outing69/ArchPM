@@ -1073,19 +1073,23 @@ class BoxedList(QWidget):
         row.style().polish(row)
 
     def _remark(self) -> None:
-        rows = self.rows()
-        for i, row in enumerate(rows):
-            if isinstance(row, ListRow):
-                self._mark(row, i == 0, i == len(rows) - 1)
+        """First and last among the rows that are shown: a hidden row (a
+        pair's half while the pair is closed) has no corners to round."""
+        shown = [row for row in self.rows() if not row.isHidden()]
+        for i, row in enumerate(shown):
+            self._mark(row, i == 0, i == len(shown) - 1)
 
     def add_row(self, row: ListRow) -> ListRow:
-        rows = self.rows()
-        if rows:
-            self._mark(rows[-1], len(rows) == 1, False)
         self._rows.addWidget(row)
-        self._mark(row, not rows, True)
+        self._remark()
         self.box.show()
         return row
+
+    def set_shown(self, row: ListRow, on: bool) -> None:
+        """Show or hide a row in place; the corners follow."""
+        if row.isHidden() != (not on):
+            row.setVisible(on)
+        self._remark()
 
     def clear(self) -> None:
         self.finish_slide()

@@ -12,7 +12,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 try:
     from PySide6.QtCore import QSettings
     from PySide6.QtTest import QTest
-    from PySide6.QtWidgets import QApplication, QPushButton
+    from PySide6.QtWidgets import QApplication, QLabel, QPushButton
 except ImportError:                       # pragma: no cover
     QApplication = None
 
@@ -100,18 +100,80 @@ class Page(unittest.TestCase):
         self.assertIn("not installed", text)
         self.assertEqual(self.buttons(v), [])
 
+    @staticmethod
+    def shown(v):
+        return [r for r in v.list.rows() if not r.isHidden()]
+
     def test_plain_list_without_the_helper_shows_rows_and_no_delete(self):
         listing = S.Listing(tool="snapper",
                             snapshots=S.parse("snapper", [("root", SNAPPER_JSON)]))
         v = self.view(S.Setup(snapper=True, configs=["root"]), listing, ready=False)
-        rows = v.list.rows()
-        self.assertEqual(len(rows), 5)
-        self.assertTrue(rows[0].title.text().endswith("ArchPM"), rows[0].title.text())
-        self.assertIn("pacman, after", rows[1].title.text())
+        rows = self.shown(v)
+        self.assertEqual(len(rows), 7)
+        self.assertEqual(len(v.list.rows()), 9)      # the pair's two halves are there, hidden
+        self.assertTrue(rows[1].title.text().endswith("ArchPM"), rows[1].title.text())
+        self.assertIn("pacman", rows[4].title.text())
         self.assertEqual([b.text() for b in self.buttons(v)], ["Refresh"])
         text = " ".join(v.situation())
         self.assertIn("need the root helper", text)
         self.assertIn("Restoring is not done here", text)
+        self.assertIn("A pacman transaction is one row", text)
+
+    def test_groups_in_order_with_counts_and_yours_on_top(self):
+        rows = S.parse("snapper", [("root", SNAPPER_JSON)])
+        v = self.view(S.Setup(snapper=True, configs=["root"]),
+                      S.Listing(tool="snapper", snapshots=rows), ready=True)
+        shown = self.shown(v)
+        headers = [r for r in shown if r.property("header")]
+        self.assertEqual([h.title.text() for h in headers],
+                         ["Taken by you (2)", "Taken by pacman (1)", "Taken on a timer (1)"])
+        self.assertIn("1 row, 2 snapshots", headers[1].toolTip())
+        self.assertTrue(shown[1].title.text().endswith("ArchPM"))
+        self.assertTrue(shown[2].title.text().endswith("by hand"))
+        self.assertTrue(shown[4].title.text().endswith("  ·  pacman"))
+        self.assertTrue(shown[6].title.text().endswith("timeline"))
+        # the pacman group sits between yours and the timer's even when yours is empty
+        v._show(S.Listing(tool="snapper", snapshots=[s for s in rows if s.origin != S.ARCHPM
+                                                     and s.origin != S.BY_HAND]))
+        QTest.qWait(10)
+        self.assertEqual([h.title.text() for h in self.shown(v) if h.property("header")],
+                         ["Taken by pacman (1)", "Taken on a timer (1)"])
+
+    def test_the_pair_row_carries_both_numbers_and_opens_on_a_click(self):
+        rows = S.parse("snapper", [("root", SNAPPER_JSON)])
+        v = self.view(S.Setup(snapper=True, configs=["root"]),
+                      S.Listing(tool="snapper", snapshots=rows), ready=True)
+        pair = self.shown(v)[4]
+        self.assertTrue(pair.property("activatable"))
+        self.assertEqual(pair.subtitle.text(), "pacman -U archpm-0.2.36-1-any.pkg.tar.zst")
+        nums = [w.text() for w in pair.suffix if isinstance(w, QLabel)]
+        self.assertIn("#264 · #265", nums)
+        self.assertFalse(any(isinstance(w, QPushButton) for w in pair.suffix))
+        self.assertEqual(len(self.shown(v)), 7)
+        pair.activated.emit()
+        shown = self.shown(v)
+        self.assertEqual(len(shown), 9)
+        self.assertIn("pacman, after", shown[5].title.text())
+        self.assertIn("pacman, before", shown[6].title.text())
+        self.assertTrue(all(any(isinstance(w, QPushButton) for w in r.suffix)
+                            for r in shown[5:7]))
+        self.assertTrue(pair.accessibleName().endswith("open"))
+        # a refresh keeps it open; a second click closes it
+        v._show(S.Listing(tool="snapper", snapshots=rows))
+        QTest.qWait(10)
+        self.assertEqual(len(self.shown(v)), 9)
+        self.shown(v)[4].activated.emit()
+        self.assertEqual(len(self.shown(v)), 7)
+
+    def test_a_half_on_its_own_is_a_plain_row(self):
+        rows = [s for s in S.parse("snapper", [("root", SNAPPER_JSON)]) if s.id != "265"]
+        v = self.view(S.Setup(snapper=True, configs=["root"]),
+                      S.Listing(tool="snapper", snapshots=rows), ready=True)
+        self.assertEqual(len(v.list.rows()), len(self.shown(v)))
+        half = self.shown(v)[4]
+        self.assertIn("pacman, before", half.title.text())
+        self.assertFalse(half.property("activatable"))
+        self.assertNotIn("A pacman transaction is one row", " ".join(v.situation()))
 
     def test_with_the_helper_every_row_has_delete_but_the_last_one(self):
         rows = S.parse("snapper", [("root", SNAPPER_JSON)])
