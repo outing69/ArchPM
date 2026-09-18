@@ -1,4 +1,4 @@
-"""The Help tab's content: a glossary in plain language, what the colours mean,
+"""The Help page's content: a glossary in plain language, what the colours mean,
 and where the changelog lives. No Qt, so it can be tested and reused."""
 from __future__ import annotations
 
@@ -40,9 +40,9 @@ GLOSSARY: tuple[Section, ...] = (
     Section("Processes", (
         Term("Process",
              "A running program, or one piece of it. A browser is many processes: one "
-             "main window, one per tab, a few helpers. The Processes tab shows them as a "
+             "main window, one per page, a few helpers. The Processes page shows them as a "
              "tree so the pieces stay under the program they belong to.",
-             "Processes tab"),
+             "Processes page"),
         Term("PID",
              "Process ID: the number the system gives every process when it starts. It is "
              "unique while the process runs, and may be reused by a new process later. "
@@ -57,7 +57,7 @@ GLOSSARY: tuple[Section, ...] = (
              "threads. Where a process sits in the cgroup tree decides; only when that "
              "cannot be read does its owner decide. Not the same as the Category column, "
              "which says what a program is for.",
-             "Processes tab, with Show all processes on"),
+             "Processes page, with Show all processes on"),
         Term("Parent and children",
              "Every process was started by another one, its parent. Kill a parent and its "
              "children usually keep running as orphans; that is why \"Terminate with "
@@ -86,22 +86,22 @@ GLOSSARY: tuple[Section, ...] = (
              "What kind of program it is, taken from its menu entry: Game, Internet, "
              "Office, System and so on. Steam games are Game. Processes without a menu "
              "entry have no category; that is normal for helpers and services.",
-             "Processes tab, Category column and dropdown"),
+             "Processes page, Category column and dropdown"),
         Term("User",
              "Whose process it is. Almost everything you see is yours; root owns the "
              "system's services and other names belong to services that run under their "
              "own account (for example \"nobody\" or \"systemd-network\"). ArchPM can only "
              "act on your own processes unless you unlock root.",
-             "Processes tab, User column"),
+             "Processes page, User column"),
         Term("Show all processes",
              "Off, the list shows your own programs (anything with a menu entry or a Steam "
              "game) plus whatever is actually busy. On, it shows every process on the "
              "machine, including the system's and the kernel's.",
-             "Processes tab toolbar"),
+             "Processes page, toolbar"),
     )),
     Section("CPU and priority", (
         Term("CPU %",
-             "How much processor time a process uses. In the Processes tab 100% means one "
+             "How much processor time a process uses. On the Processes page 100% means one "
              "core fully used, so a game can show 140% on a 16-thread CPU; tick "
              "\"CPU% ÷ cores\" to see it as a share of the whole machine instead. The "
              "Overview always shows the share of the whole machine.",
@@ -141,19 +141,19 @@ GLOSSARY: tuple[Section, ...] = (
         Term("Connection",
              "A conversation between a program on your PC and one somewhere else (or on this "
              "PC). A browser tab opens a few; a game opens one or two and keeps them. The "
-             "Network tab lists them per program with the address and port on the other end.",
-             "Network tab"),
+             "Network page lists them per program with the address and port on the other end.",
+             "Network page"),
         Term("Port",
              "The number behind the colon in an address: it says which service is meant. 443 "
              "is https, 22 is ssh, 27036 is Steam. ArchPM names the common ones from your own "
              "system's list; it never asks the internet.",
-             "Network tab, Details column"),
+             "Network page, Details column"),
         Term("Listening / open door",
              "A program waiting for others to connect to it. Listening on \"this PC only\" is "
              "harmless. Listening on every address means other devices on your network can "
              "reach it: normal for KDE Connect or Steam, worth a look for something you do "
              "not recognise.",
-             "Network tab, Open doors card"),
+             "Network page, Open doors card"),
         Term("Firewall",
              "What stands between the network and your open doors. A door is reachable from "
              "other machines only when the firewall lets that port through. ArchPM shows "
@@ -163,18 +163,18 @@ GLOSSARY: tuple[Section, ...] = (
              "firewall on or off. ufw keeps its state for root, so reading it goes through "
              "the root helper and asks for your password once. Without any firewall, every "
              "open door is reachable; that is a choice, not a fault.",
-             "Network tab, Open doors card"),
+             "Network page, Open doors card"),
         Term("TCP and UDP",
              "Two ways to send data. TCP checks that everything arrives, and the kernel counts "
              "its bytes, so ArchPM can show a speed per program. UDP just sends, which games "
              "prefer for low latency, and has no counters: a game shows connections, not a "
              "speed. The total speed on the Overview includes both.",
-             "Network tab"),
+             "Network page"),
         Term("Interface and VPN",
              "The wire the traffic goes over: wlan0 is Wi-Fi, enp… is a cable, and a name like "
              "proton0 or wg0 is a VPN tunnel. If the VPN interface carries the traffic and the "
              "Wi-Fi only a little, your VPN is doing its job.",
-             "Network tab, Interfaces card"),
+             "Network page, Interfaces card"),
         Term("Download and upload",
              "Download is what comes in from the network, upload what goes out, for the "
              "whole machine. A game update downloads; a video call uploads too. The graph's "
@@ -196,7 +196,7 @@ GLOSSARY: tuple[Section, ...] = (
              "swap usually lives in zram, a piece of RAM the kernel uses as compressed swap, "
              "much faster than a disk. Some swap "
              "in use is normal; swap growing while a game runs means you are out of RAM.",
-             "Overview memory card, System tab"),
+             "Overview memory card, System page"),
         Term("Swappiness",
              "How eagerly the kernel uses swap, 0 to 200. Higher with zram is fine; lower "
              "keeps more in RAM. Changing it needs root, applies at once and lasts until "
@@ -229,7 +229,7 @@ GLOSSARY: tuple[Section, ...] = (
              "Compiled versions of a game's shaders, kept on disk so the next start is "
              "faster. Safe to delete; the cost is stutter during the first minutes as they "
              "are rebuilt.",
-             "Cleanup tab"),
+             "Cleanup page"),
     )),
     Section("Stopping things", (
         Term("Terminate (SIGTERM)",
@@ -274,7 +274,7 @@ GLOSSARY: tuple[Section, ...] = (
              "systemctl --user, and ArchPM can start, stop and restart it without a "
              "password. A service of the system runs as root or a system account, starts "
              "at boot for every user, and needs root to touch; ArchPM leaves those alone.",
-             "Root tasks → your session's services, Startup tab"),
+             "Root tasks → your session's services, Startup page"),
         Term("Unit",
              "systemd's word for one thing it manages, named by its file: "
              "archpm-agent.service is a service, pipewire.socket a socket that starts one "
@@ -284,10 +284,10 @@ GLOSSARY: tuple[Section, ...] = (
              "Root tasks → your session's services"),
         Term("Enabled service",
              "A service of your session that systemd starts at every login, because you or "
-             "an installer ran systemctl --user enable on it. The Startup tab lists them "
+             "an installer ran systemctl --user enable on it. The Startup page lists them "
              "under the autostart entries: they start at login just the same, but from a "
              "different place. Switch one off with systemctl --user disable in a terminal.",
-             "Startup tab"),
+             "Startup page"),
         Term("Failed services",
              "A service that could not start, or crashed and was not started again, is "
              "\"failed\" in systemd's books. ArchPM asks systemctl --failed and "
@@ -309,10 +309,10 @@ GLOSSARY: tuple[Section, ...] = (
         Term("Log (journal)",
              "What programs and the kernel write about what they did and what went wrong, "
              "kept by systemd in the journal. journalctl reads it; journalctl -b -1 shows "
-             "the previous boot, which is where the story of a crash is. The Cleanup tab "
+             "the previous boot, which is where the story of a crash is. The Cleanup page "
              "can remove everything older than the newest 100 MB, for good, so look first "
              "if you still have a problem to chase.",
-             "Cleanup tab"),
+             "Cleanup page"),
     )),
     Section("Appearance", (
         Term("Theme",
@@ -337,22 +337,22 @@ GLOSSARY: tuple[Section, ...] = (
              "A small file that says \"start this program when I log in\". Yours live in "
              "~/.config/autostart, the system's in /etc/xdg/autostart. Switching one off "
              "writes an override in your own folder; nothing outside your home is touched.",
-             "Startup tab"),
+             "Startup page"),
         Term("Desktop · keep on",
              "Entries that are parts of KDE Plasma itself: panels, shortcuts, power "
              "management, the password prompt. Switching one off, or a system entry, "
              "first asks and names what you lose at the next login; switching it back "
              "on asks nothing.",
-             "Startup tab, next to the switch"),
+             "Startup page, next to the switch"),
         Term("Cache",
              "Data a program keeps to be faster next time: web pages, thumbnails, compiled "
              "shaders, downloaded packages. Deleting it costs a slower first start, never "
              "your files, saves or settings.",
-             "Cleanup tab"),
+             "Cleanup page"),
         Term("Package cache",
              "pacman keeps every package it ever installed in /var/cache/pacman/pkg. ArchPM "
              "removes all but the last two versions of each, so you can still downgrade.",
-             "Cleanup tab (needs root)"),
+             "Cleanup page (needs root)"),
     )),
     Section("Snapshots", (
         Term("Snapshot",
@@ -392,8 +392,8 @@ GLOSSARY: tuple[Section, ...] = (
 )
 
 COLOURS: tuple[tuple[str, str], ...] = (
-    ("Yellow", "Highlight. The active tab, the machine's name, the running game, values that "
-               "deserve a look, and a process that started less than a minute ago."),
+    ("Yellow", "Highlight. The current page on the rail, the machine's name, the running game, "
+               "values that deserve a look, and a process that started less than a minute ago."),
     ("Blue", "Selection. The selected row, ticked boxes. Never anything else, so a blue "
              "row always means \"this is what you picked\". The thin ring around whatever "
              "has keyboard focus is a lighter blue of its own; it marks where a key press "
@@ -465,7 +465,7 @@ HINTS: dict[str, Hint] = {
         "Download and upload of the whole PC, every interface together.",
         "Download and upload",
         "Spikes when a page loads or Steam updates; a steady stream while you do "
-        "nothing deserves a look at the Network tab."),
+        "nothing deserves a look at the Network page."),
     "graph.disk": Hint(
         "Bytes read from and written to disk per second.", "Disk read and write",
         "Big reads when a game loads a level. Constant writes with nothing open: "

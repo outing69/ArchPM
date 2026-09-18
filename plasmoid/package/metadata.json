@@ -12,7 +12,7 @@
         "Id": "io.github.outing69.archpm",
         "License": "MIT",
         "Name": "ArchPM Monitor",
-        "Version": "0.2.48"
+        "Version": "0.2.49"
     },
     "X-Plasma-API-Minimum-Version": "6.0"
 }

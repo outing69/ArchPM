@@ -135,13 +135,17 @@ class MainWindow(QMainWindow):
         self.procs = ProcessView(ncpu, self.backend, self.history)
         self.startup = StartupView()
         self.system = SystemView()
-        # The Overview is the tallest page; with Adwaita's air it would set
-        # the window's minimum height above a 1080p screen with a panel, so it
-        # scrolls when the window is shorter than its content.
+        # A page that does not fit the window scrolls, with the bar in a
+        # gutter beside it, instead of setting the window's minimum height
+        # or clipping its content. The Overview was first (its tiles and
+        # graphs would put the minimum above a 1080p screen with a panel);
+        # Processes and Network follow, since their toolbar, cards and tree
+        # stand in a column that a short window would otherwise squeeze. The
+        # other pages scroll their body under a head of their own already.
         self.shell.add_page(scrolling(self.dashboard), "Overview")
-        self.shell.add_page(self.procs, "Processes")
+        self.shell.add_page(scrolling(self.procs), "Processes")
         self.network = NetworkView(self.worker_services, self.root_client)
-        self.shell.add_page(self.network, "Network")
+        self.shell.add_page(scrolling(self.network), "Network")
         self.shell.add_page(self.startup, "Startup")
         self.shell.add_page(self.system, "System")
         self.cleanup = CleanupView(self.root_client)

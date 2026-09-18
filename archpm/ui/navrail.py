@@ -499,10 +499,23 @@ class NavShell(QWidget):
         return self.rail.items[index].text() if 0 <= index < len(self.rail.items) else ""
 
     def set_current(self, widget_or_index) -> None:
-        index = (widget_or_index if isinstance(widget_or_index, int)
-                 else self.pages.indexOf(widget_or_index))
+        """By index, or by a page: the page itself, or a view inside one
+        (a page that scrolls is the scroll area, and the view its content)."""
+        index = self.index_of(widget_or_index) if not isinstance(widget_or_index, int) \
+            else widget_or_index
+        if index < 0:
+            return
         self.rail.set_current(index)
         self.pages.setCurrentIndex(index)
+
+    def index_of(self, widget: QWidget) -> int:
+        w = widget
+        while w is not None:
+            index = self.pages.indexOf(w)
+            if index >= 0:
+                return index
+            w = w.parentWidget()
+        return -1
 
     def current_index(self) -> int:
         return self.pages.currentIndex()

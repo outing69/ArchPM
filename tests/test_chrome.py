@@ -144,6 +144,49 @@ class Window(unittest.TestCase):
         self.assertGreaterEqual(overview.minimumSizeHint().width(),
                                 self.win.dashboard.minimumSizeHint().width())
 
+    def test_every_page_scrolls_instead_of_clipping(self):
+        """The height counterpart of the width floor: a page that does not
+        fit the window scrolls, its bar in a gutter beside the content.
+        Overview, Processes and Network are scroll areas; the other pages
+        scroll their body under a head of their own."""
+        from archpm.ui.widgets import GutterScrollBar, VScrollArea
+        pages = self.win.shell.pages
+        for i in (0, 1, 2):
+            page = pages.widget(i)
+            self.assertIsInstance(page, VScrollArea, self.win.shell.label_of(i))
+            self.assertIsInstance(page.verticalScrollBar(), GutterScrollBar)
+            self.assertEqual(page.horizontalScrollBarPolicy(),
+                             Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        for i in range(3, pages.count()):
+            page = pages.widget(i)
+            self.assertTrue(page.findChildren(QScrollArea), self.win.shell.label_of(i))
+
+    def test_a_short_window_squeezes_no_label_on_the_network_page(self):
+        """At 400 px the Network page's cards were squeezed and their wrapped
+        sentences cut; now the page scrolls and every label keeps its height."""
+        from PySide6.QtWidgets import QLabel
+
+        from archpm import firewall as F
+        self.win.shell.set_current(self.win.network)
+        self.assertEqual(self.win.shell.current_index(), 2, "found from the view inside")
+        rules = [F.Rule(f"{p}/tcp") for p in range(1000, 1010)]
+        st = F.State(tool=F.UFW, running=True, incoming=F.DROP, as_root=True, rules=rules)
+        self.win.network.set_firewall(F.Setup(ufw=True, active={"ufw.service": True}), st)
+        self.win.network.lbl_fw_doors.activated.emit()
+        self.win.resize(1180, 400)
+        QTest.qWait(80)
+        self.assertEqual(self.win.height(), 400)
+        page = self.win.shell.pages.widget(2)
+        self.assertGreater(page.verticalScrollBar().maximum(), 0, "the page scrolls")
+        for lbl in self.win.network.card_doors.findChildren(QLabel):
+            if lbl.wordWrap() and lbl.text() and lbl.isVisible():
+                self.assertGreaterEqual(lbl.height() + 1, lbl.heightForWidth(lbl.width()),
+                                        lbl.text()[:40])
+        self.win.network.lbl_fw_doors.activated.emit()
+        self.win.shell.set_current(0)
+        self.win.resize(1200, 700)
+        QTest.qWait(50)
+
     def test_narrow_the_toolbars_wrap_and_the_tiles_make_two_rows(self):
         self.win.resize(NARROW, 700)
         QTest.qWait(50)

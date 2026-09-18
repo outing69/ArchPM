@@ -3,6 +3,34 @@
 All notable changes, newest first. Versions are git tags on
 [github.com/outing69/ArchPM](https://github.com/outing69/ArchPM).
 
+## 0.2.49 (2026-09-18)
+
+- No page clips its content in a short window any more: a page that does
+  not fit scrolls, the way the Overview has since 0.2.25, with the bar in
+  a gutter beside the content (0.2.29). Measured at the default width with
+  the window shrunk in steps: the Network page was the one that clipped,
+  from 400 px with two firewall doors (its cards' wrapped sentences were
+  squeezed to two thirds of their height, since a wrapped label's minimum
+  understates it); the Processes page clipped only with the history panel
+  open, as the panel's 190 px and the toolbar then did not fit; Startup,
+  System, Cleanup, Snapshots and Help never clipped, since each scrolls
+  its body under a head of its own. Processes and Network are scroll
+  areas now, like the Overview; the tree keeps the room the window gives
+  it and stops shrinking at its own hint when the page starts to scroll.
+  The other pages are as they were.
+- The window's minimum height was 373 px, set by the Network page's cards
+  under the 47 px header bar; it is 287 px, set by the Cleanup page's
+  head, its scrolling note and its log box. At that height every page
+  shows its head and the start of its content and scrolls for the rest.
+- Navigating to a page by its view (the Overview's failed services line,
+  a process from a widget, Explain in Help) works for a page that scrolls:
+  the shell finds the page a view sits in.
+- The Help glossary's "Where" lines and sentences said "Processes tab",
+  "Network tab", "Startup tab", "Cleanup tab" and "System tab"; the
+  navigation has been a rail of pages since 0.2.5, so they say "page"
+  now, and the yellow's explanation names the current page on the rail
+  instead of the active tab. A browser's tabs keep their name.
+
 ## 0.2.48 (2026-09-18)
 
 - The firewall block's doors are rows, one per door, the way a socket is
