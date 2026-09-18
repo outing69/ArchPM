@@ -3,6 +3,36 @@
 All notable changes, newest first. Versions are git tags on
 [github.com/outing69/ArchPM](https://github.com/outing69/ArchPM).
 
+## 0.2.42 (2026-09-18)
+
+- The Network widget's panel form is one line: download and upload, an
+  arrow and a rate each, nothing else; a click opens the full view, which is
+  unchanged. The widget had a compact form since it was made, but that one
+  put "VPN" and the busiest program's name on the line (two settings, now
+  gone with their settings page), coloured the rates in ArchPM's own blue
+  and teal, and took its width from the text, so the strip grew and shrank
+  with every value. Now each rate has the width of the widest form the
+  number takes ("↓ 1023.9 MB/s") reserved, in the theme's small monospace
+  font and the theme's text colour, and the strip keeps one width while the
+  numbers change every two seconds; no data dims the line instead of adding
+  a dot. Rendered with the default fonts (Noto Sans Mono, 8 pt, 96 dpi):
+  the strip is 188 px wide and its text 15 px high, the same at a 44 px and
+  at a 32 px panel, since the font does not follow the panel's height; at
+  32 px it keeps 8 px above and below.
+- A vertical panel is a column of the panel's thickness, 34 to 48 px, where
+  that line cannot fit: there the two rates stack, in a short form without
+  spaces or "/s", the next unit from 1000 and a decimal only under 10
+  ("↓1.2M" over "↑88K", five characters at most), at a font size fitted
+  once to the column for that form's widest case ("↓999M", 33 px at 8 pt),
+  so neither the width nor the size moves with the value. At 44 px the
+  small font fits as it is; at 34 px it drops to about 6 pt. The tooltip
+  says both rates in full, in every panel.
+- A widget already on the desktop or in a panel gets the new form after
+  the update without being added again: `./install.sh` (or the package)
+  replaces the widget's files, and plasmashell reads them at its next start,
+  `systemctl --user restart plasma-plasmashell`. The Monitor widget is
+  untouched.
+
 ## 0.2.41 (2026-09-18)
 
 - Fixed: "Read snapshots" showed nothing. The button and Refresh share one

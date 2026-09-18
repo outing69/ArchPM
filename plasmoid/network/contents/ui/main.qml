@@ -26,8 +26,6 @@ PlasmoidItem {
     readonly property var talkers: root.net ? (root.net.top || []) : []
     readonly property var doors: root.net ? (root.net.listening || []) : []
     readonly property bool vpnUp: root.ifaces.some(function (i) { return i.vpn && i.up })
-    readonly property bool showVpn: Plasmoid.configuration.showVpn
-    readonly property bool showTop: Plasmoid.configuration.showTop
 
     readonly property color downColor: "#5aa2ff"
     readonly property color upColor: "#4fd1c5"
@@ -42,6 +40,16 @@ PlasmoidItem {
         return (i === 0 ? n.toFixed(0) : n.toFixed(1)) + " " + units[i]
     }
     function rate(n) { return root.fmtBytes(n || 0) + "/s" }
+    // The column's form of a rate: no spaces, the unit's first letter, per
+    // second understood, a decimal only under 10, the next unit from 1000,
+    // so at most four characters ("999K", "1.2M") and five with the arrow.
+    function shortRate(n) {
+        n = n || 0
+        var units = ["B", "K", "M", "G", "T"]
+        var i = 0
+        while (n >= 1000 && i < units.length - 1) { n /= 1024; i++ }
+        return (i > 0 && n < 10 ? n.toFixed(1) : n.toFixed(0)) + units[i]
+    }
     // How ArchPM is started: fixed at install time, see the Monitor widget.
     readonly property string launchTemplate: "@LAUNCH@"
     readonly property string launchCommand:
@@ -54,6 +62,12 @@ PlasmoidItem {
                                     || Plasmoid.formFactor === PlasmaCore.Types.Vertical
     preferredRepresentation: inPanel ? compactRepresentation : fullRepresentation
     Plasmoid.backgroundHints: PlasmaCore.Types.DefaultBackground | PlasmaCore.Types.ConfigurableBackground
+    // The tooltip of the strip: the rates in full, since a vertical panel
+    // shows them short.
+    toolTipMainText: "Network"
+    toolTipSubText: root.online
+                    ? "Download " + root.rate(root.stats.net_rx) + ", upload " + root.rate(root.stats.net_tx)
+                    : "No data. Start the agent: systemctl --user start archpm-agent"
 
     Layout.minimumWidth: Kirigami.Units.gridUnit * 14
     Layout.minimumHeight: Kirigami.Units.gridUnit * 14
@@ -301,45 +315,75 @@ PlasmoidItem {
         }
     }
 
-    // In the panel: download and upload of the whole PC, "VPN" while a tunnel
-    // is up, optionally the busiest program. Click for the full view.
+    // In the panel: download and upload of the whole PC on one line, an
+    // arrow and a rate each, nothing else; a click opens the full view. Each
+    // rate has the width of its widest form ("↓ 1023.9 MB/s") reserved, so
+    // the strip keeps one width while the numbers change every two seconds.
+    // A vertical panel is a column too narrow for that line: there the two
+    // rates stack, in the short form ("↓1.2M", "↑88K"; the tooltip says it in full),
+    // at a size fitted once to the column for that form's widest case, so
+    // the size does not change with the value either. The colours are the
+    // theme's text colour; no data dims the line.
     compactRepresentation: MouseArea {
         id: compact
-        Layout.minimumWidth: strip.implicitWidth + Kirigami.Units.smallSpacing * 2
-        Layout.preferredWidth: Layout.minimumWidth
-        onClicked: root.expanded = !root.expanded
-        hoverEnabled: true
+        readonly property bool vertical: Plasmoid.formFactor === PlasmaCore.Types.Vertical
+        readonly property real pad: Kirigami.Units.smallSpacing
+        readonly property real gap: Kirigami.Units.smallSpacing * 2
+        readonly property real smallPt: Kirigami.Theme.smallFont.pointSize
 
-        RowLayout {
+        TextMetrics {
+            id: widest
+            font.family: "monospace"
+            font.pointSize: compact.smallPt
+            text: "↓ 1023.9 MB/s"
+        }
+        TextMetrics {
+            id: widestShort
+            font.family: "monospace"
+            font.pointSize: compact.smallPt
+            text: "↓999M"
+        }
+        readonly property int cell: Math.ceil(widest.advanceWidth)
+        readonly property real columnWidth: Math.max(1, width - 2 * pad)
+        // the column's font: the small font, or smaller when the widest short
+        // form would not fit the column at that size; never below 5 pt
+        readonly property real columnPt: Math.max(5, Math.min(smallPt,
+            smallPt * columnWidth / Math.max(1, widestShort.advanceWidth)))
+        readonly property real stripWidth: cell * 2 + gap + pad * 2
+        readonly property real stackHeight: widest.height * 2 + pad * 2
+
+        Layout.fillWidth: vertical
+        Layout.fillHeight: !vertical
+        Layout.minimumWidth: vertical ? 0 : stripWidth
+        Layout.preferredWidth: vertical ? 0 : stripWidth
+        Layout.minimumHeight: vertical ? stackHeight : 0
+        Layout.preferredHeight: vertical ? stackHeight : 0
+        hoverEnabled: true
+        onClicked: root.expanded = !root.expanded
+
+        component Rate: Text {
+            property string arrow
+            property real value: 0
+            color: Kirigami.Theme.textColor
+            opacity: root.online ? 1 : 0.5
+            font.family: "monospace"
+            font.pointSize: compact.vertical ? compact.columnPt : compact.smallPt
+            text: compact.vertical ? arrow + root.shortRate(value) : arrow + " " + root.rate(value)
+            horizontalAlignment: compact.vertical ? Text.AlignHCenter : Text.AlignLeft
+            verticalAlignment: Text.AlignVCenter
+            Layout.preferredWidth: compact.vertical ? compact.columnWidth : compact.cell
+            Layout.minimumWidth: Layout.preferredWidth
+            Layout.maximumWidth: Layout.preferredWidth
+        }
+
+        GridLayout {
             id: strip
             anchors.centerIn: parent
-            spacing: Kirigami.Units.smallSpacing
-
-            Rectangle {
-                width: Kirigami.Units.gridUnit * 0.35
-                height: width
-                radius: width / 2
-                color: root.hotColor
-                visible: !root.online
-            }
-            Mono { text: "↓ " + root.rate(root.stats.net_rx); color: root.downColor }
-            Mono { text: "↑ " + root.rate(root.stats.net_tx); color: root.upColor }
-            Text {
-                visible: root.showVpn && root.vpnUp
-                text: "VPN"
-                color: root.vpnColor
-                font.bold: true
-                font.pointSize: Kirigami.Theme.smallFont.pointSize
-            }
-            Text {
-                visible: root.showTop && root.talkers.length > 0
-                text: "· " + (root.talkers.length > 0 ? root.talkers[0].name : "")
-                color: Kirigami.Theme.textColor
-                opacity: 0.7
-                font.pointSize: Kirigami.Theme.smallFont.pointSize
-                elide: Text.ElideRight
-                Layout.maximumWidth: Kirigami.Units.gridUnit * 10
-            }
+            columns: compact.vertical ? 1 : 2
+            columnSpacing: compact.gap
+            rowSpacing: 0
+            Rate { arrow: "↓"; value: root.stats.net_rx || 0 }
+            Rate { arrow: "↑"; value: root.stats.net_tx || 0 }
         }
     }
 }
