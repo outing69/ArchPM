@@ -3,6 +3,20 @@
 All notable changes, newest first. Versions are git tags on
 [github.com/outing69/ArchPM](https://github.com/outing69/ArchPM).
 
+## 0.2.47 (2026-09-18)
+
+- The firewall block under Open doors, tidied; nothing new in it. The
+  Refresh link was a label as wide as the card, and with focus the 2 px
+  ring ran around that whole width, so it read as an input field. It is a
+  link of its own width now, on the "Firewall" line right after the label,
+  the place the failed services block gives its control, and the ring hugs
+  the words while the link has focus, nowhere else. The block is set apart
+  from the doors' sentence by a hairline in the border colour, the line a
+  boxed list draws between its rows, so the two no longer run together as
+  one paragraph. The label "Firewall" stands on a line of its own above the
+  three lines instead of in front of the first sentence, so the three read
+  as one set.
+
 ## 0.2.46 (2026-09-18)
 
 - The Network page's Open doors card ends with the firewall's state,

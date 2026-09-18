@@ -193,7 +193,9 @@ class FirewallBlock(unittest.TestCase):
         setup = F.Setup(ufw=True, active={"ufw.service": True}, ufw_enabled=True)
         view.set_firewall(setup, F.read_as_user(setup, run=lambda *a, **k: None))
         text = view.firewall_text()
-        self.assertTrue(text.startswith("Firewall · ufw is installed"))
+        self.assertTrue(text.startswith("ufw is installed"))
+        self.assertEqual(view.lbl_fw_title.text(), "Firewall")
+        self.assertTrue(view.sep_fw.isVisibleTo(view), "a hairline sets the block apart")
         self.assertIn("Read the firewall", text)
         self.assertTrue(view.link_fw.isVisibleTo(view))
         self.assertEqual(view.link_fw._text, "Read the firewall")
@@ -215,7 +217,7 @@ class FirewallBlock(unittest.TestCase):
         view.set_firewall(F.Setup(ufw=True, active={"ufw.service": True}), st)
         lines = view.firewall_text().split("\n")
         self.assertEqual(len(lines), 3)
-        self.assertEqual(lines[0], "Firewall · ufw is on.")
+        self.assertEqual(lines[0], "ufw is on.")
         self.assertIn("53/udp (domain) on virbr0", lines[2])
         self.assertEqual(view.link_fw._text, "Refresh")
         self.assertIn("80 ms as root (the whole helper call 900 ms)", view.link_fw.toolTip())
@@ -234,3 +236,19 @@ class FirewallBlock(unittest.TestCase):
         from PySide6.QtWidgets import QAbstractButton
         view = self.view(ready=True)
         self.assertEqual(view.card_doors.findChildren(QAbstractButton), [])
+
+    def test_the_link_has_its_own_width_beside_the_label(self):
+        """A link, not a field: as wide as its words, on the label's line,
+        right after it, the way the failed services block places its control."""
+        from archpm import firewall as F
+        view = self.view(ready=True)
+        view.resize(900, 500)
+        view.show()
+        view.set_firewall(F.Setup(), F.State())
+        self.app.processEvents()
+        link, title, text = view.link_fw, view.lbl_fw_title, view.lbl_fw
+        self.assertLess(link.width(), text.width() // 2)
+        self.assertEqual(link.width(), link.sizeHint().width())
+        self.assertGreater(link.x(), title.x() + title.width())
+        self.assertEqual(link.y() + link.height() // 2, title.y() + title.height() // 2)
+        self.assertLess(title.y(), text.y(), "the label is a line of its own above the text")

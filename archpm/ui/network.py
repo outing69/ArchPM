@@ -20,10 +20,13 @@ from PySide6.QtCore import QProcess, Qt, QThread, Signal, Slot
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QFrame,
     QGridLayout,
+    QHBoxLayout,
     QHeaderView,
     QLabel,
     QLineEdit,
+    QSizePolicy,
     QTreeWidget,
     QTreeWidgetItem,
     QVBoxLayout,
@@ -132,17 +135,36 @@ class NetworkView(QWidget):
         self.lbl_doors.setTextFormat(Qt.TextFormat.RichText)
         self.lbl_doors.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         self.card_doors.body.addWidget(self.lbl_doors)
-        # the firewall: three lines at most, and one link that reads it
+        # The firewall, set apart from the doors' sentence the way rows of a
+        # boxed list are set apart: a hairline, then a head line with the
+        # label and the one control right after it (the failed services
+        # block's shape), then the three lines at most.
+        self.sep_fw = QFrame()
+        self.sep_fw.setFixedHeight(1)
+        theme.style(self.sep_fw, "background: {BORDER};")
+        self.sep_fw.hide()
+        self.card_doors.body.addWidget(self.sep_fw)
+        self.head_fw = QWidget()
+        head_fw = QHBoxLayout(self.head_fw)
+        head_fw.setContentsMargins(0, 0, 0, 0)
+        head_fw.setSpacing(12)
+        self.lbl_fw_title = QLabel("Firewall")
+        theme.style(self.lbl_fw_title, "font-weight: 700;")
+        head_fw.addWidget(self.lbl_fw_title)
+        self.link_fw = TextLink()
+        # its own width: a link, not a field, and the focus ring hugs the words
+        self.link_fw.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Preferred)
+        self.link_fw.activated.connect(self._fw_link)
+        head_fw.addWidget(self.link_fw, 0, Qt.AlignmentFlag.AlignVCenter)
+        head_fw.addStretch(1)
+        self.head_fw.hide()
+        self.card_doors.body.addWidget(self.head_fw)
         self.lbl_fw = QLabel("")
         self.lbl_fw.setWordWrap(True)
         self.lbl_fw.setTextFormat(Qt.TextFormat.RichText)
         self.lbl_fw.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         self.lbl_fw.hide()
         self.card_doors.body.addWidget(self.lbl_fw)
-        self.link_fw = TextLink()
-        self.link_fw.activated.connect(self._fw_link)
-        self.link_fw.hide()
-        self.card_doors.body.addWidget(self.link_fw)
         hints.attach(self.card_doors, "net.doors", self.help_requested.emit)
         self._columns = 0
         self._place_cards(2)
@@ -257,13 +279,9 @@ class NetworkView(QWidget):
         ready = check().ready and self.client is not None
         lines = firewall.lines(setup, state, self.service, helper_ready=ready,
                                helper_path=str(HELPER))
-        first, rest = lines[0], lines[1:]
-        text = f"<b>Firewall</b> · {first}"
-        if rest:
-            text += "<br>" + "<br>".join(rest)
-        self.lbl_fw.setText(text)
-        self.lbl_fw.show()
-        self.link_fw.show()
+        self.lbl_fw.setText("<br>".join(lines))
+        for w in (self.sep_fw, self.head_fw, self.lbl_fw, self.link_fw):
+            w.show()
         if state.needs_root and not state.as_root:
             if ready:
                 self.link_fw.set_link("Read the firewall", "ACCENT")
@@ -284,7 +302,7 @@ class NetworkView(QWidget):
 
     def firewall_text(self) -> str:
         """The block's lines as plain text, for the tests."""
-        return self.lbl_fw.text().replace("<b>", "").replace("</b>", "").replace("<br>", "\n")
+        return self.lbl_fw.text().replace("<br>", "\n")
 
     def _place_cards(self, cols: int) -> None:
         if cols == self._columns:
