@@ -189,6 +189,68 @@ PlasmoidItem {
         return (i === 0 ? n.toFixed(0) : n.toFixed(1)) + " " + units[i]
     }
 
+    // A list that shows only the rows that fit whole in the height it is
+    // given: the rows in order, each shown while it and the ones before it
+    // fit, the rest not shown at all, so never a half row. In the column it
+    // takes what its rows need and no more, gives way first when the widget
+    // is short, and leaves the footer where it is.
+    component FitList: Item {
+        id: fitList
+        property alias model: rep.model
+        property alias delegate: rep.delegate
+        property int spacing: Kirigami.Units.smallSpacing
+        property int revision: 0        // bumped when a row appears, goes or changes height
+        readonly property int count: rep.count
+        readonly property int shown: fitList.fit(rep.count, height, revision)
+        // the height of every row, shown or not: what the list asks the
+        // column for (its need depends on the rows, never on the height it
+        // gets, or the two would chase each other)
+        readonly property real contentHeight: fitList.need(rep.count, revision)
+        function need(n, _rev) {
+            var total = 0
+            for (var i = 0; i < n; i++) {
+                var row = rep.itemAt(i)
+                if (row)
+                    total += row.implicitHeight + (i > 0 ? spacing : 0)
+            }
+            return total
+        }
+        function fit(n, h, _rev) {
+            var used = 0
+            for (var i = 0; i < n; i++) {
+                var row = rep.itemAt(i)
+                if (!row)
+                    return i
+                used += row.implicitHeight + (i > 0 ? spacing : 0)
+                if (used > h + 0.5)
+                    return i
+            }
+            return n
+        }
+        clip: true
+        implicitHeight: contentHeight
+        Layout.fillWidth: true
+        Layout.fillHeight: true
+        Layout.minimumHeight: 0
+        Layout.preferredHeight: contentHeight
+        Layout.maximumHeight: contentHeight
+        Column {
+            id: rows
+            width: parent.width
+            spacing: fitList.spacing
+            Repeater {
+                id: rep
+                onItemAdded: function (i, item) {
+                    item.width = Qt.binding(function () { return rows.width })
+                    item.visible = Qt.binding(function () { return i < fitList.shown })
+                    item.implicitHeightChanged.connect(function () { fitList.revision++ })
+                    fitList.revision++
+                }
+                onItemRemoved: fitList.revision++
+            }
+        }
+    }
+
     fullRepresentation: Item {
         Layout.minimumWidth: Kirigami.Units.gridUnit * 13
         Layout.minimumHeight: Kirigami.Units.gridUnit * 16
@@ -363,16 +425,20 @@ PlasmoidItem {
             Item { implicitHeight: Kirigami.Units.smallSpacing }
 
             Text {
+                visible: topList.shown > 0
                 text: "TOP PROCESSES"
                 color: Kirigami.Theme.textColor
                 opacity: 0.55
                 font.pointSize: Kirigami.Theme.smallFont.pointSize - 1
                 font.bold: true
             }
-            Repeater {
+            // As many of the heaviest processes as fit whole above the
+            // footer; the publisher sends five, a short widget shows fewer.
+            FitList {
+                id: topList
                 model: root.stats.top_cpu || []
-                RowLayout {
-                    Layout.fillWidth: true
+                spacing: Kirigami.Units.smallSpacing * 1.5
+                delegate: RowLayout {
                     spacing: Kirigami.Units.smallSpacing
                     Text {
                         text: modelData.name

@@ -3,6 +3,35 @@
 All notable changes, newest first. Versions are git tags on
 [github.com/outing69/ArchPM](https://github.com/outing69/ArchPM).
 
+## 0.2.45 (2026-09-18)
+
+- Fixed: the Monitor widget's full view cut at the bottom, a row of the
+  top processes list half visible and the footer at or past the edge. The
+  height is the user's: the widget declares a minimum of 16 grid units
+  (288 px with the default font) and a preferred 20, which the popup from
+  a panel takes and a desktop widget starts at, and it can be dragged
+  taller without limit. The list has no count of its own; it shows every
+  process the agent sends, five. The content is a column: a fixed part
+  (header, game, four meters, the core strip, the footer) and the list,
+  with a spacer that takes whatever is left when the widget is tall. Made
+  shorter, the spacer reaches zero and the column does not shrink further:
+  it runs past the bottom, the lower rows and the footer with it. Rendered
+  at 288 px: two rows and the footer below the edge, the footer's bottom at
+  347 px.
+- Now the list gives way. The rows sit in a list that asks the column for
+  what its rows need and takes no more, gives way first when the widget is
+  short, and shows only the rows that fit whole in the height it gets, in
+  order, the rest not at all: never a half row. The footer keeps its
+  place. At 288 px one process shows, at the preferred 360 four, from 400
+  all five; "TOP PROCESSES" goes with the last row.
+- The Network widget had the same shape and the same fault: at its
+  minimum height its footer was already past the edge, and with six
+  programs and four open doors the doors and the footer were. Its two
+  lists, the programs using the network and the open doors, are the same
+  kind of list now: at 324 px with that load three programs and two doors
+  show, and the footer; taller, more. The interfaces and the sentences stay
+  as they are. Neither compact form is touched.
+
 ## 0.2.44 (2026-09-18)
 
 - The Monitor widget's panel form is three meters instead of a line of

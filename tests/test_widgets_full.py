@@ -40,12 +40,12 @@ class NetworkFull(unittest.TestCase):
         self.assertIn("elide: Text.ElideRight", name)
         self.assertIn("QQC2.ToolTip.visible: hover.hovered && truncated", name)
         self.assertIn("QQC2.ToolTip.text: text", name)
-        talkers = block(self.full, "RowLayout {", self.full.index("model: root.talkers"))
+        talkers = block(self.full, "delegate: RowLayout {", self.full.index("model: root.talkers"))
         self.assertIn("Name {", talkers)
         self.assertIn("Layout.minimumWidth: 0", talkers)
 
     def test_a_door_row_wraps_its_ports_and_bounds_its_name(self):
-        door = block(self.full, "Flow {", self.full.index("model: root.doors"))
+        door = block(self.full, "delegate: Flow {", self.full.index("model: root.doors"))
         self.assertIn("wrapMode: Text.WordWrap", door)
         self.assertIn("width: Math.min(implicitWidth, door.width)", door)
         self.assertEqual(door.count("width: Math.min(implicitWidth, door.width)"), 2)
@@ -64,13 +64,48 @@ class NetworkFull(unittest.TestCase):
         self.assertNotIn("QQC2", compact)
 
 
+class FitLists(unittest.TestCase):
+    """The lists that give way when the widget is short: whole rows only,
+    the footer kept, the publisher's count an upper bound."""
+
+    def fitlist(self, path: Path) -> str:
+        return block(path.read_text(), "component FitList:")
+
+    def test_both_widgets_carry_the_same_fitlist(self):
+        self.assertEqual(self.fitlist(NETWORK), self.fitlist(MONITOR))
+
+    def test_a_row_is_shown_whole_or_not_at_all(self):
+        fl = self.fitlist(MONITOR)
+        self.assertIn("if (used > h + 0.5)\n                    return i", fl)
+        self.assertIn("i < fitList.shown", fl)
+        self.assertIn("clip: true", fl)
+        self.assertIn("Layout.minimumHeight: 0", fl)
+        self.assertIn("Layout.maximumHeight: contentHeight", fl)
+        self.assertIn("readonly property real contentHeight: fitList.need(rep.count, revision)", fl)
+
+    def test_the_lists_are_fitlists_and_the_footers_keep_their_place(self):
+        monitor = block(MONITOR.read_text(), "fullRepresentation:")
+        self.assertIn("FitList {\n                id: topList\n                model: root.stats.top_cpu", monitor)
+        self.assertNotIn("Repeater {\n                model: root.stats.top_cpu", monitor)
+        self.assertIn("visible: topList.shown > 0", monitor)
+        spacer = monitor.index("Item { Layout.fillHeight: true }")
+        self.assertLess(monitor.index("id: topList"), spacer)
+        self.assertLess(spacer, monitor.index('(root.stats.procs || 0) + " proc"'))
+        network = block(NETWORK.read_text(), "fullRepresentation:")
+        for name in ("talkerList", "doorList"):
+            self.assertIn(f"id: {name}", network)
+        self.assertNotIn("Repeater {\n                model: root.talkers", network)
+        self.assertNotIn("Repeater {\n                model: root.doors", network)
+        self.assertLess(network.index("id: doorList"), network.index("connections open"))
+
+
 class MonitorFull(unittest.TestCase):
     def setUp(self):
         self.qml = MONITOR.read_text()
         self.full = block(self.qml, "fullRepresentation:")
 
     def test_top_processes_elide_the_name_with_a_tooltip(self):
-        rows = block(self.full, "RowLayout {", self.full.index("model: root.stats.top_cpu"))
+        rows = block(self.full, "delegate: RowLayout {", self.full.index("model: root.stats.top_cpu"))
         self.assertIn("elide: Text.ElideRight", rows)
         self.assertIn("Layout.fillWidth: true", rows)
         self.assertIn("QQC2.ToolTip.visible: nameHover.hovered && truncated", rows)
