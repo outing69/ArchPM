@@ -2,16 +2,18 @@
 """archpm-helper -- the only piece of ArchPM that runs as root.
 
 Invoked via pkexec, one action per call, and replies with JSON on stdout.
-Limited to process management, memory and two fixed cleanup commands (package
-cache, journal); GPU tuning belongs in a different tool, and services are not
-managed here at all: ArchPM only touches your own session's services, which
-need no root (see actions.py).
+Limited to process management, memory, two fixed cleanup commands (package
+cache, journal) and filesystem snapshots (list, take, delete; never restore:
+that changes what the machine boots and stays outside ArchPM); GPU tuning
+belongs in a different tool, and services are not managed here at all: ArchPM
+only touches your own session's services, which need no root (see actions.py).
 Deliberately stdlib-only and without imports from the archpm package: this
 file lives root-owned in /usr/lib/archpm/ (or /usr/local/lib/archpm/ when
 installed from a checkout) and must not be able to load anything from a
 directory a regular user can write to.
 
-Everything that comes in is validated: fixed subcommands, numeric bounds, and
+Everything that comes in is validated: fixed subcommands, numeric bounds, a
+fixed character set for a snapshot's description, and
 one target check for every process command (signal, nice, affinity, IO class):
 only a regular user's process, never one inside a unit your session or the
 system would collapse without, and pinned by a pidfd so a recycled pid cannot
@@ -27,6 +29,7 @@ import select
 import signal
 import subprocess
 import sys
+import time
 
 PATH = "/usr/bin:/usr/sbin:/bin:/sbin"
 
@@ -287,6 +290,134 @@ def cmd_journal_vacuum(_args) -> dict:
     return {"journal": out.splitlines()[-1] if out else "nothing to do"}
 
 
+# -- snapshots: Snapper or Timeshift, fixed commands, one validated name and
+# one validated description; the description's character set is the only
+# free text this helper ever passes on, and it is checked here again --------
+SNAPPER_CONFIG_RE = re.compile(r"[A-Za-z0-9_-]{1,32}")
+# letters, digits, space, dot, underscore, hyphen; at most 72 (snap-pac's limit)
+DESCRIPTION_RE = re.compile(r"[A-Za-z0-9 ._-]{0,72}")
+TIMESHIFT_NAME_RE = re.compile(r"\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}")
+TIMESHIFT = "timeshift"
+SNAPPER_BIN, TIMESHIFT_BIN = "/usr/bin/snapper", "/usr/bin/timeshift"
+
+
+def snapshot_tool() -> str:
+    """snapper when it is installed, else timeshift, else an error."""
+    if os.path.isfile(SNAPPER_BIN):
+        return "snapper"
+    if os.path.isfile(TIMESHIFT_BIN):
+        return TIMESHIFT
+    raise HelperError("neither snapper nor timeshift is installed")
+
+
+def snapper_configs() -> list[str]:
+    try:
+        data = json.loads(run("snapper", "--jsonout", "list-configs") or "{}")
+    except ValueError:
+        raise HelperError("snapper list-configs gave no JSON") from None
+    return [c.get("config", "") for c in data.get("configs", []) if c.get("config")]
+
+
+def check_config(config: str) -> str:
+    """The tool the config belongs to: "snapper" for one of snapper's configs,
+    "timeshift" for the literal name timeshift when that is the tool."""
+    if not SNAPPER_CONFIG_RE.fullmatch(config):
+        raise HelperError(f"config name not allowed: {config!r}")
+    tool = snapshot_tool()
+    if tool == "snapper":
+        if config not in snapper_configs():
+            raise HelperError(f"snapper has no config named {config!r}")
+        return "snapper"
+    if config != TIMESHIFT:
+        raise HelperError(f"timeshift has no configs; the config must be {TIMESHIFT!r}")
+    return TIMESHIFT
+
+
+def check_description(text: str) -> str:
+    if not DESCRIPTION_RE.fullmatch(text):
+        raise HelperError("the description may hold letters, digits, space, dot, underscore "
+                          "and hyphen, at most 72 of them")
+    return text.strip()
+
+
+def snapper_numbers(config: str) -> list[int]:
+    """The snapshot numbers of a config, from the same listing the page reads."""
+    try:
+        data = json.loads(run("snapper", "--jsonout", "--utc", "--iso", "-c", config, "list") or "{}")
+    except ValueError:
+        raise HelperError("snapper list gave no JSON") from None
+    rows = data.get(config) if isinstance(data, dict) else None
+    if not isinstance(rows, list):
+        rows = next((v for v in data.values() if isinstance(v, list)), []) \
+            if isinstance(data, dict) else []
+    return [r["number"] for r in rows if isinstance(r, dict)
+            and isinstance(r.get("number"), int) and r["number"] > 0]
+
+
+def timeshift_names() -> list[str]:
+    out = run("timeshift", "--list", timeout=60)
+    return [m.group(1) for m in (re.match(r"\s*\d+\s+>?\s*(\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2})", l)
+                                 for l in out.splitlines()) if m]
+
+
+def cmd_snapshots_list(_args) -> dict:
+    """The raw listing per config; the page parses it with the same code as
+    the plain read. The time is the tool's own, without polkit's."""
+    tool = snapshot_tool()
+    start = time.perf_counter()
+    outputs = []
+    if tool == "snapper":
+        for config in snapper_configs():
+            outputs.append([config, run("snapper", "--jsonout", "--utc", "--iso",
+                                        "-c", config, "list")])
+    else:
+        outputs.append([TIMESHIFT, run("timeshift", "--list", timeout=60)])
+    return {"tool": tool, "outputs": outputs, "took_ms": (time.perf_counter() - start) * 1000}
+
+
+def cmd_snapshots_create(args) -> dict:
+    tool = check_config(args.config)
+    desc = check_description(args.description or "")
+    if tool == "snapper":
+        cmd = ["snapper", "-c", args.config, "create", "--type", "single",
+               "--userdata", "made-by=archpm", "--print-number"]
+        if desc:
+            cmd += ["--description", desc]
+        out = run(*cmd, timeout=120)
+        return {"id": out.strip().splitlines()[-1] if out else ""}
+    cmd = ["timeshift", "--create", "--scripted", "--tags", "O"]
+    if desc:
+        cmd += ["--comments", desc]
+    before = set(timeshift_names())
+    run(*cmd, timeout=600)
+    new = sorted(set(timeshift_names()) - before)
+    return {"id": new[-1] if new else ""}
+
+
+def cmd_snapshots_delete(args) -> dict:
+    """Never the last one: a machine with no snapshot has no way back, and a
+    page that can take that away by one click should not exist."""
+    tool = check_config(args.config)
+    if tool == "snapper":
+        number = as_int(args.id, 1, 2**31 - 1, "snapshot number")
+        have = snapper_numbers(args.config)
+        if number not in have:
+            raise HelperError(f"snapshot {number} does not exist in config {args.config!r}")
+        if len(have) <= 1:
+            raise HelperError("this is the last snapshot; the helper does not delete the last one")
+        run("snapper", "-c", args.config, "delete", str(number), timeout=120)
+        return {"deleted": number, "remaining": len(have) - 1}
+    if not TIMESHIFT_NAME_RE.fullmatch(args.id):
+        raise HelperError(f"not a timeshift snapshot name: {args.id!r}")
+    have = timeshift_names()
+    if args.id not in have:
+        raise HelperError(f"timeshift has no snapshot {args.id}")
+    if len(have) <= 1:
+        raise HelperError("this is the last snapshot; the helper does not delete the last one")
+    run("timeshift", "--delete", "--scripted", "--snapshot", args.id, timeout=600)
+    return {"deleted": args.id, "remaining": len(have) - 1}
+
+
 # -- status -------------------------------------------------------------------
 def cmd_status(_args) -> dict:
     out: dict = {"uid": os.getuid()}
@@ -317,6 +448,12 @@ def build_parser() -> argparse.ArgumentParser:
     p.set_defaults(fn=cmd_drop_caches)
     sub.add_parser("paccache-clean").set_defaults(fn=cmd_paccache_clean)
     sub.add_parser("journal-vacuum").set_defaults(fn=cmd_journal_vacuum)
+    sub.add_parser("snapshots-list").set_defaults(fn=cmd_snapshots_list)
+    p = sub.add_parser("snapshots-create"); p.add_argument("config")
+    p.add_argument("description", nargs="?", default="")
+    p.set_defaults(fn=cmd_snapshots_create)
+    p = sub.add_parser("snapshots-delete"); p.add_argument("config"); p.add_argument("id")
+    p.set_defaults(fn=cmd_snapshots_delete)
     sub.add_parser("status").set_defaults(fn=cmd_status)
     return ap
 

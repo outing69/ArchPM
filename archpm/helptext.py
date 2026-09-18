@@ -344,6 +344,33 @@ GLOSSARY: tuple[Section, ...] = (
              "removes all but the last two versions of each, so you can still downgrade.",
              "Cleanup tab (needs root)"),
     )),
+    Section("Snapshots", (
+        Term("Snapshot",
+             "A copy of the system as it was at one moment, kept on the same disk. On "
+             "Btrfs it costs almost nothing at first, since it shares every unchanged "
+             "file with the live system; it grows as the live system moves away from it. "
+             "Snapper and Timeshift are the two tools that keep them; the page shows the "
+             "one that is installed, newest first, with who made each and why.",
+             "Snapshots page"),
+        Term("Before and after",
+             "snap-pac takes a pair around every pacman transaction: one before, with "
+             "the command in its description, one after, with the packages. That is why "
+             "the list grows by two per update and why most rows say pacman.",
+             "Snapshots page, the reason on each row"),
+        Term("Restoring a snapshot",
+             "Not done here. Going back changes what the machine boots, so it stays with "
+             "the tool that made the snapshot: with Limine, pick it under Snapshots in "
+             "the boot menu, boot it and run limine-snapper-restore; with Snapper alone, "
+             "snapper rollback; with Timeshift, its window or timeshift --restore.",
+             "Snapshots page, the note above the list"),
+        Term("Why the list may ask for root",
+             "Snapper only answers a user its config names in ALLOW_USERS or "
+             "ALLOW_GROUPS; anyone else gets No permissions. Timeshift answers root "
+             "only. So the page tries without root first and, when that is refused, "
+             "reads through the root helper when you press Read snapshots. Taking or "
+             "deleting one always goes through the helper.",
+             "Snapshots page, the Read snapshots button"),
+    )),
 )
 
 COLOURS: tuple[tuple[str, str], ...] = (
@@ -499,6 +526,10 @@ HINTS: dict[str, Hint] = {
     "cleanup.why": Hint("Why removing it is safe.", "Cache"),
     "cleanup.size": Hint("Space you get back.", "Cache"),
     "cleanup.note": Hint("Whether it needs root, and other remarks.", "Package cache"),
+    "snapshots.when": Hint("When it was taken, and who took it: pacman, a timer, "
+                           "ArchPM or a person.", "Snapshot"),
+    "snapshots.size": Hint("What the snapshot holds that nothing else does; only when "
+                           "btrfs quota is on.", "Snapshot"),
 }
 
 

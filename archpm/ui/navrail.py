@@ -55,10 +55,11 @@ PAGE_ICONS = {
     "Startup": ("system-run", "media-playback-start"),
     "System": ("computer", "cpu"),
     "Cleanup": ("edit-clear-history", "trash-empty"),
+    "Snapshots": ("view-history", "document-open-recent"),
     "Help": ("help-contents", "system-help"),
 }
 MENU_ICON = ("application-menu", "open-menu-symbolic")
-# The Adwaita set, all symbolic; used only when every one of the eight
+# The Adwaita set, all symbolic; used only when every one of the nine
 # resolves under Adwaita (checked with QIcon.hasThemeIcon at start), else
 # the whole rail stays on the Breeze names above. Adwaita has no
 # utilities-system-monitor-symbolic; its gauge stands in for the Overview.
@@ -69,13 +70,14 @@ ADWAITA_ICONS = {
     "Startup": "system-run-symbolic",
     "System": "computer-symbolic",
     "Cleanup": "edit-clear-all-symbolic",
+    "Snapshots": "document-open-recent-symbolic",
     "Help": "help-about-symbolic",
     "Menu": "open-menu-symbolic",
 }
 # Icons for a kind of thing that has no icon of its own: the four kinds of
-# a Startup entry and the three sections of the process list. (Adwaita
-# symbolic name, Breeze name); both checked with QIcon.hasThemeIcon on the
-# development machine. The Adwaita names count towards the all-or-nothing
+# a Startup entry, the three sections of the process list and the origins
+# of a snapshot (pacman, a person, a timer). (Adwaita symbolic name, Breeze
+# name); both checked with QIcon.hasThemeIcon on the development machine. The Adwaita names count towards the all-or-nothing
 # rule: one missing keeps the whole application on Breeze.
 KIND_ICONS = {
     "App": ("application-x-executable-symbolic", "application-x-executable"),
@@ -85,6 +87,9 @@ KIND_ICONS = {
     "apps": ("application-x-executable-symbolic", "application-x-executable"),
     "background": ("system-run-symbolic", "system-run"),
     "system": ("computer-symbolic", "computer"),
+    "pacman": ("package-x-generic-symbolic", "package-x-generic"),
+    "person": ("avatar-default-symbolic", "user-identity"),
+    "timer": ("alarm-symbolic", "chronometer"),
 }
 KIND_SIZE = QSize(16, 16)
 ADWAITA = "Adwaita"

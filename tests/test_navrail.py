@@ -16,7 +16,7 @@ try:
 except ImportError:                       # pragma: no cover
     QApplication = None
 
-LABELS = ["Overview", "Processes", "Network", "Startup", "System", "Cleanup", "Help"]
+LABELS = ["Overview", "Processes", "Network", "Startup", "System", "Cleanup", "Snapshots", "Help"]
 
 
 @unittest.skipUnless(QApplication, "PySide6 not installed")
@@ -222,7 +222,7 @@ if __name__ == "__main__":
 
 
 class AdwaitaSet(unittest.TestCase):
-    """The rail takes the Adwaita set only when every one of the eight names
+    """The rail takes the Adwaita set only when every one of the nine names
     resolves; one missing name keeps the whole rail on Breeze."""
 
     def test_all_or_nothing(self):
@@ -230,7 +230,7 @@ class AdwaitaSet(unittest.TestCase):
         self.assertEqual(navrail.adwaita_missing(lambda n: True), [])
         missing = navrail.adwaita_missing(lambda n: n != "computer-symbolic")
         self.assertEqual(missing, ["computer-symbolic"])
-        self.assertEqual(len(navrail.ADWAITA_ICONS), 8)
+        self.assertEqual(len(navrail.ADWAITA_ICONS), 9)
 
     def test_on_this_machine_the_decision_is_reported(self):
         from archpm.ui import navrail

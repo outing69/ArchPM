@@ -395,3 +395,117 @@ class HardeningInvariants(unittest.TestCase):
 
     def test_path_is_clean(self):
         self.assertTrue(all(p.startswith("/") for p in helper.PATH.split(":")))
+
+
+class Snapshots(unittest.TestCase):
+    """The three snapshot commands: a config name and a description from a
+    fixed character set, an id that exists, and never the last snapshot."""
+
+    LIST = json.dumps({"root": [
+        {"number": 0, "type": "single", "date": "", "description": "current"},
+        {"number": 264, "type": "pre", "date": "2026-09-17 19:02:09", "description": "pacman -Syu"},
+        {"number": 265, "type": "post", "pre-number": 264, "date": "2026-09-17 19:02:11"},
+    ]})
+    CONFIGS = '{"configs": [{"config": "root", "subvolume": "/"}]}'
+
+    def fake(self, responses, calls):
+        def run(*cmd, timeout=20):
+            calls.append(list(cmd))
+            for key, out in responses.items():
+                if " ".join(cmd).startswith(key):
+                    return out
+            raise AssertionError(f"unexpected {cmd}")
+        return run
+
+    def setUp(self):
+        self.calls = []
+        self.original = (helper.run, helper.snapshot_tool)
+        helper.snapshot_tool = lambda: "snapper"
+        helper.run = self.fake({"snapper --jsonout list-configs": self.CONFIGS,
+                                "snapper --jsonout --utc --iso -c root list": self.LIST,
+                                "snapper -c root delete": "",
+                                "snapper -c root create": "266\n"}, self.calls)
+
+    def tearDown(self):
+        helper.run, helper.snapshot_tool = self.original
+
+    def test_description_outside_the_set_is_refused_not_stripped(self):
+        for bad in ("a;b", "x\n", "é", "a" * 73, "$(id)", "`id`", "a|b", "quote'"):
+            with self.subTest(bad=bad), self.assertRaises(helper.HelperError):
+                helper.check_description(bad)
+        self.assertEqual(helper.check_description("before nvidia 580"), "before nvidia 580")
+        self.assertEqual(helper.check_description(""), "")
+
+    def test_create_passes_a_fixed_command_and_the_description_as_one_argument(self):
+        out = helper.cmd_snapshots_create(args(config="root", description="before nvidia 580"))
+        self.assertEqual(out, {"id": "266"})
+        create = next(c for c in self.calls if c[:3] == ["snapper", "-c", "root"] and "create" in c)
+        self.assertEqual(create, ["snapper", "-c", "root", "create", "--type", "single",
+                                  "--userdata", "made-by=archpm", "--print-number",
+                                  "--description", "before nvidia 580"])
+
+    def test_create_without_description_sends_none(self):
+        helper.cmd_snapshots_create(args(config="root", description=""))
+        create = next(c for c in self.calls if "create" in c)
+        self.assertNotIn("--description", create)
+
+    def test_unknown_config_or_bad_name_is_refused_before_anything_runs(self):
+        for bad in ("nope", "../root", "root;x", "", "a" * 33):
+            with self.subTest(bad=bad), self.assertRaises(helper.HelperError):
+                helper.cmd_snapshots_create(args(config=bad, description=""))
+        self.assertFalse(any("create" in c for c in self.calls))
+
+    def test_delete_refuses_a_number_that_is_not_there_and_number_zero(self):
+        for bad in ("0", "1", "999", "abc", "-5"):
+            with self.subTest(bad=bad), self.assertRaises(helper.HelperError):
+                helper.cmd_snapshots_delete(args(config="root", id=bad))
+        self.assertFalse(any("delete" in c for c in self.calls))
+
+    def test_delete_runs_the_fixed_command_and_counts_what_is_left(self):
+        out = helper.cmd_snapshots_delete(args(config="root", id="264"))
+        self.assertEqual(out, {"deleted": 264, "remaining": 1})
+        self.assertIn(["snapper", "-c", "root", "delete", "264"], self.calls)
+
+    def test_the_last_snapshot_is_never_deleted(self):
+        helper.run = self.fake({"snapper --jsonout list-configs": self.CONFIGS,
+                                "snapper --jsonout --utc --iso -c root list":
+                                json.dumps({"root": [{"number": 0}, {"number": 265, "type": "single",
+                                                                     "date": "2026-09-17 19:02:11"}]})},
+                               self.calls)
+        with self.assertRaises(helper.HelperError) as cm:
+            helper.cmd_snapshots_delete(args(config="root", id="265"))
+        self.assertIn("last snapshot", str(cm.exception))
+        self.assertFalse(any("delete" in c for c in self.calls))
+
+    def test_list_returns_raw_output_per_config_and_its_time(self):
+        out = helper.cmd_snapshots_list(args())
+        self.assertEqual(out["tool"], "snapper")
+        self.assertEqual(out["outputs"], [["root", self.LIST]])
+        self.assertIsInstance(out["took_ms"], float)
+
+    def test_timeshift_name_is_checked(self):
+        helper.snapshot_tool = lambda: "timeshift"
+        helper.run = self.fake({"timeshift --list": "0 > 2026-09-17_21-00-18 O\n"
+                                                    "1 > 2026-09-18_09-30-00 O x\n"}, self.calls)
+        for bad in ("2026-09-17", "../x", "2026-09-17_21-00-18; rm"):
+            with self.subTest(bad=bad), self.assertRaises(helper.HelperError):
+                helper.cmd_snapshots_delete(args(config="timeshift", id=bad))
+        with self.assertRaises(helper.HelperError):
+            helper.cmd_snapshots_delete(args(config="root", id="2026-09-17_21-00-18"))
+        helper.run = self.fake({"timeshift --list": "0 > 2026-09-17_21-00-18 O\n"
+                                                    "1 > 2026-09-18_09-30-00 O x\n",
+                                "timeshift --delete": ""}, self.calls)
+        out = helper.cmd_snapshots_delete(args(config="timeshift", id="2026-09-17_21-00-18"))
+        self.assertEqual(out, {"deleted": "2026-09-17_21-00-18", "remaining": 1})
+        self.assertIn(["timeshift", "--delete", "--scripted", "--snapshot", "2026-09-17_21-00-18"],
+                      self.calls)
+
+    def test_parser_knows_the_three_commands(self):
+        ap = helper.build_parser()
+        a = ap.parse_args(["snapshots-create", "root", "before nvidia 580"])
+        self.assertEqual((a.config, a.description), ("root", "before nvidia 580"))
+        a = ap.parse_args(["snapshots-create", "root"])
+        self.assertEqual(a.description, "")
+        a = ap.parse_args(["snapshots-delete", "root", "264"])
+        self.assertEqual((a.config, a.id), ("root", "264"))
+        self.assertIs(ap.parse_args(["snapshots-list"]).fn, helper.cmd_snapshots_list)

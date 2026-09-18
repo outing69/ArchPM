@@ -3,6 +3,58 @@
 All notable changes, newest first. Versions are git tags on
 [github.com/outing69/ArchPM](https://github.com/outing69/ArchPM).
 
+## 0.2.39 (2026-09-18)
+
+- A Snapshots page, for Snapper and Timeshift. Detection is the binary on
+  PATH and a config (`/etc/snapper/configs`, `/etc/timeshift/timeshift.json`);
+  a machine with neither gets one line naming both, and no advice to install
+  anything. A tool that is installed and has no snapshots says that instead.
+  The list is newest first: when each snapshot was taken, who took it
+  (pacman through snap-pac's before and after pair, Snapper's timeline,
+  ArchPM, or a person by hand; Timeshift's autosnap, schedule or by hand),
+  its description, its number, and its size where the tool reports one,
+  which Snapper does only with btrfs quota on; when it does not, the page
+  says so in one line. The Limine boot menu's share of the list is named
+  when limine-snapper-sync is installed (its MAX_SNAPSHOT_ENTRIES).
+- The list is read when the page opens and on its button, never on the
+  sampling cycle, the failed services check's pattern. The plain read comes
+  first: Snapper answers a user only when its config names them in
+  ALLOW_USERS or ALLOW_GROUPS, and refuses everyone else with "No
+  permissions." from snapperd over D-Bus (24 ms on the development
+  machine); Timeshift answers root only. When the plain read is refused the
+  page says why and offers "Read snapshots", which reads through the root
+  helper: the password once, and polkit's keep makes the next few minutes
+  silent, so Refresh after that and the reread after taking or deleting ask
+  nothing. The page shows the tool's own time and the whole helper call's.
+- Taking a snapshot goes through the helper as `snapper create --type single
+  --userdata made-by=archpm`, kept until deleted, with the description as the
+  only free text the helper ever passes on: letters, digits, space, dot,
+  underscore and hyphen, at most 72 (snap-pac's own limit). The dialog's
+  validator keeps the input inside that set, the client reduces it once
+  more, and the helper refuses anything outside it rather than stripping.
+  Chosen over no description at all because a snapshot without one is a
+  riddle a week later; chosen this narrow because the text ends up in
+  snapper's XML and, through limine-snapper-sync, in a boot menu entry.
+- Deleting a snapshot goes through the helper after one confirmation that
+  says what is lost (that moment of the system and the way back to it, and
+  for half of a pacman pair that its other half stays), whether it is the
+  oldest or the newest, and what remains: how many, from when to when. The
+  last remaining snapshot is never deleted: its button is disabled and says
+  why, and the helper refuses it on its own count. No second dialog.
+- No rollback. Restoring changes what the machine boots and stays outside
+  ArchPM; the page says so and names the way: with Limine, the snapshot
+  under Snapshots in the boot menu and limine-snapper-restore; with Snapper
+  alone, snapper rollback; with Timeshift, its window or --restore.
+- Without the root helper the page reads what it can and shows no buttons,
+  with a line saying that reading (where refused), taking and deleting need
+  the helper; the Cleanup page's root rows pattern. The rail has a ninth
+  icon, Adwaita's document-open-recent-symbolic or Breeze's view-history,
+  under the same all-or-nothing rule; the rows carry an icon for their
+  origin (a package, a person, a timer), checked the same way.
+- The helper's polkit message and its docstring name the snapshot commands.
+  Help has a Snapshots section. The root panel's table in the README lists
+  what the helper runs.
+
 ## 0.2.38 (2026-09-17)
 
 - The test run is clean: 391 tests, no warnings, nothing on stderr, with

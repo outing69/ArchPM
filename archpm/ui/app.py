@@ -27,6 +27,7 @@ from .chrome import HeaderBar, Toast
 from .cleanup import CleanupView
 from .dashboard import Dashboard
 from .help import HelpView
+from .snapshots import SnapshotsView
 from .history import ProcHistory
 from .navrail import NavShell
 from .network import NetworkView
@@ -147,10 +148,14 @@ class MainWindow(QMainWindow):
         self.shell.add_page(self.cleanup, "Cleanup")
         self.cleanup.leave.connect(lambda: self.shell.set_current(0))
         self.cleanup.status.connect(self._flash)
+        self.snapshots = SnapshotsView(self.root_client)
+        self.shell.add_page(self.snapshots, "Snapshots")
+        self.snapshots.status.connect(self._flash)
         self.help = HelpView()
         self.shell.add_page(self.help, "Help")
         self.setCentralWidget(self.shell)
-        for view in (self.dashboard, self.procs, self.network, self.startup, self.cleanup):
+        for view in (self.dashboard, self.procs, self.network, self.startup, self.cleanup,
+                     self.snapshots):
             view.help_requested.connect(self._show_help)
 
         self.procs.status.connect(self._flash)
@@ -310,6 +315,8 @@ class MainWindow(QMainWindow):
             self.system._loaded(self.system.sections)
         if getattr(self.cleanup, "items", None):
             self.cleanup._scanned(self.cleanup.items)
+        if self.snapshots.listing is not None:
+            self.snapshots._fill()      # the origin icons are tinted per mode
 
     def check_failed_services(self) -> None:
         """Once at start and on the System page's Refresh; read-only, nothing

@@ -20,7 +20,7 @@ that share the same measurement core:
 
 | Component | What it is |
 |---|---|
-| **GUI** ("ArchPM" in your application menu) | the window: Overview, Processes, Network, Startup, System, Cleanup and Help, reached from a rail of icons on the left that widens when you hover it and pins open with its menu button. A header bar above the page carries the page's name, the theme (light, dark, or the system's, which is the default) and the sampling interval (0.5, 1, 2 or 5 seconds; 2 is the default) |
+| **GUI** ("ArchPM" in your application menu) | the window: Overview, Processes, Network, Startup, System, Cleanup, Snapshots and Help, reached from a rail of icons on the left that widens when you hover it and pins open with its menu button. A header bar above the page carries the page's name, the theme (light, dark, or the system's, which is the default) and the sampling interval (0.5, 1, 2 or 5 seconds; 2 is the default) |
 | **Agent** (`archpm-agent`) | a background service that samples every 2 s and writes `status.json`. Measured on a 7800X3D over 3 h 19 min of ordinary desktop use, no game: 3.6% of one core in total, of which 2.7% is the sampler itself, 0.9% the `nvidia-smi pmon` helper that gives per-process GPU figures and 0.1% the `nvidia-smi` query loop for the card; the two helpers only exist on NVIDIA. One sample of the whole machine takes about 75 ms on that CPU |
 | **Widgets** | two Plasma 6 plasmoids (Monitor, Network) that read `status.json`. They work while the window is open, because the window writes that file itself; the agent is what keeps them running with the window closed |
 
@@ -68,6 +68,11 @@ tick, press and confirm.
 
 ![Cleanup page](docs/cleanup.png)
 
+**Snapshots**: what Snapper or Timeshift keeps, newest first, with when each
+was taken, who took it (pacman, a timer, ArchPM or a person) and its
+description; a button to take one and one per row to delete, never the last.
+Restoring stays with the tool.
+
 **Help**: a glossary in plain language, searched as you type, what the colours
 mean, and About with the version and the changelog.
 
@@ -113,6 +118,7 @@ are Arch's; on another distribution find the equivalents.
 | Network page | `iproute2` | provides `ss`; part of every Arch install |
 | Root tasks, Cleanup | `polkit` | provides `pkexec`; your user must be allowed to authenticate as admin (in Arch that is the `wheel` group) |
 | Cleanup of the package cache | `pacman-contrib` | provides `paccache` |
+| Snapshots page | `snapper` or `timeshift` | the page shows the one that is installed and says so when neither is; nothing is installed for you |
 | NVIDIA telemetry | `nvidia-utils` | provides `nvidia-smi`; without it the GPU falls back to sysfs |
 | AMD and Intel telemetry | nothing extra | the card from sysfs, per-process usage from DRM fdinfo; `hwdata` gives the card a proper name |
 | Rail icons | `adwaita-icon-theme` (optional) | the Adwaita icons on the rail and for the kinds of entries; without it everything uses Breeze's |
@@ -282,6 +288,22 @@ that route myself.
   password when you press "Remove selected" with one of them ticked, and a
   row with nothing to remove says so. Nothing is removed until you tick,
   press and confirm. Your files, saves and settings are never touched.
+- **Snapshots**: the snapshots Snapper or Timeshift keeps, newest first: when
+  each was taken, who took it (pacman through snap-pac, a timer, ArchPM or a
+  person), its description, and its size where the tool reports one (Snapper
+  does only with btrfs quota on). Read when the page opens and on its button,
+  never on a timer. Snapper answers a plain user only when its config names
+  them in `ALLOW_USERS` or `ALLOW_GROUPS`, and Timeshift answers root only, so
+  when the plain read is refused the page says so and "Read snapshots" reads
+  through the root helper, with the password once and silence for the next
+  few minutes. Taking a snapshot goes through the helper with a description
+  reduced to letters, digits, space, dot, underscore and hyphen, at most 72;
+  deleting one goes through the helper after a confirmation that says what is
+  lost and what remains, whether it is the oldest or the newest, and how many
+  are left; the last remaining snapshot is never deleted. No rollback:
+  restoring changes what the machine boots, and the page names how it is done
+  instead (Limine's boot menu and limine-snapper-restore, snapper rollback,
+  or Timeshift). Without the root helper the page reads and shows no buttons.
 - **Help**: a searchable glossary in plain language (what nice -5 means, what a
   PID is, SIGTERM versus SIGKILL, why root is asked), what the colours mean, and
   About with version, links and the changelog. The tiles, the graphs and the
@@ -321,10 +343,11 @@ That separation is the core of the design:
   about five minutes.
 - `archpm/root/client.py` only builds the `pkexec` call and reads the JSON reply.
   The GUI never sees a password.
-- The helper validates on its own: fixed subcommands, numeric bounds, and a
-  list of units whose processes it refuses to signal, whatever the caller
-  says: dbus, logind, journald, udevd, polkit, oomd and the display manager.
-  It does not manage services at all.
+- The helper validates on its own: fixed subcommands, numeric bounds, a fixed
+  character set for a snapshot's description, and a list of units whose
+  processes it refuses to signal, whatever the caller says: dbus, logind,
+  journald, udevd, polkit, oomd and the display manager. It does not manage
+  services at all, and it never restores a snapshot.
 
 `ElevatedBackend` tries every action without privileges first. Only when that
 is denied does it go through the helper, so you never get a password prompt
@@ -338,6 +361,7 @@ for something you were already allowed to do.
 | Your session's services | start/stop/restart the services of your own login session, through `systemctl --user` as you: no root involved |
 | Memory | swappiness, drop caches |
 | Cleanup | `paccache -rk2` and `journalctl --vacuum-size=100M`, fixed, no arguments |
+| Snapshots | `snapper list`, `snapper create` and `snapper delete` (or Timeshift's `--list`, `--create`, `--delete`), with a config name checked against `snapper list-configs`, a snapshot number that must exist, a description from a fixed character set, and a refusal to delete the last snapshot; never `rollback` or `--restore` |
 
 **System services are deliberately left out.** The helper no longer manages
 services at all. ArchPM only starts, stops and restarts the services of your
