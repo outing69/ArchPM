@@ -1,5 +1,6 @@
 import QtCore
 import QtQuick
+import QtQuick.Controls as QQC2
 import QtQuick.Layouts
 import org.kde.plasma.plasmoid
 import org.kde.plasma.core as PlasmaCore
@@ -226,6 +227,10 @@ PlasmoidItem {
                         color: "#f5c542"
                         font.bold: true
                         font.pointSize: Kirigami.Theme.smallFont.pointSize
+                        HoverHandler { id: gameHover }
+                        QQC2.ToolTip.visible: gameHover.hovered && truncated
+                        QQC2.ToolTip.text: text
+                        QQC2.ToolTip.delay: 400
                     }
                     // Ends the game through ArchPM: the window comes to the
                     // front and asks first, so one click is enough here.
@@ -242,6 +247,7 @@ PlasmoidItem {
                 }
                 Text {
                     Layout.fillWidth: true
+                    wrapMode: Text.WordWrap      // a narrow widget: two lines, never cut
                     color: Kirigami.Theme.textColor
                     opacity: 0.7
                     font.family: "monospace"
@@ -351,6 +357,10 @@ PlasmoidItem {
                         font: Kirigami.Theme.smallFont
                         elide: Text.ElideRight
                         Layout.fillWidth: true
+                        HoverHandler { id: nameHover }
+                        QQC2.ToolTip.visible: nameHover.hovered && truncated
+                        QQC2.ToolTip.text: text
+                        QQC2.ToolTip.delay: 400
                     }
                     Text {
                         text: modelData.v.toFixed(0) + "%"

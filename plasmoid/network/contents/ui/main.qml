@@ -1,5 +1,6 @@
 import QtCore
 import QtQuick
+import QtQuick.Controls as QQC2
 import QtQuick.Layouts
 import org.kde.plasma.plasmoid
 import org.kde.plasma.core as PlasmaCore
@@ -145,6 +146,17 @@ PlasmoidItem {
         color: Kirigami.Theme.textColor
         opacity: 0.12
     }
+    // A program's name: elides when the row is narrow, with the full name
+    // in a tooltip while it is elided.
+    component Name: Text {
+        color: Kirigami.Theme.textColor
+        font: Kirigami.Theme.smallFont
+        elide: Text.ElideRight
+        HoverHandler { id: hover }
+        QQC2.ToolTip.visible: hover.hovered && truncated
+        QQC2.ToolTip.text: text
+        QQC2.ToolTip.delay: 400
+    }
 
     fullRepresentation: Item {
         Layout.minimumWidth: Kirigami.Units.gridUnit * 14
@@ -219,12 +231,16 @@ PlasmoidItem {
 
             // -- interfaces -----------------------------------------------
             Section { text: "INTERFACES" }
+            // Each interface is a Flow, not a row: the name, the address and
+            // the two rates follow one another and go on to the next line
+            // when the widget is narrow, so the address is never cut and no
+            // row is ever wider than the widget.
             Repeater {
                 model: root.ifaces
-                RowLayout {
+                Flow {
                     Layout.fillWidth: true
                     visible: modelData.up
-                    spacing: Kirigami.Units.smallSpacing
+                    spacing: Kirigami.Units.smallSpacing * 2
                     Mono {
                         text: modelData.name
                         color: modelData.vpn ? root.vpnColor : Kirigami.Theme.textColor
@@ -235,8 +251,6 @@ PlasmoidItem {
                         color: Kirigami.Theme.textColor
                         opacity: 0.55
                         font: Kirigami.Theme.smallFont
-                        elide: Text.ElideRight
-                        Layout.fillWidth: true
                     }
                     Mono { text: "↓ " + root.rate(modelData.rx); color: root.downColor }
                     Mono { text: "↑ " + root.rate(modelData.tx); color: root.upColor }
@@ -259,12 +273,10 @@ PlasmoidItem {
                 RowLayout {
                     Layout.fillWidth: true
                     spacing: Kirigami.Units.smallSpacing
-                    Text {
+                    Name {
                         text: modelData.name
-                        color: Kirigami.Theme.textColor
-                        font: Kirigami.Theme.smallFont
-                        elide: Text.ElideRight
                         Layout.fillWidth: true
+                        Layout.minimumWidth: 0
                     }
                     Mono { text: "↓ " + root.rate(modelData.rx); color: root.downColor; opacity: 0.85 }
                     Mono { text: "↑ " + root.rate(modelData.tx); color: root.upColor; opacity: 0.85 }
@@ -284,21 +296,24 @@ PlasmoidItem {
                       ? "No program accepts connections from other devices."
                       : "Reachable from other devices on your network:"
             }
+            // A door is a Flow too: the name elides only when it alone is
+            // wider than the widget, and the port list wraps like a sentence.
             Repeater {
                 model: root.doors
-                RowLayout {
+                Flow {
+                    id: door
                     Layout.fillWidth: true
-                    spacing: Kirigami.Units.smallSpacing
-                    Text {
+                    spacing: Kirigami.Units.smallSpacing * 2
+                    Name {
                         text: modelData.name
                         color: root.doorColor
-                        font: Kirigami.Theme.smallFont
-                        elide: Text.ElideRight
-                        Layout.fillWidth: true
+                        width: Math.min(implicitWidth, door.width)
                     }
                     Mono {
                         text: "port " + (modelData.ports || []).join(", ")
                         opacity: 0.7
+                        wrapMode: Text.WordWrap
+                        width: Math.min(implicitWidth, door.width)
                     }
                 }
             }

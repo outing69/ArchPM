@@ -3,6 +3,33 @@
 All notable changes, newest first. Versions are git tags on
 [github.com/outing69/ArchPM](https://github.com/outing69/ArchPM).
 
+## 0.2.43 (2026-09-18)
+
+- Fixed: text cut off at the right edge of the Network widget's full view.
+  The widget has no fixed width: on the desktop it is resized by hand down
+  to 14 grid units (252 px with the default font) and opens from a panel at
+  16; the content is a column that fills that width, and a row's leftovers
+  were to elide. But three rows held text that can neither shrink nor wrap,
+  the two rates of an interface or a program (monospace, never elided) and
+  the port list of an open door, next to text that could: the layout gave
+  the shrinkable part nothing, so the address elided to "192.168.17…", and
+  when the fixed parts alone were wider than the widget the whole column
+  grew past the edge, which is why "Reachable from other devices on your
+  network:" no longer wrapped and stood against the edge, cut. Rendered in
+  a harness: at 252 px with two open doors the column overflowed by 11 px.
+- Now the content follows the width: an interface is a Flow, so its name,
+  address and rates go on to the next line when the widget is narrow and
+  the address is never cut; a door's port list wraps like a sentence and
+  its name elides only when it alone is wider than the widget; a program's
+  name elides, with the full name in a tooltip while it is elided; the
+  sentences wrap as before. No row is wider than the widget any more, so
+  the sentences wrap inside it again.
+- The Monitor widget's top processes list does not cut: the name elides and
+  the percentage is short. Its game line did, at the widget's minimum width
+  ("GPU 97% · 3.2 cores · VRAM 6.6 GB · 12 proc" by 38 px at 13 grid units,
+  2 px at the preferred 15); it now wraps, and the game's title and the top
+  processes' names carry the tooltip. Neither compact form is touched.
+
 ## 0.2.42 (2026-09-18)
 
 - The Network widget's panel form is one line: download and upload, an
