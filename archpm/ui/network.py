@@ -165,6 +165,22 @@ class NetworkView(QWidget):
         self.lbl_fw.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         self.lbl_fw.hide()
         self.card_doors.body.addWidget(self.lbl_fw)
+        # The doors: their count on a line, one row per door under it, the
+        # way a socket is a row under a program in the tree below. Past
+        # FOLD_ABOVE the rows wait behind the count, which is then a link.
+        self.lbl_fw_doors = TextLink()
+        self.lbl_fw_doors.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Preferred)
+        self.lbl_fw_doors.activated.connect(self._toggle_doors)
+        self.lbl_fw_doors.hide()
+        self.card_doors.body.addWidget(self.lbl_fw_doors, 0, Qt.AlignmentFlag.AlignLeft)
+        self.rows_fw = QWidget()
+        rows_fw = QVBoxLayout(self.rows_fw)
+        rows_fw.setContentsMargins(self.tree_indent(), 0, 0, 0)
+        rows_fw.setSpacing(2)
+        self.rows_fw.hide()
+        self.card_doors.body.addWidget(self.rows_fw)
+        self._fw_open = False
+        self._fw_block: firewall.Block | None = None
         hints.attach(self.card_doors, "net.doors", self.help_requested.emit)
         self._columns = 0
         self._place_cards(2)
@@ -277,11 +293,15 @@ class NetworkView(QWidget):
         hand these in directly."""
         self.fw_setup, self.fw_state = setup, state
         ready = check().ready and self.client is not None
-        lines = firewall.lines(setup, state, self.service, helper_ready=ready,
-                               helper_path=str(HELPER))
-        self.lbl_fw.setText("<br>".join(lines))
+        b = firewall.block(setup, state, self.service, helper_ready=ready,
+                           helper_path=str(HELPER))
+        self._fw_block = b
+        # the summary lines, the error under them; the doors' count and rows
+        # are widgets of their own so the rows can fold
+        self.lbl_fw.setText("<br>".join(b.lines + ([b.error] if b.error else [])))
         for w in (self.sep_fw, self.head_fw, self.lbl_fw, self.link_fw):
             w.show()
+        self._fill_doors(b)
         if state.needs_root and not state.as_root:
             if ready:
                 self.link_fw.set_link("Read the firewall", "ACCENT")
@@ -300,9 +320,68 @@ class NetworkView(QWidget):
         self.link_fw.setToolTip(f"Reads the firewall's state again ({cost}). This and opening "
                                 "the page are the only times it is read; it is not on a timer.")
 
+    def _fill_doors(self, b: firewall.Block) -> None:
+        lay = self.rows_fw.layout()
+        while lay.count():
+            item = lay.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+        if not b.doors:
+            self.lbl_fw_doors.hide()
+            self.rows_fw.hide()
+            return
+        for text in b.rows:
+            row = QLabel(text)
+            row.setFont(mono("body"))
+            row.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+            # never squeezed below its line: a short window clips the card's
+            # wrapped sentences, not the rows into one another
+            row.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
+            lay.addWidget(row)
+        self.lbl_fw_doors.show()
+        self._show_doors()
+
+    def _show_doors(self) -> None:
+        """The count line: plain text over the rows when they are few, a
+        link that opens and closes them when they are many."""
+        b = self._fw_block
+        if b is None or not b.doors:
+            return
+        if not b.folded:
+            self.lbl_fw_doors.set_plain(b.doors, "TEXT")
+            self.lbl_fw_doors.setToolTip("")
+            self.rows_fw.show()
+            return
+        opened = self._fw_open
+        self.lbl_fw_doors.set_link(f"{b.doors} {'▾' if opened else '▸'}", "ACCENT")
+        self.lbl_fw_doors.setToolTip(f"{'Hides' if opened else 'Shows'} the {len(b.rows)} rows, "
+                                     "one per door.")
+        self.lbl_fw_doors.setAccessibleName(f"{b.doors}, {'open' if opened else 'closed'}")
+        self.rows_fw.setVisible(opened)
+
+    def _toggle_doors(self) -> None:
+        self._fw_open = not self._fw_open
+        self._show_doors()
+
+    @staticmethod
+    def tree_indent() -> int:
+        return 18
+
     def firewall_text(self) -> str:
-        """The block's lines as plain text, for the tests."""
-        return self.lbl_fw.text().replace("<br>", "\n")
+        """The block's lines as plain text, the doors' count line included
+        when there is one, for the tests."""
+        text = self.lbl_fw.text().replace("<br>", "\n")
+        if self._fw_block is not None and self._fw_block.doors:
+            text += "\n" + self._fw_block.doors
+        return text
+
+    def firewall_rows(self) -> list[str]:
+        """The door rows as shown, for the tests; empty while folded."""
+        lay = self.rows_fw.layout()
+        if not self.rows_fw.isVisibleTo(self):
+            return []
+        return [lay.itemAt(i).widget().text() for i in range(lay.count())
+                if lay.itemAt(i).widget() is not None]
 
     def _place_cards(self, cols: int) -> None:
         if cols == self._columns:

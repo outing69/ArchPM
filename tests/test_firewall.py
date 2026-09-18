@@ -183,12 +183,15 @@ class ParseUfw(unittest.TestCase):
         self.assertIsNone(st.running)
         self.assertNotEqual(st.error, "")
 
-    def test_rule_text_names_the_port(self):
+    def test_rule_row_names_the_port_the_service_and_where(self):
         svc = {22: "ssh", 80: "http"}.get
-        self.assertEqual(F.Rule("22/tcp").text(svc), "22/tcp (ssh)")
+        self.assertEqual(F.Rule("22/tcp").text(svc), "22/tcp · ssh")
         self.assertEqual(F.Rule("80/tcp", "192.168.1.0/24", "wlan0").text(svc),
-                         "80/tcp (http) on wlan0 from 192.168.1.0/24")
+                         "80/tcp · http · on wlan0 · from 192.168.1.0/24")
         self.assertEqual(F.Rule("KDE Connect").text(svc), "KDE Connect")
+        self.assertEqual(F.Rule("22/tcp", limited=True).text(svc), "22/tcp · ssh · rate-limited")
+        self.assertEqual(F.Rule("Anywhere", "192.168.1.5").text(svc),
+                         "everything · from 192.168.1.5")
 
 
 class ParseFirewalld(unittest.TestCase):
@@ -291,35 +294,41 @@ class Lines(unittest.TestCase):
         self.assertEqual(out, [
             "ufw is on.",
             "Whatever arrives that no rule covers is dropped without a reply.",
-            "2 doors open to other machines: 53/udp (domain) on virbr0, "
-            "67/udp (bootps) on virbr0.",
+            "2 doors open to other machines",
         ])
+        b = F.block(setup, st, self.svc)
+        self.assertEqual(b.rows, ["53/udp · domain · on virbr0", "67/udp · bootps · on virbr0"])
+        self.assertFalse(b.folded)
 
     def test_desktop_lines_and_the_reject_words(self):
         setup = F.Setup(ufw=True, active={"ufw.service": True}, ufw_enabled=True)
         st = F.from_helper({"tool": "ufw", "outputs": [["status", UFW_DESKTOP]]})
-        out = F.lines(setup, st, self.svc)
-        self.assertIn("refused, and the sender is told", out[1])
-        self.assertEqual(out[2], "5 doors open to other machines: 22/tcp (ssh) (rate-limited), "
-                                 "KDE Connect, 1714:1764/udp, 80/tcp (http) from 192.168.1.0/24, "
-                                 "everything from 192.168.1.5.",
+        b = F.block(setup, st, self.svc)
+        self.assertIn("refused, and the sender is told", b.lines[1])
+        self.assertEqual(b.doors, "5 doors open to other machines")
+        self.assertEqual(b.rows, ["22/tcp · ssh · rate-limited", "KDE Connect", "1714:1764/udp",
+                                  "80/tcp · http · from 192.168.1.0/24",
+                                  "everything · from 192.168.1.5"],
                          "an Anywhere rule from one host is a door, not everything open")
 
     def test_wide_open(self):
         st = F.State(tool=F.UFW, running=True, incoming=F.DROP, rules=[F.Rule("Anywhere")])
-        out = F.lines(F.Setup(ufw=True), st)
-        self.assertIn("Everything is open", out[2])
+        b = F.block(F.Setup(ufw=True), st)
+        self.assertEqual((b.doors, b.rows), ("1 door open to other machines", ["everything"]))
         st = F.State(tool=F.UFW, running=True, incoming=F.ALLOW)
         out = F.lines(F.Setup(ufw=True), st)
         self.assertIn("let in unless a rule blocks it", out[1])
         self.assertIn("Every open door above is reachable", out[2])
 
-    def test_many_doors_are_counted_and_a_few_named(self):
-        rules = [F.Rule(f"{p}/tcp") for p in range(1000, 1009)]
-        st = F.State(tool=F.UFW, running=True, incoming=F.DROP, rules=rules)
-        out = F.lines(F.Setup(ufw=True), st)
-        self.assertTrue(out[2].startswith("9 doors open to other machines: 1000/tcp, "))
-        self.assertTrue(out[2].endswith("1003/tcp and 5 more."))
+    def test_many_doors_fold_behind_their_count(self):
+        for n, folded in ((6, False), (7, True), (10, True)):
+            rules = [F.Rule(f"{p}/tcp") for p in range(1000, 1000 + n)]
+            st = F.State(tool=F.UFW, running=True, incoming=F.DROP, rules=rules)
+            b = F.block(F.Setup(ufw=True), st)
+            self.assertEqual(b.doors, f"{n} doors open to other machines")
+            self.assertEqual(len(b.rows), n)
+            self.assertIs(b.folded, folded, n)
+            self.assertEqual(len(F.lines(F.Setup(ufw=True), st)), 3, "three lines, whatever n")
 
     def test_off_and_nftables_and_errors(self):
         setup = F.Setup(ufw=True, active={"ufw.service": True}, ufw_enabled=False)

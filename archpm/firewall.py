@@ -40,7 +40,7 @@ UNITS = ("ufw.service", "firewalld.service", "nftables.service", "iptables.servi
          "ip6tables.service")
 UFW_CONF = "/etc/ufw/ufw.conf"
 TIMEOUT = 10
-NAME_AT_MOST = 6         # doors named in the third line; beyond that, a count and a few
+FOLD_ABOVE = 6           # more doors than this fold behind their count until opened
 ENV = {"PATH": "/usr/bin:/usr/sbin:/bin:/sbin", "LC_ALL": "C"}   # the tools' English
 
 # the default for incoming traffic, in plain words; the tools' own words are
@@ -73,16 +73,20 @@ class Rule:
         return int(m.group(1)) if m else 0
 
     def text(self, service=None) -> str:
-        """"22/tcp (ssh) on virbr0 from 192.168.1.0/24"."""
+        """One row: "22/tcp · ssh · on virbr0 · from 192.168.1.0/24", the
+        port and protocol, the service's name, the interface or source
+        where there is one, the way a socket is a row under a program."""
+        parts = ["everything" if self.to.lower() == "anywhere" else self.to]
         name = service(self.port) if service and self.port else ""
-        out = f"{self.to} ({name})" if name else self.to
-        if self.to.lower() == "anywhere":
-            out = "everything"
+        if name:
+            parts.append(name)
         if self.iface:
-            out += f" on {self.iface}"
+            parts.append(f"on {self.iface}")
         if self.source:
-            out += f" from {self.source}"
-        return out
+            parts.append(f"from {self.source}")
+        if self.limited:
+            parts.append("rate-limited")
+        return " · ".join(parts)
 
 
 @dataclass
@@ -339,18 +343,48 @@ def from_helper(result: dict) -> State:
     return state
 
 
-# -- text: the three lines -------------------------------------------------------------
+# -- text: the three lines and the rows ---------------------------------------------
+@dataclass
+class Block:
+    """What the page shows: the summary lines (two at most), the doors line
+    (the count, "" when the doors are one sentence in `lines` instead), one
+    row per door, and a read's error when there is one."""
+    lines: list[str] = field(default_factory=list)
+    doors: str = ""
+    rows: list[str] = field(default_factory=list)
+    error: str = ""
+
+    @property
+    def folded(self) -> bool:
+        """Closed by default: the rows wait behind their count."""
+        return len(self.rows) > FOLD_ABOVE
+
+
+def block(setup: Setup, state: State, service=None, helper_ready: bool = True,
+          helper_path: str = "") -> Block:
+    """Three lines at most: whether a firewall runs and which; what it does
+    with incoming traffic no rule covers, in plain words; how many doors it
+    opens to other machines, with one row per door under it. A read that
+    failed adds its reason as one more line, under what is known.
+    `service` maps a port to its name, as the page does elsewhere."""
+    out = Block(lines=_lines(setup, state, service, helper_ready, helper_path),
+                error=f"Not read: {state.error}" if state.error else "")
+    if state.known and state.running and state.rules and tool_reads(setup.tool):
+        n = len(state.rules)
+        out.doors = f"{n} {'door' if n == 1 else 'doors'} open to other machines"
+        out.rows = [r.text(service) for r in state.rules]
+    return out
+
+
+def tool_reads(tool: str) -> bool:
+    return tool in (UFW, FIREWALLD)
+
+
 def lines(setup: Setup, state: State, service=None, helper_ready: bool = True,
           helper_path: str = "") -> list[str]:
-    """At most three lines: whether a firewall runs and which; what it does
-    with incoming traffic no rule covers, in plain words; how many doors it
-    opens to other machines and which, named when there are few. A read
-    that failed adds its reason as one more line, under what is known.
-    `service` maps a port to its name, as the page does elsewhere."""
-    out = _lines(setup, state, service, helper_ready, helper_path)
-    if state.error:
-        out.append(f"Not read: {state.error}")
-    return out
+    """The block as lines: the summary, the doors line, the error."""
+    b = block(setup, state, service, helper_ready, helper_path)
+    return b.lines + ([b.doors] if b.doors else []) + ([b.error] if b.error else [])
 
 
 def _lines(setup: Setup, state: State, service, helper_ready: bool, helper_path: str) -> list[str]:
@@ -377,7 +411,8 @@ def _lines(setup: Setup, state: State, service, helper_ready: bool, helper_path:
     out = [f"{name} is on."]
     if state.incoming:
         out.append(INCOMING_WORDS[state.incoming])
-    out.append(doors_line(state, service))
+    if not state.rules:
+        out.append(doors_sentence(state))
     return out
 
 
@@ -393,22 +428,9 @@ def _installed_line(setup: Setup) -> str:
     return "ufw is installed; its service is not running."
 
 
-def doors_line(state: State, service=None) -> str:
-    """The third line. Rules to everything ("Anywhere") come first; the rest
-    named while there are NAME_AT_MOST or fewer, else counted with the first
-    few named."""
-    rules = state.rules
+def doors_sentence(state: State) -> str:
+    """The third line when there is no row to show: the default lets
+    everything in, or nothing is open."""
     if state.incoming == ALLOW:
         return "Every open door above is reachable from other machines."
-    if not rules:
-        return "No port is open to other machines."
-    wide = [r for r in rules if r.to.lower() == "anywhere" and not r.source and not r.iface]
-    if wide:
-        return "Everything is open to other machines: a rule allows anything from anywhere."
-    named = [r.text(service) + (" (rate-limited)" if r.limited else "") for r in rules]
-    n = len(named)
-    what = "door" if n == 1 else "doors"
-    if n <= NAME_AT_MOST:
-        return f"{n} {what} open to other machines: {', '.join(named)}."
-    head = ", ".join(named[:NAME_AT_MOST - 2])
-    return f"{n} doors open to other machines: {head} and {n - (NAME_AT_MOST - 2)} more."
+    return "No port is open to other machines."

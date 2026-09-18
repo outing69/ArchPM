@@ -3,6 +3,24 @@
 All notable changes, newest first. Versions are git tags on
 [github.com/outing69/ArchPM](https://github.com/outing69/ArchPM).
 
+## 0.2.48 (2026-09-18)
+
+- The firewall block's doors are rows, one per door, the way a socket is
+  a row under a program in the same tab: the port and protocol, the
+  service's name, and the interface or source where there is one, in
+  monospace and indented under their count ("53/udp · domain · on virbr0",
+  "80/tcp · http · from 192.168.1.0/24", "22/tcp · ssh · rate-limited", a
+  profile by its name, a rule for everything as "everything"). Before,
+  the doors were one line separated by commas, which ran off past a few,
+  and above six the names were dropped for a count. The two summary lines
+  above stay as they were.
+- More than six doors fold behind their count: the third line is then a
+  link, "10 doors open to other machines ▸", closed by default so the
+  block stays three lines, and it opens to the full list on a click; a
+  Refresh keeps it open. Six or fewer show their rows at once under the
+  plain count. A row is never squeezed below its line; a window too short
+  for the card clips the wrapped sentences, as it did before.
+
 ## 0.2.47 (2026-09-18)
 
 - The firewall block under Open doors, tidied; nothing new in it. The

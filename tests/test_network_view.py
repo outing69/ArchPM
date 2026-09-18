@@ -218,7 +218,9 @@ class FirewallBlock(unittest.TestCase):
         lines = view.firewall_text().split("\n")
         self.assertEqual(len(lines), 3)
         self.assertEqual(lines[0], "ufw is on.")
-        self.assertIn("53/udp (domain) on virbr0", lines[2])
+        self.assertEqual(lines[2], "1 door open to other machines")
+        self.assertEqual(view.firewall_rows(), ["53/udp · domain · on virbr0"])
+        self.assertFalse(view.lbl_fw_doors._link, "few doors: the count is plain text")
         self.assertEqual(view.link_fw._text, "Refresh")
         self.assertIn("80 ms as root (the whole helper call 900 ms)", view.link_fw.toolTip())
 
@@ -236,6 +238,24 @@ class FirewallBlock(unittest.TestCase):
         from PySide6.QtWidgets import QAbstractButton
         view = self.view(ready=True)
         self.assertEqual(view.card_doors.findChildren(QAbstractButton), [])
+
+    def test_ten_doors_fold_behind_their_count_and_open_on_a_click(self):
+        from archpm import firewall as F
+        view = self.view(ready=True)
+        rules = [F.Rule(f"{p}/tcp") for p in range(1000, 1010)]
+        st = F.State(tool=F.UFW, running=True, incoming=F.DROP, as_root=True, rules=rules)
+        view.set_firewall(F.Setup(ufw=True, active={"ufw.service": True}), st)
+        self.assertEqual(len(view.firewall_text().split("\n")), 3)
+        self.assertTrue(view.lbl_fw_doors._link)
+        self.assertEqual(view.lbl_fw_doors._text, "10 doors open to other machines ▸")
+        self.assertEqual(view.firewall_rows(), [], "closed by default")
+        view.lbl_fw_doors.activated.emit()
+        self.assertEqual(len(view.firewall_rows()), 10)
+        self.assertEqual(view.lbl_fw_doors._text, "10 doors open to other machines ▾")
+        view.set_firewall(F.Setup(ufw=True, active={"ufw.service": True}), st)
+        self.assertEqual(len(view.firewall_rows()), 10, "a refresh keeps it open")
+        view.lbl_fw_doors.activated.emit()
+        self.assertEqual(view.firewall_rows(), [])
 
     def test_the_link_has_its_own_width_beside_the_label(self):
         """A link, not a field: as wide as its words, on the label's line,
