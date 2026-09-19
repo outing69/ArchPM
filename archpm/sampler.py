@@ -86,13 +86,21 @@ class Sampler:
             except _DEAD:
                 continue
         for pid in self._procs.keys() - alive:
-            del self._procs[pid]
-            self._starts.pop(pid, None)
-            self._io.pop(pid, None)
-            self._cmdlines.pop(pid, None)
-            self._cgroups.pop(pid, None)
-            self._pss.pop(pid, None)
-            self.apps.forget(pid)
+            self._forget(pid)
+
+    def _forget(self, pid: int) -> None:
+        """Drop everything kept for a pid: the process object and every
+        per-pid cache. Both exits of a process go through here, the one
+        seen by the pid scan and the one seen mid-tick, so a pid handed out
+        again never inherits the old process's IO counters, PSS, command
+        line, cgroup or app lookup."""
+        self._procs.pop(pid, None)
+        self._starts.pop(pid, None)
+        self._io.pop(pid, None)
+        self._cmdlines.pop(pid, None)
+        self._cgroups.pop(pid, None)
+        self._pss.pop(pid, None)
+        self.apps.forget(pid)
 
     # ------------------------------------------------------------------
     def sample(self) -> Snapshot:
@@ -109,7 +117,7 @@ class Sampler:
                     cpu = p.cpu_percent()
                     io = self._io_rates(pid, p, now)
             except _DEAD:
-                self._procs.pop(pid, None)
+                self._forget(pid)
                 continue
 
             mem = info.get("memory_info")

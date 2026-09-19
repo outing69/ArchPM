@@ -20,6 +20,36 @@ SLEEP = shutil.which("sleep") or "/usr/bin/sleep"
 MAX_CHILDREN = 16
 
 
+class Forgetting(unittest.TestCase):
+    """A process that dies between the pid scan and its read is dropped
+    with every per-pid cache, the way one that dies before the scan is;
+    through 0.2.53 only the process object went, and a reused pid inherited
+    the old IO counters, PSS, command line and cgroup."""
+
+    def test_a_process_gone_mid_tick_leaves_no_cache_behind(self):
+        import psutil
+
+        class Dead:
+            def oneshot(self):
+                raise psutil.NoSuchProcess(4194000)
+
+        s = Sampler(None, group_memory=False)
+        s._refresh_cache()
+        pid = 4194000
+        s._procs[pid] = Dead()
+        s._io[pid] = (1, 2, 0.0)
+        s._starts[pid] = 1.0
+        s._cmdlines[pid] = ("old", ["/usr/bin/old"])
+        s._cgroups[pid] = ("/old", 0.0)
+        s._pss[pid] = 5
+        s.apps._cache[pid] = ("old", None)
+        s.sample()
+        for name in ("_procs", "_io", "_starts", "_cmdlines", "_cgroups", "_pss"):
+            with self.subTest(cache=name):
+                self.assertNotIn(pid, getattr(s, name))
+        self.assertNotIn(pid, s.apps._cache)
+
+
 class Cadence(unittest.TestCase):
     def setUp(self):
         # Enough children to sit in at least two of the pid slots, so their
