@@ -427,7 +427,8 @@ class MainWindow(QMainWindow):
     def _set_interval(self, index: int) -> None:
         seconds = INTERVALS[index][1]
         self.settings.setValue("interval", seconds)
-        QTimer.singleShot(0, lambda: self.worker.set_interval(seconds))
+        # The worker's timer lives on its thread; this hands the change over.
+        self.worker.request_interval(seconds)
 
     # -- window -----------------------------------------------------------
     def _restore(self) -> None:
@@ -446,7 +447,7 @@ class MainWindow(QMainWindow):
             return
         self._stopped = True
         self.settings.setValue("geometry", self.saveGeometry())
-        self.worker.stop()
+        self.worker.request_stop()     # on the worker's thread, like the timer
         self.thread.quit()
         self.thread.wait(3000)
         # A scan or a spec gather may still run; a QThread destroyed while

@@ -1,7 +1,7 @@
 """Sampling happens in its own thread; the UI thread only receives ready-made snapshots."""
 from __future__ import annotations
 
-from PySide6.QtCore import QObject, Qt, QThread, QTimer, Signal, Slot
+from PySide6.QtCore import QMetaObject, QObject, Qt, QThread, QTimer, Signal, Slot
 
 from ..gpu import GpuMonitor
 from ..model import Snapshot
@@ -13,6 +13,9 @@ class SampleWorker(QObject):
     sampled = Signal(object)
     failed = Signal(str)
     notice = Signal(str)     # something worth a line in the status bar, not an error in sampling
+    # Carries an interval change from the GUI thread to set_interval over
+    # here; see request_interval.
+    _interval_requested = Signal(float)
 
     AGENT_CHECK_EVERY = 15   # ticks between looks at the agent service (30 s at 2 s)
 
@@ -25,6 +28,7 @@ class SampleWorker(QObject):
         self._timer: QTimer | None = None
         self._sampler: Sampler | None = None
         self.gpu = GpuMonitor()
+        self._interval_requested.connect(self.set_interval)
 
     @Slot()
     def start(self) -> None:
@@ -39,9 +43,28 @@ class SampleWorker(QObject):
 
     @Slot(float)
     def set_interval(self, seconds: float) -> None:
+        """Runs on the worker thread only: the timer was made there in
+        start(), and Qt refuses to start or stop a timer from any other
+        thread (the call is dropped with a warning, and the timer is left
+        stopped). Other threads go through request_interval."""
         self.interval = seconds
         if self._timer:
             self._timer.start(int(seconds * 1000))
+
+    def request_interval(self, seconds: float) -> None:
+        """Change the interval from any thread. Delivered as a queued signal,
+        so set_interval runs on the worker thread, where the timer lives."""
+        self._interval_requested.emit(seconds)
+
+    def request_stop(self) -> None:
+        """Stop from any thread, and return once it is done. The timer is
+        stopped on its own thread through a blocking queued call; when that
+        thread is not running (or we are on it), stop() runs in place."""
+        thread = self.thread()
+        if thread is None or not thread.isRunning() or QThread.currentThread() is thread:
+            self.stop()
+            return
+        QMetaObject.invokeMethod(self, "stop", Qt.ConnectionType.BlockingQueuedConnection)
 
     @Slot()
     def _tick(self) -> None:
