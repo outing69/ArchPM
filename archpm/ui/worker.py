@@ -101,3 +101,20 @@ def run_in_thread(worker: SampleWorker) -> QThread:
     thread.started.connect(worker.start)
     thread.start()
     return thread
+
+
+def wait_for_threads(root: QObject, msec: int) -> list[QThread]:
+    """Join every QThread that lives under `root` in the object tree, and
+    return the ones still running when the time ran out.
+
+    A QThread destroyed while it runs takes the process down with it. The
+    pages make their threads (a scan, a spec gather, a snapshot read, a
+    firewall read) as children of the page, so the window finds them here
+    without a list to keep: a page added later is covered the moment its
+    thread has a parent. The sampler's own thread has none and is stopped
+    by the window itself."""
+    late: list[QThread] = []
+    for thread in root.findChildren(QThread):
+        if thread.isRunning() and not thread.wait(msec):
+            late.append(thread)
+    return late

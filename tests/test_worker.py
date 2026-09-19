@@ -6,17 +6,22 @@ from the main thread, and count what arrives."""
 from __future__ import annotations
 
 import sys
+import threading
 import time
 import unittest
 from unittest.mock import patch
 
 try:
     from PySide6.QtCore import QEventLoop, QThread, QTimer, qInstallMessageHandler
-    from PySide6.QtWidgets import QApplication
+    from PySide6.QtWidgets import QApplication, QWidget
 
+    from archpm import firewall, snapshots
     from archpm.model import Snapshot, SystemSample
+    from archpm.root.client import RootClient
     from archpm.ui import worker as worker_mod
-    from archpm.ui.worker import SampleWorker, run_in_thread
+    from archpm.ui.network import NetworkView
+    from archpm.ui.snapshots import SnapshotsView
+    from archpm.ui.worker import SampleWorker, run_in_thread, wait_for_threads
 except ImportError:   # PySide6 not installed
     QApplication = None
 
@@ -106,6 +111,89 @@ class Interval(unittest.TestCase):
         self.assertEqual(len(self.stamps), seen, "samples kept coming after stop")
         self.assertFalse([m for m in self.messages if "thread" in m], self.messages)
         self.assertIsNot(QThread.currentThread(), self.worker.thread())
+
+
+class _Slow(QThread):
+    """Runs for a moment, long enough for shutdown to arrive first; or, given
+    an event, until that event is set."""
+
+    def __init__(self, parent=None, until: threading.Event | None = None) -> None:
+        super().__init__(parent)
+        self.until = until
+
+    def run(self) -> None:
+        if self.until is not None:
+            self.until.wait(10)
+        else:
+            time.sleep(0.3)
+
+
+def _slow_detect(result):
+    def detect(*_args, **_kwargs):
+        time.sleep(0.3)
+        return result
+    return detect
+
+
+@unittest.skipUnless(QApplication, "PySide6 not installed")
+class PageThreads(unittest.TestCase):
+    """Closing the window while a page still reads must wait for that read.
+    The window used to wait for two pages by attribute name and missed the
+    other two; now it joins every thread under it in the object tree."""
+
+    @classmethod
+    def setUpClass(cls):
+        import tempfile
+
+        from PySide6.QtCore import QSettings
+        cls.app = QApplication.instance() or QApplication(sys.argv[:1])
+        cls.tmp = tempfile.TemporaryDirectory()
+        for fmt in (QSettings.Format.NativeFormat, QSettings.Format.IniFormat):
+            QSettings.setPath(fmt, QSettings.Scope.UserScope, cls.tmp.name)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.tmp.cleanup()
+
+    def test_threads_anywhere_under_the_root_are_joined_and_others_are_left_alone(self):
+        root = QWidget()
+        page = QWidget(root)
+        deep = _Slow(page)
+        release = threading.Event()
+        loose = _Slow(until=release)    # no parent: not the window's to wait for
+        deep.start()
+        loose.start()
+        try:
+            self.assertEqual(wait_for_threads(root, 5000), [])
+            self.assertFalse(deep.isRunning())
+            self.assertTrue(loose.isRunning())
+        finally:
+            release.set()
+            loose.wait(5000)
+
+    def test_a_running_read_is_reported_when_the_wait_runs_out(self):
+        root = QWidget()
+        slow = _Slow(root)
+        slow.start()
+        try:
+            self.assertEqual(wait_for_threads(root, 1), [slow])
+        finally:
+            slow.wait(5000)
+
+    def test_the_snapshot_and_firewall_reads_are_found_through_their_page(self):
+        cases = [
+            (SnapshotsView(RootClient()), snapshots, snapshots.Setup(), "read"),
+            (NetworkView(lambda _port: "", RootClient()), firewall, firewall.Setup(),
+             "read_firewall"),
+        ]
+        for view, backend, setup, start in cases:
+            with self.subTest(page=type(view).__name__), \
+                    patch.object(backend, "detect", _slow_detect(setup)):
+                getattr(view, start)()
+                threads = [t for t in view.findChildren(QThread) if t.isRunning()]
+                self.assertEqual(len(threads), 1, "the read did not start a thread")
+                self.assertEqual(wait_for_threads(view, 5000), [])
+                self.assertFalse(threads[0].isRunning())
 
 
 if __name__ == "__main__":

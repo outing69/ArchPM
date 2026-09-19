@@ -35,7 +35,7 @@ from .snapshots import SnapshotsView
 from .startup import StartupView
 from .sysinfo import SystemView
 from .widgets import scrolling
-from .worker import SampleWorker, run_in_thread
+from .worker import SampleWorker, run_in_thread, wait_for_threads
 
 INTERVALS = [("0.5 s", 0.5), ("1 s", 1.0), ("2 s", 2.0), ("5 s", 5.0)]
 
@@ -450,12 +450,11 @@ class MainWindow(QMainWindow):
         self.worker.request_stop()     # on the worker's thread, like the timer
         self.thread.quit()
         self.thread.wait(3000)
-        # A scan or a spec gather may still run; a QThread destroyed while
-        # running takes the process down with it.
-        for view in (self.cleanup, self.system):
-            t = getattr(view, "_thread", None)
-            if t is not None and t.isRunning():
-                t.wait(5000)
+        # A page's read may still run (a scan, a spec gather, a snapshot or
+        # firewall read); a QThread destroyed while running takes the process
+        # down with it. Every page thread is a child of its page, so the
+        # object tree names them all, without a list here to keep up to date.
+        wait_for_threads(self, 5000)
 
     def closeEvent(self, event) -> None:
         if self.tray is not None and self.act_keep.isChecked():
