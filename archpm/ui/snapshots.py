@@ -465,8 +465,21 @@ class SnapshotsView(QWidget):
         self.btn_create.setEnabled(False)
         self._proc = QProcess(self)
         self._proc.finished.connect(self._helper_done)
+        self._proc.errorOccurred.connect(self._helper_failed)
         argv = self.client.argv(*args)
         self._proc.start(argv[0], argv[1:])
+
+    def _helper_failed(self, error) -> None:
+        """pkexec could not be started at all: finished never comes, so the
+        page would ignore Refresh, Take and Delete for good."""
+        if error != QProcess.ProcessError.FailedToStart or self._proc is None:
+            return
+        proc, self._proc = self._proc, None
+        pending, self._pending = self._pending, ()
+        self.btn_read.setEnabled(True)
+        self.btn_create.setEnabled(True)
+        if pending:
+            self._failed(pending, f"the root helper could not be started ({proc.errorString()})")
 
     def _helper_done(self, code: int, *_) -> None:
         proc, self._proc = self._proc, None

@@ -257,8 +257,19 @@ class NetworkView(QWidget):
         self.link_fw.set_plain("reading as root…", "MUTED")
         self._fw_proc = QProcess(self)
         self._fw_proc.finished.connect(self._fw_helper_done)
+        self._fw_proc.errorOccurred.connect(self._fw_helper_failed)
         argv = self.client.argv("firewall-status")
         self._fw_proc.start(argv[0], argv[1:])
+
+    def _fw_helper_failed(self, error) -> None:
+        """pkexec could not be started at all: finished never comes, so the
+        block would stay on "reading as root…" for good."""
+        if error != QProcess.ProcessError.FailedToStart or self._fw_proc is None:
+            return
+        proc, self._fw_proc = self._fw_proc, None
+        state = self.fw_state or firewall.State(tool=self.fw_setup.tool if self.fw_setup else "")
+        state.error = f"the root helper could not be started ({proc.errorString()})"
+        self.set_firewall(self.fw_setup or firewall.Setup(), state)
 
     def _fw_helper_done(self, code: int, *_) -> None:
         proc, self._fw_proc = self._fw_proc, None

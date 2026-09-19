@@ -269,11 +269,23 @@ class RootPanel(QDialog):
         self._on_done = then
         self._proc = QProcess(self)
         self._proc.finished.connect(self._finished)
-        self._proc.errorOccurred.connect(lambda _: self._finished(-1))
+        self._proc.errorOccurred.connect(self._start_failed)
         self.setEnabled(False)
         self._proc.start(argv[0], argv[1:])
 
-    def _finished(self, code: int = -1, *_) -> None:
+    def _start_failed(self, error) -> None:
+        """pkexec could not be started at all: finished never comes. Any
+        other error (a crash) is followed by finished and is read there;
+        through 0.2.55 every error was reported as "exit code -1"."""
+        if error != QProcess.ProcessError.FailedToStart or self._proc is None:
+            return
+        proc, self._proc = self._proc, None
+        self._on_done = None
+        self.setEnabled(True)
+        self._say(f"  ✗ the root helper could not be started ({proc.errorString()})")
+        self._refresh_state()
+
+    def _finished(self, code: int, *_) -> None:
         proc, self._proc = self._proc, None
         self.setEnabled(True)
         if proc is None:
@@ -282,7 +294,7 @@ class RootPanel(QDialog):
         err = bytes(proc.readAllStandardError()).decode(errors="replace")
         command = self._pending[0] if self._pending else ""
         try:
-            result = self.client.parse(proc.exitCode() if code != -1 else code, out, err, command)
+            result = self.client.parse(code, out, err, command)
         except Cancelled:
             self._say("  – cancelled, nothing was changed")
             self._refresh_state()

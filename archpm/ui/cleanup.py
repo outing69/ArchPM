@@ -357,8 +357,20 @@ class CleanupView(QWidget):
             self._say(f"  → {item.name} (root)")
         self._proc = QProcess(self)
         self._proc.finished.connect(lambda code, *_: self._root_done(items, code))
+        self._proc.errorOccurred.connect(lambda error: self._root_failed(items, error))
         argv = self.client.argv("cleanup", *(i.helper_item for i in items))
         self._proc.start(argv[0], argv[1:])
+
+    def _root_failed(self, items: list[CleanupItem], error) -> None:
+        """pkexec could not be started at all: finished never comes, so the
+        Remove button would stay disabled for good."""
+        if error != QProcess.ProcessError.FailedToStart or self._proc is None:
+            return
+        proc, self._proc = self._proc, None
+        for item in items:
+            self._say(f"  ✗ {item.name}: the root helper could not be started "
+                      f"({proc.errorString()})")
+        self._finish()
 
     def _root_done(self, items: list[CleanupItem], code: int) -> None:
         proc, self._proc = self._proc, None
