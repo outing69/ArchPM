@@ -30,6 +30,7 @@ def _menu_for(key: str, on_help, parent: QWidget) -> QMenu | None:
     if h is None or not h.term:
         return None
     menu = QMenu(parent)
+    menu.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)   # gone with the click, not the window
     act = QAction(f"Explain “{h.term}” in Help", menu)
     act.triggered.connect(lambda _=False, t=h.term: on_help(t))
     menu.addAction(act)
@@ -87,6 +88,7 @@ def attach_header(header: QHeaderView, keys: list[str], on_help, names: list[str
     def show(pos):
         col = header.logicalIndexAt(pos)
         menu = QMenu(header)
+        menu.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
         if 0 <= col < len(keys):
             h = helptext.hint(keys[col])
             if h is not None and h.term:
@@ -108,7 +110,9 @@ def attach_header(header: QHeaderView, keys: list[str], on_help, names: list[str
                     remember()
                 act.toggled.connect(toggle)
                 menu.addAction(act)
-        if not menu.isEmpty():
-            menu.exec(header.mapToGlobal(pos))
+        if menu.isEmpty():
+            menu.deleteLater()      # never shown, so never closed: let it go here
+            return
+        menu.exec(header.mapToGlobal(pos))
 
     header.customContextMenuRequested.connect(show)

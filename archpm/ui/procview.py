@@ -625,6 +625,7 @@ class ProcessView(QWidget):
         one = procs[0] if len(procs) == 1 else None
         title = one.display_name if one else f"{len(procs)} processes"
         menu = QMenu(self)
+        menu.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)   # gone with the click
         detail = "" if one is None else (f"  ·  {one.members} processes" if one.members
                                          else f"  ·  process {one.pid}")
         header = menu.addAction(f"{title}{detail}")
