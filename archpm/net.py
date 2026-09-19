@@ -22,6 +22,8 @@ from pathlib import Path
 
 import psutil
 
+from .toolenv import english
+
 _USERS = re.compile(r'users:\(\("([^"]*)",pid=(\d+),fd=\d+\)')
 _BYTES = re.compile(r"bytes_acked:(\d+)|bytes_received:(\d+)")
 _PORT_RE = re.compile(r"^(?P<host>.*):(?P<port>\d+|\*)$")
@@ -174,7 +176,7 @@ def _run_ss() -> str | None:
         return None
     try:
         proc = subprocess.run(["ss", "-tunapiH"], capture_output=True, text=True, timeout=10,
-                              check=False)
+                              check=False, env=english())
     except (OSError, subprocess.TimeoutExpired):
         return None
     return proc.stdout

@@ -14,6 +14,8 @@ import subprocess
 import time
 from dataclasses import dataclass, field
 
+from .toolenv import english
+
 SESSION, SYSTEM = "session", "system"
 LOG_LINES = 8
 TIMEOUT = 5
@@ -80,7 +82,7 @@ def journal_readable(run=subprocess.run) -> bool:
     """Can this user read the system journal? journalctl says so on stderr when not."""
     try:
         proc = run(["journalctl", "--system", "-n", "1", "-q", "--no-pager"],
-                   capture_output=True, text=True, timeout=TIMEOUT, check=False)
+                   capture_output=True, text=True, timeout=TIMEOUT, check=False, env=english())
     except (OSError, subprocess.TimeoutExpired):
         return False
     err = proc.stderr or ""
@@ -92,7 +94,8 @@ def unit_log(unit: str, scope: str, run=subprocess.run, lines: int = LOG_LINES) 
     argv = ["journalctl", *(["--user"] if scope == SESSION else []), "-u", unit,
             "-n", str(lines), "-q", "--no-pager", "-o", "short"]
     try:
-        proc = run(argv, capture_output=True, text=True, timeout=TIMEOUT, check=False)
+        proc = run(argv, capture_output=True, text=True, timeout=TIMEOUT, check=False,
+                   env=english())
     except (OSError, subprocess.TimeoutExpired):
         return []
     return [line for line in (proc.stdout or "").splitlines() if line.strip()]
@@ -107,7 +110,8 @@ def check(run=subprocess.run, lines: int = LOG_LINES) -> FailedReport:
     for scope in (SYSTEM, SESSION):
         try:
             proc = run(_argv(scope, "--failed", "--no-legend", "--plain", "--no-pager"),
-                       capture_output=True, text=True, timeout=TIMEOUT, check=False)
+                       capture_output=True, text=True, timeout=TIMEOUT, check=False,
+                       env=english())
         except (OSError, subprocess.TimeoutExpired) as exc:
             report.error = f"systemctl could not be asked: {exc}"
             break
@@ -121,7 +125,8 @@ def check(run=subprocess.run, lines: int = LOG_LINES) -> FailedReport:
         try:
             shown = run(_argv(scope, "show", "-p", "Id", "-p", "Description",
                               "-p", "StateChangeTimestamp", "--", *(u.unit for u in units)),
-                        capture_output=True, text=True, timeout=TIMEOUT, check=False)
+                        capture_output=True, text=True, timeout=TIMEOUT, check=False,
+                        env=english())
             details = parse_show(shown.stdout or "")
         except (OSError, subprocess.TimeoutExpired):
             details = {}

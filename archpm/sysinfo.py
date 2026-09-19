@@ -20,6 +20,7 @@ from . import __version__
 from .appinfo import read_environ
 from .gpu import sysfs_name
 from .publisher import status_path
+from .toolenv import english
 
 Section = tuple[str, list[tuple[str, str]]]
 
@@ -52,7 +53,8 @@ def _cmd(*argv: str, timeout: float = 3.0) -> str:
     if not shutil.which(argv[0]):
         return ""
     try:
-        proc = subprocess.run(argv, capture_output=True, text=True, timeout=timeout, check=False)
+        proc = subprocess.run(argv, capture_output=True, text=True, timeout=timeout, check=False,
+                              env=english())
     except (OSError, subprocess.TimeoutExpired):
         return ""
     return proc.stdout.strip()

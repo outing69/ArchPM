@@ -19,6 +19,7 @@ from pathlib import Path
 
 from .fdinfo import DrmFdinfo
 from .model import GpuSample
+from .toolenv import english
 
 _PROC_TTL = 6.0  # a pid that hasn't shown up in pmon for 6s no longer uses the GPU
 # pmon polls at the sampler's own interval: at 1 s it cost 1.45% of a core on
@@ -156,7 +157,7 @@ class GpuMonitor:
             try:
                 proc = subprocess.Popen(
                     cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-                    text=True, bufsize=1,
+                    text=True, bufsize=1, env=english(),
                 )
             except OSError:
                 return

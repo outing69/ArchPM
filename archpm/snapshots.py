@@ -24,6 +24,8 @@ import subprocess
 import time
 from dataclasses import dataclass, field
 
+from .toolenv import english
+
 SNAPPER, TIMESHIFT = "snapper", "timeshift"
 TIMEOUT = 20
 # What a description may hold on its way to the helper: letters, digits,
@@ -185,7 +187,7 @@ def snapper_configs(run=subprocess.run) -> list[str]:
     """`snapper --jsonout list-configs` works without root."""
     try:
         proc = run(["snapper", "--jsonout", "list-configs"], capture_output=True,
-                   text=True, timeout=TIMEOUT, check=False)
+                   text=True, timeout=TIMEOUT, check=False, env=english())
         data = json.loads(proc.stdout or "{}")
     except (OSError, subprocess.TimeoutExpired, ValueError):
         return []
@@ -368,7 +370,8 @@ def read_as_user(setup: Setup | None = None, run=subprocess.run) -> Listing:
     for config in setup.configs or ["root"]:
         try:
             proc = run(["snapper", "--jsonout", "--utc", "--iso", "-c", config, "list"],
-                       capture_output=True, text=True, timeout=TIMEOUT, check=False)
+                       capture_output=True, text=True, timeout=TIMEOUT, check=False,
+                       env=english())
         except (OSError, subprocess.TimeoutExpired) as exc:
             listing.error = f"snapper could not be asked: {exc}"
             return listing

@@ -21,6 +21,7 @@ from pathlib import Path
 from . import net as netmod
 from .game import game_summary, pick_game
 from .model import Snapshot
+from .toolenv import english
 
 _APP = "archpm"
 STATUS_NAME = "status.json"
@@ -142,7 +143,7 @@ def agent_service_active(run=subprocess.run) -> bool:
     two do not carry the same content, and the widget would alternate."""
     try:
         proc = run(["systemctl", "--user", "is-active", "--quiet", AGENT_UNIT],
-                   capture_output=True, timeout=3, check=False)
+                   capture_output=True, timeout=3, check=False, env=english())
     except (OSError, subprocess.TimeoutExpired):
         return False
     return proc.returncode == 0

@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ..actions import ActionError, Cancelled, PermissionDenied, UserBackend
+from ..toolenv import english
 
 # The distribution package installs the helper under /usr/lib, install.sh under
 # /usr/local/lib. Prefer the package if both exist; report the manual path when neither does.
@@ -52,7 +53,7 @@ def challenge_possible(command: str, run=subprocess.run) -> bool:
     try:
         proc = run(["pkcheck", "--action-id", ACTION_PREFIX + command,
                     "--process", str(os.getpid())],
-                   capture_output=True, text=True, timeout=5, check=False)
+                   capture_output=True, text=True, timeout=5, check=False, env=english())
     except (OSError, subprocess.TimeoutExpired):
         return True
     text = (proc.stdout or "") + (proc.stderr or "")
@@ -108,7 +109,7 @@ class RootClient:
         try:
             proc = subprocess.run(
                 self.argv(*args, elevated=elevated),
-                capture_output=True, text=True, timeout=timeout, check=False,
+                capture_output=True, text=True, timeout=timeout, check=False, env=english(),
             )
         except subprocess.TimeoutExpired:
             raise ActionError("The helper did not respond in time.") from None

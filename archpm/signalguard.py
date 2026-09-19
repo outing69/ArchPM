@@ -20,6 +20,7 @@ from .grouping import unit_of
 from .helptext import CANNOT_UNDO
 from .model import ProcSample
 from .session import process_loss, unit_loss
+from .toolenv import english
 
 SESSIONS_DIR = Path("/run/systemd/sessions")
 RESTART_TIMEOUT = 2   # seconds for one systemctl show; measured at 4 ms, 7 ms worst
@@ -222,7 +223,8 @@ def restart_policy(unit: str, user: bool, run=subprocess.run) -> tuple[str, int]
     argv = ["systemctl", *(["--user"] if user else []), "show",
             "-p", "Restart", "-p", "MainPID", "--value", "--", unit]
     try:
-        proc = run(argv, capture_output=True, text=True, timeout=RESTART_TIMEOUT, check=False)
+        proc = run(argv, capture_output=True, text=True, timeout=RESTART_TIMEOUT, check=False,
+                   env=english())
     except (OSError, subprocess.TimeoutExpired):
         return "", 0
     lines = proc.stdout.splitlines()

@@ -43,6 +43,17 @@ class Changelog(unittest.TestCase):
             self.assertIn(f"## {version}", text)
         self.assertIn(helptext.__version__.split("+")[0][:5], text)
 
+    def test_the_readme_checks_out_the_current_release(self):
+        """The install route the README gives is `git checkout v<tag>`; the
+        tag must be this version's, or a new user builds an old release
+        (through 0.2.53 the README said v0.2.38). The version bump of a
+        release has to touch the README, and this is what makes it."""
+        import re
+        from pathlib import Path
+        readme = (Path(__file__).resolve().parent.parent / "README.md").read_text(encoding="utf-8")
+        pins = re.findall(r"git checkout v(\S+)", readme)
+        self.assertEqual(pins, [helptext.__version__], "README's checkout tag is not this version")
+
 
 if __name__ == "__main__":
     unittest.main()

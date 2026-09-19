@@ -23,6 +23,7 @@ from typing import NamedTuple
 import psutil
 
 from .session import unit_loss
+from .toolenv import english
 
 
 class ActionError(Exception):
@@ -98,7 +99,7 @@ def systemctl_user(*args: str, timeout: int = 30) -> str:
     try:
         proc = subprocess.run(
             ["systemctl", "--user", *args],
-            capture_output=True, text=True, timeout=timeout, check=False,
+            capture_output=True, text=True, timeout=timeout, check=False, env=english(),
         )
     except FileNotFoundError:
         raise ActionError("systemctl not found.") from None
