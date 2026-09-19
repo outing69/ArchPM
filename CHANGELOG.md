@@ -3,6 +3,45 @@
 All notable changes, newest first. Versions are git tags on
 [github.com/outing69/ArchPM](https://github.com/outing69/ArchPM).
 
+## 0.2.52 (2026-09-19)
+
+- One polkit action covered every root helper command, with the password
+  kept for about five minutes, so reading the firewall unlocked deleting a
+  snapshot. The policy now holds one action per helper command, matched by
+  pkexec on the command word (pkexec takes the first action whose path and
+  first argument match and has no fallback, so none is a catch-all). The two
+  reads, the snapshot list and the firewall's state, keep a password for a
+  few minutes; every change asks again. A test pins the policy's actions to
+  the helper's subcommands and their defaults to that split. In a session
+  that reads the snapshots, deletes one and cleans up, that is one prompt
+  per change instead of one prompt in five minutes.
+- The root panel's Unlock button and its "Unlocked" state are gone. The
+  flag behind them was set on the first successful call and never cleared,
+  while polkit's window closed after five minutes, so the panel said
+  unlocked and pkexec asked anyway; with every change asking there is
+  nothing to unlock. The Cleanup page's pre-authentication at page entry,
+  removed in 0.2.26, had survived as a method nobody called; it is gone.
+- The helper's list of protected units named root's daemons (dbus, logind,
+  journald, the display managers), which its uid check had already refused
+  before the list was reached, and knew nothing of what a root signal can
+  actually reach: the pieces a desktop session runs on, which run as a
+  regular user. The helper now refuses a process in a unit of plasmashell,
+  kwin, the session manager, the session bus, pipewire, wireplumber or the
+  desktop portal, in any user's session, matched the same way as the
+  window's own guard in session.py; a test pins the two lists equal. README
+  and SECURITY.md describe what the uid bound does and what the list does.
+- The instance socket lived in /tmp under a bare name, where another user
+  could take it first and make every launch exit believing ArchPM was
+  running, and a failed listen went unnoticed. It lives in the session's
+  runtime directory now, which only this user can enter, and a failed
+  listen is said on stderr.
+- Cleanup's two root items, the package cache and the system logs, go to
+  the helper as one command with two fixed words, so Remove with both
+  ticked asks for the password once. Each word still runs exactly its
+  command (paccache -rk2, journalctl --vacuum-size=100M), a failure of one
+  no longer stops the other, and the confirmation says one prompt covers
+  both. The old two subcommands are refused with a hint.
+
 ## 0.2.51 (2026-09-19)
 
 - Changing the sampling interval in the header stopped sampling for the
