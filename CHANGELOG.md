@@ -3,6 +3,21 @@
 All notable changes, newest first. Versions are git tags on
 [github.com/outing69/ArchPM](https://github.com/outing69/ArchPM).
 
+## 0.2.55 (2026-09-19)
+
+- On a non-English desktop the Snapshots page showed an error instead of
+  offering the root read: it matched snapper's English "No permissions."
+  without pinning the locale, and snapper is translated. Every command
+  whose output ArchPM reads now runs with LC_ALL=C (snapper, systemctl,
+  journalctl, paccache, ss, nvidia-smi, pkcheck, pkexec), with the rest of
+  the session's environment kept, since systemctl --user needs its bus. A
+  test walks every subprocess call in the package and refuses one without
+  an environment, so a new parser cannot forget it.
+- The README's install route said `git checkout v0.2.38`, twelve releases
+  behind. It names the current tag, and a test holds that tag equal to the
+  version, so a release that leaves the README behind fails the suite
+  before it is pushed.
+
 ## 0.2.54 (2026-09-19)
 
 Six findings of the review's moderate list, each with a test.

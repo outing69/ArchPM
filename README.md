@@ -138,7 +138,7 @@ a systemd user unit and both widgets.
 
 ```bash
 git clone https://github.com/outing69/ArchPM.git && cd ArchPM
-git checkout v0.2.54                 # a release tag, not the branch
+git checkout v0.2.55                 # a release tag, not the branch
 cd packaging/aur && makepkg -si      # builds, runs the tests, installs with pacman
 systemctl --user enable --now archpm-agent
 ```
