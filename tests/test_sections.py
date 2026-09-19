@@ -57,6 +57,55 @@ class Placement(unittest.TestCase):
             self.assertNotIn("ategor", label)
 
 
+@unittest.skipUnless(QApplication, "PySide6 not installed")
+class CountsAcrossModes(unittest.TestCase):
+    """A section's count is its rows: a group row counts once in Grouped,
+    its members each in Flat. Through 0.2.53 the group map survived a
+    switch to Flat and the Apps header undercounted by the former members."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.TemporaryDirectory()
+        for fmt in (QSettings.Format.NativeFormat, QSettings.Format.IniFormat):
+            QSettings.setPath(fmt, QSettings.Scope.UserScope, cls.tmp.name)
+        cls.app = QApplication.instance() or QApplication([])
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.tmp.cleanup()
+
+    def apps_count(self, view) -> int:
+        return view.model._nodes[sections.SECTION_PID[sections.APPS]].proc.members
+
+    def test_flat_after_grouped_counts_every_process(self):
+        from archpm.actions import UserBackend
+        from archpm.ui.procview import ProcessView
+
+        def proc(pid, ppid, name, cgroup, app=""):
+            return ProcSample(pid=pid, ppid=ppid, name=name, username="alex", owned=True, uid=1000,
+                              cmdline=f"/usr/bin/{name}", argv=(f"/usr/bin/{name}",),
+                              program=True, cgroup=cgroup, app_name=app)
+        konsole = f"{USER}/app.slice/app-org.kde.konsole-1234.scope"
+        procs = [proc(1, 0, "systemd", "/init.scope"), proc(1000, 1, "systemd", f"{USER}"),
+                 proc(4558, 1000, "brave", BRAVE, "Brave"),
+                 proc(4573, 4558, "brave", BRAVE, "Brave"),
+                 proc(4574, 4558, "brave", BRAVE, "Brave"),
+                 proc(5000, 1000, "konsole", konsole)]
+        snap = Snapshot(system=SystemSample(), procs=procs)
+        view = ProcessView(8, UserBackend())
+        view.show()
+        view.cb_all.setChecked(True)
+        view.set_mode("grouped")
+        view.update_view(snap)
+        self.assertEqual(self.apps_count(view), 2, "the Brave group row and konsole")
+        view.set_mode("flat")
+        view.update_view(snap)
+        self.assertEqual(self.apps_count(view), 4, "every process on its own row")
+        view.set_mode("grouped")
+        view.update_view(snap)
+        self.assertEqual(self.apps_count(view), 2)
+
+
 class CgroupLine(unittest.TestCase):
     def test_split_at_the_second_colon_keeps_a_dbus_unit_whole(self):
         self.assertEqual(sections.cgroup_path("0::" + KWALLET + "\n"), KWALLET)

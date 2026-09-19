@@ -610,6 +610,10 @@ class ProcModel(QAbstractItemModel):
         self.hoisted = self.find_managers(incoming)
         if self.mode == "grouped":
             incoming = self._with_groups(incoming)
+        else:
+            # Flat and Tree know no groups; a stale map from a Grouped tick
+            # would make the section counts skip every former member.
+            self._group_of = {}
         if self.sectioned:
             incoming = self._with_sections(incoming)
 
@@ -704,6 +708,7 @@ class ProcModel(QAbstractItemModel):
         self._nodes = {}
         self._expanded = set()
         self._section_of = {}
+        self._group_of = {}
         self.endResetModel()
         if self._last:
             self.update(self._last)
