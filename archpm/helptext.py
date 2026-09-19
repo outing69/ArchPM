@@ -7,11 +7,29 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from . import __version__
+from .verdict import HOT_C, LOAD_HOT_PCT, LOAD_WARN_PCT, MEM_FULL_PCT, WARM_C
 
 # The one sentence every irreversible action carries, in the same words each
 # time, so the user learns the pattern once: Terminate, Force kill, End game
 # and the journal cleanup.
 CANNOT_UNDO = "This cannot be undone."
+
+
+def duration(seconds: float) -> str:
+    """A span of time in one shape everywhere: "just now", "45 s", "12 min",
+    "3 h 05", "2 d 14 h". The process list's Started column, the Overview's
+    uptime and the System page's uptime all read this."""
+    if seconds < 10:
+        return "just now"
+    if seconds < 60:
+        return f"{seconds:.0f} s"
+    minutes = seconds / 60
+    if minutes < 60:
+        return f"{minutes:.0f} min"
+    hours = minutes / 60
+    if hours < 24:
+        return f"{int(hours)} h {int(minutes % 60):02d}"
+    return f"{int(hours // 24)} d {int(hours % 24)} h"
 
 
 def plural(n: int, noun: str, nouns: str | None = None) -> str:
@@ -64,16 +82,16 @@ GLOSSARY: tuple[Section, ...] = (
         Term("Parent and children",
              "Every process was started by another one, its parent. Kill a parent and its "
              "children usually keep running as orphans; that is why \"Terminate with "
-             "children\" exists.",
+             "everything it started\" exists.",
              "Tree view, right-click menu"),
         Term("Thread",
              "One line of work inside a process. A game with 160 threads is not using 160 "
-             "cores; most threads sleep most of the time. The Thr column counts them.",
-             "Thr column"),
+             "cores; most threads sleep most of the time. The Threads column counts them.",
+             "Threads column"),
         Term("Status",
              "What the process is doing right now. \"sleeping\" is normal: it waits for "
              "something to do. \"running\" means it is on a CPU this instant. \"stopped\" "
-             "means it was paused with Suspend. \"zombie\" is a finished process whose "
+             "means it was paused with Pause. \"zombie\" is a finished process whose "
              "parent has not collected it yet; it uses nothing and goes away on its own.",
              "Status column"),
         Term("Started",
@@ -106,7 +124,7 @@ GLOSSARY: tuple[Section, ...] = (
         Term("CPU %",
              "How much processor time a process uses. On the Processes page 100% means one "
              "core fully used, so a game can show 140% on a 16-thread CPU; tick "
-             "\"CPU% ÷ cores\" to see it as a share of the whole machine instead. The "
+             "\"CPU as % of all cores\" to see it as a share of the whole machine instead. The "
              "Overview always shows the share of the whole machine.",
              "CPU % column, Overview"),
         Term("Nice",
@@ -115,7 +133,7 @@ GLOSSARY: tuple[Section, ...] = (
              "(making a process less important) is always allowed; lowering it needs root, "
              "which is why \"Game priority\" asks for it. A game at nice -5 with the "
              "background at nice 10 stutters less.",
-             "Nice column, right-click → Priority"),
+             "Priority column, right-click → Priority"),
         Term("Disk priority",
              "Like nice, but for reading and writing the disk. \"Idle only\" makes a process "
              "wait until nothing else wants the disk: right for a backup, wrong for a game.",
@@ -124,12 +142,12 @@ GLOSSARY: tuple[Section, ...] = (
              "Which cores a process may run on. Pinning a game to the physical cores (the "
              "even numbers) and away from core 0 sometimes smooths frame times. Threads is "
              "how many the process has; affinity is how many cores it is allowed.",
-             "Right-click → CPU affinity, game card"),
+             "Right-click → Cores it may use…, game card"),
         Term("CPU temperature",
              "The processor's own sensor; on Ryzen it is the one the chip uses to decide "
-             "how fast it may boost (AMD calls it Tctl). Under 60 °C is idle, 70 to 85 °C "
-             "under a game is normal, above 85 °C the tile turns red and the CPU will slow "
-             "itself down to stay safe.",
+             "how fast it may boost (AMD calls it Tctl). Under 60 °C is idle, 60 to "
+             f"{WARM_C:.0f} °C under a game is normal, the tile says warm from {WARM_C:.0f} °C "
+             f"and turns red at {HOT_C:.0f} °C, where the CPU slows itself down to stay safe.",
              "Overview CPU TEMP tile"),
         Term("Load",
              "The average number of processes wanting the CPU over the last minute. Below "
@@ -185,8 +203,8 @@ GLOSSARY: tuple[Section, ...] = (
              "Overview Network & Disk card, widget footer"),
         Term("Disk read and write",
              "How much the disks move per second, all disks together. A game loading a level "
-             "reads; a download or a recording writes. Per process it is the Disk I/O column.",
-             "Overview Network & Disk card, Disk I/O column"),
+             "reads; a download or a recording writes. Per process it is the Disk column.",
+             "Overview Network & Disk card, Disk column"),
     )),
     Section("Memory", (
         Term("Memory (RSS)",
@@ -227,7 +245,7 @@ GLOSSARY: tuple[Section, ...] = (
         Term("VRAM",
              "The graphics card's own memory. When a game needs more than the card has, "
              "textures stream from RAM and frame times spike.",
-             "VRAM column, Overview"),
+             "Video memory column, Overview"),
         Term("Shader cache",
              "Compiled versions of a game's shaders, kept on disk so the next start is "
              "faster. Safe to delete; the cost is stutter during the first minutes as they "
@@ -243,10 +261,10 @@ GLOSSARY: tuple[Section, ...] = (
              "The kernel ends the process on the spot. Nothing is saved. For a program that "
              "does not react to Terminate. Shift+Delete.",
              "Right-click, Shift+Delete"),
-        Term("Suspend and resume",
+        Term("Pause and resume",
              "Freezes a process without ending it (SIGSTOP) and lets it continue later "
              "(SIGCONT). Handy for a download while you play; not every program likes it.",
-             "Right-click"),
+             "Right-click → Pause, Resume"),
     )),
     Section("Root and safety", (
         Term("Root",
@@ -298,13 +316,13 @@ GLOSSARY: tuple[Section, ...] = (
              "A service that could not start, or crashed and was not started again, is "
              "\"failed\" in systemd's books. ArchPM asks systemctl --failed and "
              "systemctl --user --failed once, when the window starts, and shows the count "
-             "next to Root tasks on the Overview; the System page lists each one with the "
+             "at the top of the Overview; the System page lists each one with the "
              "last lines of its log. That is a snapshot taken at start: a service that "
              "fails while the window is open shows up after \"Refresh failed services\" on "
              "the System page, the only other time the check runs. Read-only; ArchPM "
              "starts or stops no "
              "system service.",
-             "Overview next to Root tasks, System page"),
+             "Overview head, System page"),
         Term("Service that comes back",
              "A unit can carry Restart=always or Restart=on-failure, and then systemd "
              "starts the program again the moment it ends, so ending it changes nothing "
@@ -328,12 +346,12 @@ GLOSSARY: tuple[Section, ...] = (
              "switches along when it changes; dark when neither says anything. Every "
              "colour has a value for each mode; the light ones are not the dark ones "
              "inverted, since the yellow that glows on dark would vanish on white, so "
-             "yellow becomes amber and the pastel series colours become their stronger "
+             "yellow becomes orange and the pastel series colours become their stronger "
              "cousins.",
              "Header bar, Theme"),
         Term("Rail icons",
              "The navigation rail uses the Adwaita symbolic icons when the "
-             "adwaita-icon-theme package is installed and every one of its eight icons "
+             "adwaita-icon-theme package is installed and every one of its nine icons "
              "resolves, tinted to the text colour so they read on light and dark. "
              "Otherwise the whole rail stays on Breeze's icons; there is no mixing.",
              "Navigation rail"),
@@ -404,12 +422,16 @@ COLOURS: tuple[tuple[str, str], ...] = (
              "row always means \"this is what you picked\". The thin ring around whatever "
              "has keyboard focus is a lighter blue of its own; it marks where a key press "
              "goes, not a choice."),
-    ("Green · orange · red", "Load and temperature. Green is fine, orange is busy or warm "
-                             "(above 60%), red is hot or nearly full (above 85%). The same "
-                             "scale everywhere: tiles, core strip, CPU column, widget."),
-    ("Series colours", "Each measurement keeps one colour across the app: CPU yellow, GPU "
-                       "purple, memory teal, network blue, disk pink, swap orange. A card's "
-                       "title takes the colour of the data it shows."),
+    ("Green · orange · red", "Load and temperature. For a load, green is under "
+                             f"{LOAD_WARN_PCT:.0f}%, orange from there and red from "
+                             f"{LOAD_HOT_PCT:.0f}%: the tiles, the core strip, the CPU column "
+                             f"and the widget. For a temperature, normal is under {WARM_C:.0f} °C, "
+                             f"warm to {HOT_C:.0f} °C and hot above."),
+    ("Series colours", "Each measurement keeps its colour across the app: CPU yellow, GPU "
+                       "purple, memory teal, download blue, disk read pink, swap orange. The "
+                       "second line of a graph borrows a neighbour's: video memory takes "
+                       "disk's pink, upload takes CPU's yellow, disk write takes swap's "
+                       "orange. A card's title takes the colour of the data it shows."),
     ("Grey", "Context. Dimmed text is there when you need it and quiet when you don't: "
              "command lines, users, descriptions, other desktops' startup entries."),
 )
@@ -430,14 +452,15 @@ HINTS: dict[str, Hint] = {
         "Is anything straining the machine, and which program. Named when it holds for "
         "three samples in a row; a click opens that program in Processes.", "CPU %",
         "\"Nothing is straining the machine\" is the normal state. A program above a quarter "
-        "of the processor, memory above 85%, or a part above 90° gets a line."),
+        f"of the processor, memory above {MEM_FULL_PCT:.0f}%, or a part above {HOT_C:.0f} °C "
+        "gets a line."),
     "tile.cpu": Hint(
         "How busy the whole processor is, all cores together.", "CPU %",
         "Idle desktop 1–5%. A browser playing video 10–20%. A game 20–60%. "
         "Stuck at 100% with nothing open: look at Top processes."),
     "tile.cpu temp": Hint(
         "The processor's temperature (Tctl on AMD).", "CPU temperature",
-        "Idle 40–55°. Gaming 60–85° is fine; modern CPUs are built to run up to about 95° "
+        "Idle 40–55 °C. Gaming 60–85 °C is fine; modern CPUs are built to run up to about 95 °C "
         "and slow themselves down before harm."),
     "tile.gpu": Hint(
         "How hard the graphics card is working.", "GPU load",
@@ -445,7 +468,7 @@ HINTS: dict[str, Hint] = {
         "lower with a low frame rate means the CPU is holding it back."),
     "tile.gpu temp": Hint(
         "The graphics card's temperature and fan speed.", "GPU temperature and fan",
-        "Idle 30–45°. Gaming 60–80°. Above 85° check dust and case airflow."),
+        f"Idle 30–45 °C. Gaming 60–80 °C. Above {HOT_C:.0f} °C check dust and case airflow."),
     "tile.memory": Hint(
         "RAM in use by programs, as a share of what the PC has.", "Memory (RSS)",
         "Linux keeps spare RAM as cache, so a high number is not a problem by itself. "
@@ -535,28 +558,6 @@ HINTS: dict[str, Hint] = {
                           "other devices.", "Listening / open door"),
     "net.details": Hint("Sockets and process ids; a process row lists its ports here while "
                         "closed. Expand a row for each address and port.", "Port"),
-    # -- Startup ------------------------------------------------------------------
-    "startup.on": Hint("On: starts at your next login. Switch it off to stop that; nothing "
-                       "is closed now.", "Autostart entry"),
-    "startup.name": Hint("The program that starts when you log in.", "Autostart entry"),
-    "startup.what": Hint("What the program is for, from its menu entry.", "Autostart entry"),
-    "startup.status": Hint("Whether it is running right now.", "Autostart entry"),
-    "startup.kind": Hint("Desktop · keep on marks parts of Plasma itself.",
-                         "Desktop · keep on"),
-    "startup.source": Hint("Where the entry lives: your home folder or the system.",
-                           "Autostart entry"),
-    # -- Cleanup ------------------------------------------------------------------
-    "cleanup.on": Hint("Tick what to remove; nothing goes until you press and confirm.",
-                       "Cache"),
-    "cleanup.what": Hint("The cache or leftover; every item comes back by itself when "
-                         "needed.", "Cache"),
-    "cleanup.why": Hint("Why removing it is safe.", "Cache"),
-    "cleanup.size": Hint("Space you get back.", "Cache"),
-    "cleanup.note": Hint("Whether it needs root, and other remarks.", "Package cache"),
-    "snapshots.when": Hint("When it was taken, and who took it: pacman, a timer, "
-                           "ArchPM or a person.", "Snapshot"),
-    "snapshots.size": Hint("What the snapshot holds that nothing else does; only when "
-                           "btrfs quota is on.", "Snapshot"),
 }
 
 

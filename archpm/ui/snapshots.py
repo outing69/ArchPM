@@ -529,9 +529,9 @@ class SnapshotsView(QWidget):
             self._show_or_report(listing)
             listing.error = ""
         elif pending[0] == "create":
-            self.status.emit("Cancelled: no snapshot was taken.")
+            self.status.emit("Cancelled: no snapshot was taken")
         else:
-            self.status.emit(f"Cancelled: snapshot {pending[1].label} was not deleted.")
+            self.status.emit(f"Cancelled: snapshot {pending[1].label} was not deleted")
 
     def _failed(self, pending: tuple, why: str) -> None:
         """A read that failed goes on the state line, with the list as it

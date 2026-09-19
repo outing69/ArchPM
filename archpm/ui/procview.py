@@ -90,7 +90,7 @@ class AffinityDialog(QDialog):
 
     def __init__(self, proc: ProcSample, current: list[int], ncpu: int, parent=None) -> None:
         super().__init__(parent)
-        self.setWindowTitle(f"CPU affinity: {proc.display_name} ({proc.pid})")
+        self.setWindowTitle(f"Cores it may use: {proc.display_name} ({proc.pid})")
         self.ncpu = ncpu
         lay = QVBoxLayout(self)
         lay.setSpacing(10)

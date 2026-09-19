@@ -1,5 +1,5 @@
 [Unit]
-Description=ArchPM sampler (feeds the Plasma widget)
+Description=ArchPM sampler (feeds the two Plasma widgets)
 Documentation=file:@ROOT@/README.md
 
 [Service]

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "archpm"
-description = "Process manager and monitor for a Linux gaming PC: PySide6 GUI, sampler agent and Plasma 6 widget"
+description = "Process manager and monitor for a Linux gaming PC: PySide6 GUI, sampler agent and two Plasma 6 widgets"
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]

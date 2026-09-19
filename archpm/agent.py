@@ -1,9 +1,10 @@
 """Headless sampler daemon: sample, publish status.json, repeat.
 
-Runs as a systemd --user service so the desktop widget keeps working when the
-GUI is closed. Measured at 2.4% of one core at idle on a 7800X3D (September
-2026), plus what the two nvidia-smi helpers it keeps running cost, about 1.5%
-before their polling was slowed to the sampling interval.
+Runs as a systemd --user service so the desktop widgets keep working when the
+GUI is closed. Measured on a 7800X3D over 3 h 19 min of ordinary desktop use
+(September 2026): 3.6% of one core in total, 2.7% the sampler itself, 0.9% the
+nvidia-smi pmon helper and 0.1% the nvidia-smi query loop; the README's table
+carries the same figures.
 """
 from __future__ import annotations
 

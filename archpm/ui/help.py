@@ -1,4 +1,4 @@
-"""The Help tab: what the words mean, what the colours mean, and About."""
+"""The Help page: what the words mean, what the colours mean, and About."""
 from __future__ import annotations
 
 from PySide6.QtCore import Qt

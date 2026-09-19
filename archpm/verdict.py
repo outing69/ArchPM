@@ -42,6 +42,11 @@ HOT_C = 90.0
 WARM_C = 80.0     # the temperature tiles: "normal" under this, "warm" to HOT_C, then "hot"
 SUSTAIN = 3
 GAME_GPU_FULL = 85.0
+# The load scale of the tiles, the core strip, the CPU column and the widget:
+# green under the first, orange from there, red from the second. Used by the
+# theme's heat() and named in the Help; one place for both.
+LOAD_WARN_PCT = 60.0
+LOAD_HOT_PCT = 85.0
 GAME_GPU_IDLE = 50.0
 GAME_CPU_LIMIT = 90.0      # percent of one core, the game's whole tree
 
@@ -138,7 +143,7 @@ class StrainWatch:
 
 def game_verdict(cpu_tree: float, gpu: float, cpu_temp: float, gpu_temp: float) -> tuple[str, str]:
     """(text, colour token) for a running game. Its own rule: the card fully
-    used is green, the processor as the limit amber, idle muted, hot red."""
+    used is green, the processor as the limit orange, idle muted, hot red."""
     if gpu_temp >= HOT_C or cpu_temp >= HOT_C:
         part, temp = (("The graphics card", gpu_temp) if gpu_temp >= HOT_C
                       else ("The processor", cpu_temp))
@@ -164,7 +169,7 @@ def gpu_caption(gpu: float) -> str:
 def temp_level(temp_c: float) -> tuple[str, str]:
     """(word, colour token) for a temperature tile: the reference a user
     needs to judge the number, on the tile and not only in a tooltip.
-    60 to 80 under load is by design, so it is "normal" and not amber."""
+    60 to 80 under load is by design, so it is "normal" and not orange."""
     if temp_c >= HOT_C:
         return "hot", "CRIT"
     if temp_c >= WARM_C:

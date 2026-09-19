@@ -24,6 +24,7 @@ from PySide6.QtGui import QColor, QFont
 
 from ..appinfo import ROLE_ABOUT, describe
 from ..grouping import build_groups, summarize
+from ..helptext import duration
 from ..model import ProcSample
 from ..sections import ABOUT, KEY_OF_PID, LABEL, RANK, SECTION_PID, is_section, section_of, uid_min
 from . import theme
@@ -48,18 +49,8 @@ HINT_KEYS = [
 
 
 def age_text(seconds: float) -> str:
-    """How long ago something started: "just now", "45 s", "12 min", "3 h 05", "2 d 14 h"."""
-    if seconds < 10:
-        return "just now"
-    if seconds < 60:
-        return f"{seconds:.0f} s"
-    minutes = seconds / 60
-    if minutes < 60:
-        return f"{minutes:.0f} min"
-    hours = minutes / 60
-    if hours < 24:
-        return f"{int(hours)} h {int(minutes % 60):02d}"
-    return f"{int(hours // 24)} d {int(hours % 24)} h"
+    """How long ago something started, in the one shape every span has."""
+    return duration(seconds)
 
 _RIGHT = int(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
 _CENTER = int(Qt.AlignmentFlag.AlignCenter)

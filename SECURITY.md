@@ -98,8 +98,8 @@ The helper does **not** defend against:
   polkit's window had long closed; that button and the flag behind it are
   gone, and each change simply asks.
 - Malicious software already running as root. That is game over regardless.
-- The last line of ionice's, paccache's or journalctl's stderr is passed back
-  to the caller in the JSON error. That can name paths; it cannot leak secrets.
+- The last line of the stderr of ionice, paccache, journalctl, snapper, timeshift,
+  ufw or firewall-cmd is passed back to the caller in the JSON error. That can name paths; it cannot leak secrets.
 
 This helper was reviewed once by an independent automated adversarial pass on
 13 September 2026, which found the signal-by-pid bypass described above and two

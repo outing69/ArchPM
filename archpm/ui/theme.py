@@ -1,7 +1,7 @@
 """Colours and stylesheet, in two modes.
 
 Every colour is a token with a dark and a light value; no hex lives outside
-this module. Two fixed roles in both modes: **yellow** (amber in light)
+this module. Two fixed roles in both modes: **yellow** (orange in light)
 highlights (active page, headline figures, warnings) and **blue** selects
 (selected rows, checked items). Never mix those two -- that is what keeps
 the UI readable. The one exception is the focus ring: a 2 px ring in FOCUS,
@@ -25,6 +25,8 @@ import weakref
 from PySide6.QtCore import QObject, Qt, Signal
 from PySide6.QtGui import QColor, QPalette
 
+from ..verdict import LOAD_HOT_PCT, LOAD_WARN_PCT
+
 DARK = {
     # base tones
     "BG": "#0f1115", "SURFACE": "#161920", "SURFACE_ALT": "#1d212a", "SURFACE_HI": "#242935",
@@ -43,7 +45,7 @@ DARK = {
 }
 # Light is a new choice per token, not an inversion: the dark set is tuned
 # for glow on near-black, and a yellow that reads on #161920 vanishes on
-# white. Yellow becomes amber, the pastels become their saturated cousins,
+# white. Yellow becomes orange, the pastels become their saturated cousins,
 # and every text tone is checked against the light surface (see tests).
 LIGHT = {
     "BG": "#f6f5f4", "SURFACE": "#ffffff", "SURFACE_ALT": "#f1f0ee", "SURFACE_HI": "#e6e5e2",
@@ -223,11 +225,12 @@ def _restyle() -> None:
 
 
 def heat(pct: float) -> QColor:
-    """Green → yellow → red, for utilisation and temperature."""
+    """Green → orange → red for a load percentage; the two steps are
+    verdict.LOAD_WARN_PCT and LOAD_HOT_PCT, the numbers the Help names."""
     pct = max(0.0, min(100.0, pct))
-    if pct < 60:
+    if pct < LOAD_WARN_PCT:
         return QColor(OK)
-    if pct < 85:
+    if pct < LOAD_HOT_PCT:
         return QColor(WARN)
     return QColor(CRIT)
 

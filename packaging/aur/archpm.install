@@ -2,7 +2,7 @@ post_install() {
     cat <<MSG
 ArchPM: start the sampler for your user with
     systemctl --user enable --now archpm-agent
-then add the "ArchPM Monitor" widget to your desktop. Root tasks in the
+then add the "ArchPM Monitor" and "ArchPM Network" widgets to your desktop. Root tasks in the
 GUI use pkexec; your account must be allowed to authenticate as admin.
 MSG
 }

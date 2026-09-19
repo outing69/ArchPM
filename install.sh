@@ -204,7 +204,7 @@ cat <<MSG
 Done.
   Start the GUI:    python3 -m archpm      (or from the menu: ArchPM)
   Agent status:     systemctl --user status archpm-agent
-$(have_plasma && echo "  Place the widget: right-click your desktop → Add Widgets → 'ArchPM Monitor'" \
+$(have_plasma && echo "  Place the widgets: right-click your desktop → Add Widgets → 'ArchPM Monitor', 'ArchPM Network'" \
               || echo "  Widgets:          not installed, this desktop is not Plasma 6")
   Root tasks:       Overview → 'Root tasks' button
 MSG

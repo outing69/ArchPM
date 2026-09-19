@@ -77,7 +77,7 @@ class ProcessLevel(unittest.TestCase):
     def test_a_single_process_program_keeps_its_sockets_directly_under_it(self):
         from archpm.ui.network import COL_INFO, COL_NAME
         steam = self.top("Steam")
-        self.assertEqual(steam.text(COL_INFO), "2 socket(s), pid 200")
+        self.assertEqual(steam.text(COL_INFO), "2 sockets, pid 200")
         self.assertEqual(steam.childCount(), 2)
         for i in range(2):
             sock = steam.child(i)
@@ -88,15 +88,15 @@ class ProcessLevel(unittest.TestCase):
     def test_a_multi_process_program_gets_a_row_per_process_with_name_pid_and_ports(self):
         from archpm.ui.network import COL_CONNS, COL_INFO, COL_NAME, COL_RX
         brave = self.top("Brave Web Browser")
-        self.assertEqual(brave.text(COL_INFO), "5 socket(s) in 2 processes")
+        self.assertEqual(brave.text(COL_INFO), "5 sockets in 2 processes")
         self.assertEqual(brave.text(COL_CONNS), "4")
         self.assertEqual(brave.childCount(), 2, "one row per process that holds sockets")
         busy, main = brave.child(0), brave.child(1)          # the busier process first
         self.assertEqual([busy.text(COL_NAME), main.text(COL_NAME)], ["brave", "brave"])
         self.assertEqual(busy.text(COL_RX), "87.9 KB/s")
-        self.assertEqual(busy.text(COL_INFO), "pid 101 · 3 socket(s) · → 443 (https), 8443")
+        self.assertEqual(busy.text(COL_INFO), "pid 101 · 3 sockets · → 443 (https), 8443")
         self.assertEqual(main.text(COL_INFO),
-                         "pid 100 · 2 socket(s) · listening 5353 (mDNS) · → 443 (https)")
+                         "pid 100 · 2 sockets · listening 5353 (mDNS) · → 443 (https)")
         self.assertEqual(busy.childCount(), 3)
         self.assertEqual(main.childCount(), 2)
         self.assertTrue(main.child(0).text(COL_INFO).startswith("Listening on port 5353"))
@@ -108,10 +108,10 @@ class ProcessLevel(unittest.TestCase):
         brave.setExpanded(True)
         row = brave.child(1)
         row.setExpanded(True)
-        self.assertEqual(row.text(COL_INFO), "pid 100 · 2 socket(s)")
+        self.assertEqual(row.text(COL_INFO), "pid 100 · 2 sockets")
         row.setExpanded(False)
         self.assertEqual(row.text(COL_INFO),
-                         "pid 100 · 2 socket(s) · listening 5353 (mDNS) · → 443 (https)")
+                         "pid 100 · 2 sockets · listening 5353 (mDNS) · → 443 (https)")
         # the open state survives the next scan, and the summary stays out while open
         row.setExpanded(True)
         self.feed(2.0)
@@ -119,7 +119,7 @@ class ProcessLevel(unittest.TestCase):
         self.assertTrue(brave.isExpanded())
         row = brave.child(1)
         self.assertTrue(row.isExpanded())
-        self.assertEqual(row.text(COL_INFO), "pid 100 · 2 socket(s)")
+        self.assertEqual(row.text(COL_INFO), "pid 100 · 2 sockets")
         self.assertFalse(brave.child(0).isExpanded())
 
     def test_process_rows_stay_closed_unless_opened_by_hand(self):

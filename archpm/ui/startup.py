@@ -1,4 +1,4 @@
-"""The Startup tab: what starts when you log in, and a switch for each."""
+"""The Startup page: what starts when you log in, and a switch for each."""
 from __future__ import annotations
 
 from functools import partial

@@ -45,6 +45,6 @@ Kirigami.FormLayout {
         Layout.fillWidth: true
         wrapMode: Text.WordWrap
         opacity: 0.7
-        text: "Values turn red above 85 °C. These settings only affect the widget when it sits in a panel; on the desktop it always shows the full view."
+        text: "Values turn red above 90 °C. These settings only affect the widget when it sits in a panel; on the desktop it always shows the full view."
     }
 }

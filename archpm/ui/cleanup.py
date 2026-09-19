@@ -1,4 +1,4 @@
-"""The Cleanup tab: free up space by removing what programs rebuild anyway.
+"""The Cleanup page: free up space by removing what programs rebuild anyway.
 
 The first visit in a session explains what the page does and does not
 delete. Everything is listed with its size first; nothing is removed until
@@ -63,7 +63,7 @@ class _Empty(QThread):
 class CleanupView(QWidget):
     status = Signal(str)
     help_requested = Signal(str)
-    leave = Signal()   # the user did not want this tab after all
+    leave = Signal()   # the user did not want this page after all
 
     def __init__(self, client: RootClient, parent=None) -> None:
         super().__init__(parent)
@@ -158,7 +158,7 @@ class CleanupView(QWidget):
     def _first_visit(self) -> bool:
         box = QMessageBox(self)
         box.setIcon(QMessageBox.Icon.Warning)
-        box.setWindowTitle("This tab removes files")
+        box.setWindowTitle("This page removes files")
         box.setText("<b>Cleanup removes files from your disk.</b>")
         box.setInformativeText(
             "Only things programs rebuild on their own: caches, compiled shaders, thumbnails, "

@@ -406,7 +406,7 @@ class MainWindow(QMainWindow):
         """The verdict was clicked: Processes, with that row selected."""
         self.shell.set_current(self.procs)
         if not self.procs.show_pid(pid):
-            self._flash("That process is gone.")
+            self._flash("That process is gone")
 
     def _show_help(self, term: str) -> None:
         self.help.show_term(term)

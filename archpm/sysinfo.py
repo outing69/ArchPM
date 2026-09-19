@@ -19,6 +19,7 @@ import psutil
 from . import __version__
 from .appinfo import read_environ
 from .gpu import sysfs_name
+from .helptext import duration
 from .publisher import status_path
 from .toolenv import english
 
@@ -74,7 +75,7 @@ def system_section() -> Section:
         ("Distribution", rel.get("PRETTY_NAME", "") or platform.system()),
         ("Kernel", platform.release()),
         ("Desktop", f"{desktop} ({session})" + (f", {plasma}" if plasma else "")),
-        ("Uptime", f"{int(up // 86400)} d {int(up % 86400 // 3600)} h {int(up % 3600 // 60)} min"),
+        ("Uptime", duration(up)),
     ]
     board = " ".join(x for x in (_read("/sys/devices/virtual/dmi/id/board_vendor"),
                                  _read("/sys/devices/virtual/dmi/id/board_name")) if x)

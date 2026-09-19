@@ -409,7 +409,7 @@ class Pages(unittest.TestCase):
         self.assertEqual([r.title.text() for r in groups[0].rows()], ["Hostname", "Kernel"])
         self.assertEqual(groups[1].rows()[1].subtitle.text(), "/run/user/1/s.json")
         v.set_failed(FailedReport(units=[], taken_at=0, took_ms=1))
-        self.assertEqual(v.failed_list.rows()[0].title.text(), "No failed services found.")
+        self.assertEqual(v.failed_list.rows()[0].title.text(), "No failed services")
         v.set_failed(FailedReport(units=[FailedUnit(unit="a.service", description="A",
                                                     log=["line 1"], since="Mon")],
                                   taken_at=0, took_ms=1))

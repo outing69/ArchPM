@@ -76,6 +76,8 @@ transaction is one row that opens to its before and after. A button to take
 one and one per snapshot to delete, never the last. Restoring stays with
 the tool.
 
+![Snapshots page](docs/snapshots.png)
+
 **Help**: a glossary in plain language, searched as you type, what the colours
 mean, and About with the version and the changelog.
 
@@ -119,7 +121,7 @@ are Arch's; on another distribution find the equivalents.
 | Building the package | `git`, `base-devel` | `makepkg -s` fetches the rest (`python-build`, `python-installer`, `python-wheel`, `python-setuptools`) |
 | Widgets | KDE Plasma 6 (`plasma-desktop`) | other desktops get the GUI but no widgets |
 | Network page | `iproute2` | provides `ss`; part of every Arch install |
-| Root tasks, Cleanup | `polkit` | provides `pkexec`; your user must be allowed to authenticate as admin (in Arch that is the `wheel` group) |
+| Root tasks, Cleanup's two root items, taking and deleting snapshots, the snapshot list and the firewall on machines that keep those for root | `polkit` | provides `pkexec`; your user must be allowed to authenticate as admin (in Arch that is the `wheel` group) |
 | Cleanup of the package cache | `pacman-contrib` | provides `paccache` |
 | Snapshots page | `snapper` or `timeshift` | the page shows the one that is installed and says so when neither is; nothing is installed for you |
 | NVIDIA telemetry | `nvidia-utils` | provides `nvidia-smi`; without it the GPU falls back to sysfs |
@@ -222,10 +224,10 @@ that route myself.
   game". When a program is named the line is a link that opens Processes with
   that row selected. Computed from the same sample as everything else: memory
   above 85% of RAM, one program above a quarter of the whole processor, the
-  whole processor above 85%, a part above 90°. A strain is named only when it
+  whole processor above 85%, a part above 90 °C. A strain is named only when it
   holds for three samples in a row, so a page load does not flash a name.
 - **CPU**: total, per logical core, frequency, load and temperature, with
-  "normal", "warm" or "hot" on the tile (under 80°, to 90°, above). The
+  "normal", "warm" or "hot" on the tile (under 80 °C, to 90 °C, above). The
   per-core strip shows at most 64 bars in the GUI and 32 in the widget; bigger
   CPUs are shown as group averages (labelled "0-1", "2-3", …).
 - **GPU**: load, video memory, temperature, power draw and clock speed, plus
@@ -256,7 +258,7 @@ that route myself.
   and a graph of its last minutes. The card has its own verdict and its own
   colour rule: the graphics card fully used is the good outcome for a game, so
   "the game is the limit, as it should be" is green; the processor as the
-  limit is amber; neither busy (a menu, a loading screen, a frame cap) is
+  limit is orange; neither busy (a menu, a loading screen, a frame cap) is
   quiet; hot is red. Steam games are found by app id; anything else doing real
   GPU work qualifies too.
 - **History**: select a process and the last minutes of its CPU, GPU and memory

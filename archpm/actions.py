@@ -2,7 +2,7 @@
 
 Everything goes through a Backend. Today that is `UserBackend`: only your own
 processes, and nice may only go up (less priority). If you later want more --
-lowering nice, other users' processes, cgroups -- a `PolkitBackend` sits next
+lowering nice, other users' processes, cgroups -- `ElevatedBackend` in root/client.py sits next
 to it and the UI does not have to change.
 
 Services are handled here as well, and only your own session's: `systemctl
@@ -294,5 +294,5 @@ class UserBackend:
 
 
 def get_backend() -> UserBackend:
-    """Later: pick a PolkitBackend here if one is configured."""
+    """The unprivileged backend; the window swaps in ElevatedBackend on request."""
     return UserBackend()

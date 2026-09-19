@@ -156,7 +156,7 @@ def icon_set() -> dict:
 def adwaita_file(name: str) -> str:
     """The svg of an Adwaita symbolic icon, found by hand: QIcon.fromTheme
     resolves against the app's theme at paint time, and we do not switch
-    the app's theme for eight icons."""
+    the app's theme for nine icons."""
     for base in icon_dirs():
         root = os.path.join(base, ADWAITA)
         if not os.path.isdir(root):

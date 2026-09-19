@@ -1,4 +1,4 @@
-"""The Network tab: who talks to the internet, what listens, and over which wire.
+"""The Network page: who talks to the internet, what listens, and over which wire.
 
 The open doors card ends with the firewall's state, read-only: whether one
 runs and which, what it does with incoming traffic no rule covers, and
@@ -35,6 +35,7 @@ from PySide6.QtWidgets import (
 
 from .. import firewall
 from ..actions import ActionError, Cancelled
+from ..helptext import plural
 from ..model import ProcSample, Snapshot
 from ..net import Conn, NetSnapshot, ProcNet
 from ..root.client import HELPER, RootClient, check
@@ -495,9 +496,9 @@ class NetworkView(QWidget):
         self.tree.clear()
         for name, members, conns, rx, tx, estab, listen in rows:
             if len(members) == 1:
-                info = f"{len(conns)} socket(s), pid {members[0].pid}"
+                info = f"{plural(len(conns), 'socket')}, pid {members[0].pid}"
             else:
-                info = f"{len(conns)} socket(s) in {len(members)} processes"
+                info = f"{plural(len(conns), 'socket')} in {plural(len(members), 'process')}"
             top = self._row(name, estab, rx, tx, listen, info, conns)
             top.setData(COL_NAME, Qt.ItemDataRole.UserRole, name)
             proc = self._procs.get(members[0].pid)
@@ -516,7 +517,7 @@ class NetworkView(QWidget):
                         continue
                     key = f"{name}/{p.pid}"
                     opened = key in self._expanded     # only by hand, never by a filter
-                    brief = f"pid {p.pid} · {len(p.conns)} socket(s)"
+                    brief = f"pid {p.pid} · {plural(len(p.conns), 'socket')}"
                     ports = self._ports(p)
                     info = brief if opened or not ports else f"{brief} · {ports}"
                     mid = self._row(self._proc_name(p), p.established, p.rx_bps, p.tx_bps,
@@ -543,7 +544,7 @@ class NetworkView(QWidget):
     def _row(self, name: str, estab: int, rx: float, tx: float, listen: int, info: str,
              conns: list[Conn]) -> QTreeWidgetItem:
         """A program or process row: the counts and rates, the details muted,
-        the listening count amber when one of the sockets is an open door."""
+        the listening count orange when one of the sockets is an open door."""
         item = QTreeWidgetItem([name, str(estab), _rate(rx), _rate(tx),
                                 str(listen) if listen else "", info])
         for col in (COL_CONNS, COL_RX, COL_TX, COL_LISTEN):

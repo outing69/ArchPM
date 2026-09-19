@@ -19,7 +19,7 @@ from PySide6.QtWidgets import (
 )
 
 from ..game import game_tree, pick_game
-from ..helptext import CANNOT_UNDO, plural
+from ..helptext import CANNOT_UNDO, duration, plural
 from ..model import ProcSample, Snapshot, SystemSample
 from ..sysinfo import cpu_model, short_cpu_name
 from ..verdict import (
@@ -80,7 +80,7 @@ class GameCard(Card):
         # width, and the layout would shrink it to the label's minimum.
         self.lbl_name.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         name_row.addWidget(self.lbl_name, 1)
-        self.btn_kill = QPushButton("End game")
+        self.btn_kill = QPushButton("End game…")
         self.btn_kill.setObjectName("kill")
         self.btn_kill.setToolTip("Ask the game and everything it started to quit. If it stays, "
                                  "ArchPM says so after a few seconds and offers to force it.")
@@ -334,7 +334,7 @@ class Dashboard(QWidget):
         )
         self._render_machine(0.0)
         # Root tasks: made here, placed at the foot of the page below
-        self.btn_root = QPushButton("Root tasks")
+        self.btn_root = QPushButton("Root tasks…")
         self.btn_root.setToolTip(
             "Root actions (raising priority, memory) and your own session's services."
         )
@@ -496,8 +496,7 @@ class Dashboard(QWidget):
         should land on, so the hostname is no longer the yellow headline."""
         node, release, cores = self._machine
         sep = f"<span style='color:{theme.FAINT}'>&nbsp;&nbsp;·&nbsp;&nbsp;</span>"
-        up = (f"{int(uptime_s // 86400)}d "
-              f"{int(uptime_s % 86400 // 3600):02d}:{int(uptime_s % 3600 // 60):02d}")
+        up = duration(uptime_s)
         self.lbl_machine.setText(
             f"<span style='color:{theme.LABEL}'>{node}</span>{sep}"
             f"<span style='color:{theme.MUTED}'>{release}</span>{sep}"

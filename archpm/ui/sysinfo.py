@@ -1,4 +1,4 @@
-"""The System tab: the machine's specs as a reading card, with Copy."""
+"""The System page: the machine's specs as a reading card, with Copy."""
 from __future__ import annotations
 
 import time
@@ -88,7 +88,7 @@ class SystemView(QWidget):
             f"checked at {when} in {report.took_ms:.0f} ms" + (f"  ·  {report.error}"
                                                               if report.error else ""))
         if not report.units:
-            row = ListRow("No failed services found.")
+            row = ListRow("No failed services")
             row.dim("MUTED")
             self.failed_list.add_row(row)
             return
