@@ -3,6 +3,36 @@
 All notable changes, newest first. Versions are git tags on
 [github.com/outing69/ArchPM](https://github.com/outing69/ArchPM).
 
+## 0.2.54 (2026-09-19)
+
+Six findings of the review's moderate list, each with a test.
+
+- The sampler leaked the per-pid caches of a process that died between the
+  pid scan and its read: only the process object went, and a pid handed out
+  again inherited the old IO counters, PSS, command line and cgroup. Both
+  exits now drop everything kept for the pid.
+- The "running hot" line stayed up for two samples after the temperature had
+  dropped while a program's strain was still building. It leaves with the
+  heat; the strain is named when it has held, as before.
+- After the selected process vanished, the history panel held the selection
+  empty until a mouse press: the arrow keys moved the cursor but selected
+  nothing, so Delete on the next row did nothing. Navigation keys now release
+  the hold as a mouse press does. The same hold triggered when a live process
+  was only moved under another parent (a parent that died, a single process
+  that gained a sibling in Grouped mode): the model now says which rows the
+  update still has, a moved row is selected again where it lands, and only a
+  process that is gone holds the panel.
+- The section headers undercounted in Flat mode after Grouped had been used:
+  the map from process to group row was never cleared, so every former group
+  member counted as one. Flat and Tree clear it.
+- The Monitor widget showed "RAM 0°" in the Temperatures and Both panel
+  modes, and "0°" for a CPU without a sensor. A meter without a temperature
+  shows its percentage in those modes and is never coloured hot.
+- A Terminate the backend refused still started the "still running, force
+  it?" watch and offered a Force kill that failed the same way. The watch is
+  set only for the processes the signal reached, on the process list and on
+  the game card alike.
+
 ## 0.2.53 (2026-09-19)
 
 - Cancelling the password prompt was reported as "Not authorised. Is your
