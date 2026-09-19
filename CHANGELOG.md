@@ -3,6 +3,38 @@
 All notable changes, newest first. Versions are git tags on
 [github.com/outing69/ArchPM](https://github.com/outing69/ArchPM).
 
+## 0.2.51 (2026-09-19)
+
+- Changing the sampling interval in the header stopped sampling for the
+  rest of the session. The combo handed the change to the worker's
+  `set_interval` on the GUI thread, and the QTimer behind it was made on
+  the worker thread; Qt refuses to start or stop a timer from another
+  thread, drops the call with a warning and leaves the timer stopped, so
+  after one change no sample arrived again. The saved setting applied on
+  the next launch, which hid it. The change now travels as a queued signal
+  and runs on the worker thread; the stop at shutdown had the same shape
+  and goes the same way. A test drives the worker from the main thread
+  and counts what arrives: a change to 50 ms is followed by samples at
+  that rate, a stop by none, and neither prints the warning.
+- Closing the window while the Snapshots page read its list, or the
+  Network page its firewall, could abort the process: shutdown waited for
+  the Cleanup and System threads by name and knew nothing of the other
+  two, and a QThread destroyed while running takes the process down. The
+  window now joins every thread it finds under itself in the object tree.
+  Every page thread is a child of its page, so a page added later is
+  covered the moment its thread has a parent, with no list to keep.
+- `install.sh --uninstall` removed the package's polkit policy. The AUR
+  package installs its policy at the same path as install.sh but its
+  helper under /usr/lib, so a package user running the checkout's
+  uninstall lost the policy and every root task then failed with "polkit
+  policy not installed". `uninstall_root` now has the guard `install_root`
+  already had: with the package's helper present the root part is the
+  package's and stays, and only a helper left in /usr/local by an earlier
+  `install.sh --root` is removed. Both installs are now tested against
+  both uninstalls in a bubblewrap sandbox (a throwaway /usr/local, polkit
+  directory and /usr/lib overlay, uid 0 in a user namespace, a sudo that
+  runs its command); the tests skip where bubblewrap is missing.
+
 ## 0.2.50 (2026-09-18)
 
 - The Startup page's description was reported cut on the right once the
