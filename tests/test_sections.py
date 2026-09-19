@@ -105,6 +105,36 @@ class CountsAcrossModes(unittest.TestCase):
         view.update_view(snap)
         self.assertEqual(self.apps_count(view), 2)
 
+    def test_a_section_header_under_the_cursor_is_not_a_program(self):
+        """Arrowing onto a header made the history panel show "Apps" as a
+        program with N processes and graph the section's total (through
+        0.2.55). A header is not a process: the panel shows nothing for it."""
+        from PySide6.QtCore import QItemSelectionModel
+
+        from archpm.actions import UserBackend
+        from archpm.ui.history import ProcHistory
+        from archpm.ui.procview import ProcessView
+        procs = [proc(1, "systemd", "/init.scope", ppid=0),
+                 proc(5000, "konsole", f"{USER}/app.slice/app-org.kde.konsole-1.scope")]
+        snap = Snapshot(system=SystemSample(), procs=procs)
+        view = ProcessView(8, UserBackend(), ProcHistory())
+        view.show()
+        view.cb_all.setChecked(True)
+        view.set_mode("flat")
+        view.history.update(procs)
+        view.update_view(snap)
+        flag = QItemSelectionModel.SelectionFlag
+        konsole = view.proxy.mapFromSource(view.model.index_for_pid(5000))
+        view.table.selectionModel().setCurrentIndex(konsole, flag.ClearAndSelect | flag.Rows)
+        self.assertEqual(view._pinned[0].pid, 5000)
+        self.assertTrue(view.panel.isVisible())
+        header = view.proxy.mapFromSource(
+            view.model.index_for_pid(sections.SECTION_PID[sections.APPS]))
+        self.assertTrue(header.isValid())
+        view.table.selectionModel().setCurrentIndex(header, flag.Current)
+        self.assertIsNone(view._pinned, "a header pins nothing")
+        self.assertFalse(view.panel.isVisible())
+
 
 class CgroupLine(unittest.TestCase):
     def test_split_at_the_second_colon_keeps_a_dbus_unit_whole(self):

@@ -459,7 +459,10 @@ class ProcessView(QWidget):
             return
         idx = self.table.selectionModel().currentIndex()
         p = self.model.proc_at(self.proxy.mapToSource(idx)) if idx.isValid() else None
-        if p is None:
+        if p is None or is_section(p.pid):
+            # A section header is not a process: the cursor can land on it
+            # (it is enabled, not selectable), and its row counts as members
+            # would have read as a program's tree.
             self._pinned = None
             self.panel.setVisible(False)
             return
