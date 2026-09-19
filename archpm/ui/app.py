@@ -388,16 +388,19 @@ class MainWindow(QMainWindow):
         if verdict.refused:
             self._flash(verdict.refused)
             return
-        done, failed = 0, 0
+        done, failed, sent = 0, 0, []
         for pid in pids:
             try:
                 self.procs.backend.send_signal(pid, signal.SIGTERM)
                 done += 1
+                if pid in by_pid:
+                    sent.append(by_pid[pid])
             except ActionError:
                 failed += 1
         self._flash(f"{name}: asked {plural(done, 'process')} to quit"
                     + (f", {failed} refused" if failed else ""))
-        self.procs.watch([by_pid[pid] for pid in pids if pid in by_pid], name)
+        if sent:
+            self.procs.watch(sent, name)   # only what was asked, as in the process list
 
     def _show_process(self, pid: int) -> None:
         """The verdict was clicked: Processes, with that row selected."""

@@ -143,5 +143,65 @@ class GroupRowActions(unittest.TestCase):
         self.assertEqual(self.messages, ["Nothing selected"])
 
 
+@unittest.skipUnless(QApplication, "PySide6 not installed")
+class WatchAfterTerminate(unittest.TestCase):
+    """The "still running, force it?" watch waits for what was asked to
+    quit. A Terminate the backend refused asked nothing, so there is
+    nothing to wait for and no Force kill to offer; through 0.2.53 the
+    watch was set regardless and offered a Force kill that failed the
+    same way."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.TemporaryDirectory()
+        for fmt in (QSettings.Format.NativeFormat, QSettings.Format.IniFormat):
+            QSettings.setPath(fmt, QSettings.Scope.UserScope, cls.tmp.name)
+        cls.app = QApplication.instance() or QApplication([])
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.tmp.cleanup()
+
+    def view(self, backend):
+        from unittest.mock import patch
+
+        from PySide6.QtWidgets import QMessageBox
+
+        from archpm.ui.procview import ProcessView
+        v = ProcessView(8, backend)
+        v.show()
+        v.set_mode("flat")
+        v.cb_all.setChecked(True)
+        v.update_view(Snapshot(system=SystemSample(), procs=PROCS))
+        v._confirm = lambda verdict: True
+        patcher = patch.object(QMessageBox, "exec", lambda self_: 0)   # the failure box
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        idx = v.proxy.mapFromSource(v.model.index_for_pid(5000))
+        flag = QItemSelectionModel.SelectionFlag
+        v.table.selectionModel().select(idx, flag.ClearAndSelect | flag.Rows)
+        return v
+
+    def test_a_refused_terminate_sets_no_watch(self):
+        import signal
+
+        class Refusing(UserBackend):
+            def send_signal(self, pid, sig):
+                raise ActionError(f"No permission to send {sig.name} to {pid}.")
+        v = self.view(Refusing())
+        v._signal_selected(signal.SIGTERM)
+        self.assertEqual(v._watches, [])
+
+    def test_a_delivered_terminate_sets_one(self):
+        import signal
+
+        class Accepting(UserBackend):
+            def send_signal(self, pid, sig):
+                pass
+        v = self.view(Accepting())
+        v._signal_selected(signal.SIGTERM)
+        self.assertEqual([sorted(w["pids"]) for w in v._watches], [[5000]])
+
+
 if __name__ == "__main__":
     unittest.main()

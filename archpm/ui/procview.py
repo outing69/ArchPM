@@ -665,17 +665,19 @@ class ProcessView(QWidget):
         return True
 
     # -- actions ----------------------------------------------------------
-    def _run(self, fn, procs: list[ProcSample], done: str) -> None:
+    def _run(self, fn, procs: list[ProcSample], done: str) -> list[ProcSample]:
         """Every outcome is shown: a count for what was done, a box for what
         was not. An action that silently does nothing is worse than an error,
         so even a fault in our own code lands in the box instead of in a
         traceback on stderr that nobody sees. `done` is the toast, in plain
-        words, with {n} for "3 processes"."""
-        done_n, errors, cancelled = 0, [], False
+        words, with {n} for "3 processes". Returns the processes the action
+        reached, so a watch is only set on those."""
+        done_n, errors, cancelled, reached = 0, [], False, []
         for p in procs:
             try:
                 fn(p)
                 done_n += 1
+                reached.append(p)
             except Cancelled:
                 # the password prompt: cancelled once is cancelled for all of
                 # them, so the rest is not asked for again
@@ -699,6 +701,7 @@ class ProcessView(QWidget):
             box.setText(f"{len(errors)} of {len(procs)} not carried out.")
             box.setDetailedText("\n".join(errors))
             box.exec()
+        return reached
 
     def _signal_selected(self, sig: signal.Signals, confirm: bool = False,
                          tree: bool = False) -> None:
@@ -727,9 +730,9 @@ class ProcessView(QWidget):
             verdict.text = f"{verdict.text}\n\n{note}".strip()
         if verdict.confirm and not self._confirm(verdict):
             return
-        self._run(lambda p: self.backend.send_signal(p.pid, sig), procs, SIGNAL_DONE[sig])
-        if sig == signal.SIGTERM:
-            self.watch(procs)
+        sent = self._run(lambda p: self.backend.send_signal(p.pid, sig), procs, SIGNAL_DONE[sig])
+        if sig == signal.SIGTERM and sent:
+            self.watch(sent)     # only what was asked: a refused signal has nothing to wait for
 
     # -- after a Terminate: is it gone? ------------------------------------
     # A program may ignore the request. Nothing is forced by itself: the pid
