@@ -3,6 +3,23 @@
 All notable changes, newest first. Versions are git tags on
 [github.com/outing69/ArchPM](https://github.com/outing69/ArchPM).
 
+## 0.2.56 (2026-09-19)
+
+Three defects from the review, each with a test.
+
+- Arrowing onto a section header made the history panel take it for a
+  program: "Apps · With everything it started, N processes", with the
+  section's total on the graph. A header is not a process; the panel shows
+  nothing for it.
+- A pkexec that could not be started left three pages busy for good: the
+  Snapshots page ignored Refresh, Take and Delete, the firewall block stayed
+  on "reading as root…", Cleanup's Remove button stayed dead, since only
+  the call's end was listened for and a call that never starts never ends.
+  The root panel handled it but called it "exit code -1". All four now say
+  the root helper could not be started, with the reason, and recover.
+- Every right-click on a tile, a column header or the process list left a
+  menu behind until the window closed. The menus go when they close.
+
 ## 0.2.55 (2026-09-19)
 
 - On a non-English desktop the Snapshots page showed an error instead of
