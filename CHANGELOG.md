@@ -3,6 +3,43 @@
 All notable changes, newest first. Versions are git tags on
 [github.com/outing69/ArchPM](https://github.com/outing69/ArchPM).
 
+## 0.2.57 (2026-09-19)
+
+The wording and documentation drift from the review, in one sweep, no
+behaviour changed. The Help glossary decides a term; a text that named a
+control the interface no longer has now names the one it has.
+
+- Thresholds agree everywhere: warm from 80 °C and red at 90 °C, load orange
+  from 60% and red from 85%. The CPU temperature term, the colours entry and
+  the verdict hint are built from the code's constants; the README and the
+  widget's settings page (which said 85 °C) are held to them by tests. The
+  two load numbers moved from the theme into verdict.py so both read one
+  place.
+- Glossary where-lines name today's controls: the Threads, Priority, Disk
+  and Video memory columns, "CPU as % of all cores", "Terminate with
+  everything it started", Pause (the term is now "Pause and resume"),
+  "Cores it may use…" with the dialog's title following the menu, the
+  failed-services count at the top of the Overview, and nine rail icons.
+- The README's requirements row and SECURITY.md say what needs root in
+  full: snapshots, the firewall read, and all seven tools whose stderr the
+  helper relays.
+- "tab" is "page" in the Cleanup dialog's title and five module docstrings;
+  thirteen hints for columns the boxed-list pages no longer have are gone;
+  actions.py names ElevatedBackend; agent.py carries the README's measured
+  cost.
+- Orange is the word everywhere the glossary uses it. The series colours
+  entry says what the graphs do: video memory takes disk's pink, upload
+  takes CPU's yellow, disk write takes swap's orange. Two widgets in
+  pyproject, the unit and the install texts. A span of time has one shape
+  on the process list, the Overview and the System page ("2 d 14 h").
+  "°C" in prose, the bare degree sign for live values. No full stop on
+  one-line toasts. "End game…" and "Root tasks…" as the tray has them.
+  "sockets" for "socket(s)" on the Network page.
+- The Snapshots screenshot the 0.2.37 notes promised is in docs/, taken as
+  the other seven were, and a test holds one screenshot per page.
+- tests/test_wording_pins.py pins every number and name that appears in
+  more than one place to its source, so the next drift fails the suite.
+
 ## 0.2.56 (2026-09-19)
 
 Three defects from the review, each with a test.
