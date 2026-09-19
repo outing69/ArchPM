@@ -24,6 +24,7 @@ try:
     from archpm.ui.worker import SampleWorker, run_in_thread, wait_for_threads
 except ImportError:   # PySide6 not installed
     QApplication = None
+    QThread = object      # so the helper class below still defines; its tests are skipped
 
 
 class FakeSampler:
