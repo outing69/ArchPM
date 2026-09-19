@@ -342,9 +342,9 @@ class Lines(unittest.TestCase):
                       F.State(tool=F.NFTABLES, running=True))
         self.assertEqual(len(out), 1)
         self.assertIn("not summarised", out[0])
-        st = F.State(tool=F.UFW, needs_root=True, error="Authentication cancelled.")
+        st = F.State(tool=F.UFW, needs_root=True, error="cancelled, the firewall was not read")
         out = F.lines(F.Setup(ufw=True), st)
-        self.assertEqual(out[-1], "Not read: Authentication cancelled.")
+        self.assertEqual(out[-1], "Not read: cancelled, the firewall was not read")
         self.assertEqual(len(out), 3)
 
     def test_never_more_than_three_lines_without_an_error(self):

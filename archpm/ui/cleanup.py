@@ -20,9 +20,9 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ..actions import ActionError
+from ..actions import ActionError, Cancelled
 from ..cleanup import Cleaner, CleanupItem, human, running_owner
-from ..helptext import CANNOT_UNDO
+from ..helptext import CANNOT_UNDO, plural
 from ..root.client import RootClient, check
 from . import theme
 from .widgets import BoxedList, ElidedLabel, FlowLayout, ListRow, mono, scrolling
@@ -332,7 +332,7 @@ class CleanupView(QWidget):
         self._queue = [i for i in sel if i.needs_root]
         self.btn_clean.setEnabled(False)
         self.btn_scan.setEnabled(False)
-        self._say(f"Removing {len(sel)} item(s)…")
+        self._say(f"Removing {plural(len(sel), 'item')}…")
         if user:
             self._thread = _Empty(self.cleaner, user, self)
             self._thread.progress.connect(self._say)
@@ -367,7 +367,12 @@ class CleanupView(QWidget):
         out = bytes(proc.readAllStandardOutput()).decode(errors="replace")
         err = bytes(proc.readAllStandardError()).decode(errors="replace")
         try:
-            result = self.client.parse(code, out, err)
+            result = self.client.parse(code, out, err, "cleanup")
+        except Cancelled:
+            names = " and ".join(i.name for i in items)
+            self._say(f"  – cancelled: {names} not touched")
+            self._finish(done=False)
+            return
         except ActionError as exc:
             for item in items:
                 self._say(f"  ✗ {item.name}: {exc}")
@@ -380,8 +385,11 @@ class CleanupView(QWidget):
                     self._say(f"  ✓ {item.name}: {done.get(item.helper_item, 'ok')}")
         self._finish()
 
-    def _finish(self) -> None:
-        self._say("Done.")
+    def _finish(self, done: bool = True) -> None:
+        """`done` is False after a cancelled prompt: the closing line then
+        says nothing, since the items that needed root were not touched."""
+        if done:
+            self._say("Done.")
         if self._thread is not None:
             self._rescan_pending = True   # the worker is still winding down
         else:

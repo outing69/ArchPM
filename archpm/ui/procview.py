@@ -36,7 +36,7 @@ from PySide6.QtWidgets import (
 )
 
 from .. import signalguard
-from ..actions import ActionError, UserBackend
+from ..actions import ActionError, Cancelled, UserBackend
 from ..appinfo import CATEGORIES
 from ..helptext import plural
 from ..model import ProcSample
@@ -671,16 +671,24 @@ class ProcessView(QWidget):
         so even a fault in our own code lands in the box instead of in a
         traceback on stderr that nobody sees. `done` is the toast, in plain
         words, with {n} for "3 processes"."""
-        done_n, errors = 0, []
+        done_n, errors, cancelled = 0, [], False
         for p in procs:
             try:
                 fn(p)
                 done_n += 1
+            except Cancelled:
+                # the password prompt: cancelled once is cancelled for all of
+                # them, so the rest is not asked for again
+                cancelled = True
+                break
             except ActionError as exc:
                 errors.append(f"{p.display_name} ({p.pid}): {exc}")
             except Exception as exc:  # noqa: BLE001 - reported, never swallowed
                 errors.append(f"{p.display_name} ({p.pid}): {type(exc).__name__}: {exc}")
-        if done_n:
+        if cancelled:
+            self.status.emit("Cancelled: nothing was done" if not done_n else
+                              f"Cancelled after {plural(done_n, 'process')}; the rest was left")
+        elif done_n:
             self.status.emit(done.format(n=plural(done_n, "process")))
         elif not procs:
             self.status.emit("Nothing selected")

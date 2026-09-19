@@ -64,6 +64,15 @@ class Service(NamedTuple):
         return f"{self.description}  ({self.unit})" if self.description else self.unit
 
 
+class Cancelled(ActionError):
+    """No authorisation came out of the password prompt, so the helper never
+    ran and nothing changed: the prompt was cancelled, or the password was
+    not accepted. pkexec exits 126 for a dismissed dialog and 127 for no
+    authorisation, but KDE's agent completes a cancelled dialog without an
+    error, so polkit reports it as not authorised and pkexec says 127 for
+    both; the client tells that apart from a plain refusal with pkcheck."""
+
+
 class PermissionDenied(ActionError):
     """Refused for lack of privileges only: another user's process, a nice
     value below the current one, a realtime IO class. The elevated backend

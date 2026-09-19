@@ -27,7 +27,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ..actions import ActionError, UserBackend
+from ..actions import ActionError, Cancelled, UserBackend
 from ..root.client import HELPER, RootClient, check
 from . import theme
 from .widgets import mono
@@ -280,8 +280,13 @@ class RootPanel(QDialog):
             return
         out = bytes(proc.readAllStandardOutput()).decode(errors="replace")
         err = bytes(proc.readAllStandardError()).decode(errors="replace")
+        command = self._pending[0] if self._pending else ""
         try:
-            result = self.client.parse(proc.exitCode() if code != -1 else code, out, err)
+            result = self.client.parse(proc.exitCode() if code != -1 else code, out, err, command)
+        except Cancelled:
+            self._say("  – cancelled, nothing was changed")
+            self._refresh_state()
+            return
         except ActionError as exc:
             self._say(f"  ✗ {exc}")
             self._refresh_state()

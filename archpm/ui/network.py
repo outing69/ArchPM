@@ -34,7 +34,7 @@ from PySide6.QtWidgets import (
 )
 
 from .. import firewall
-from ..actions import ActionError
+from ..actions import ActionError, Cancelled
 from ..model import ProcSample, Snapshot
 from ..net import Conn, NetSnapshot, ProcNet
 from ..root.client import HELPER, RootClient, check
@@ -268,8 +268,12 @@ class NetworkView(QWidget):
         err = bytes(proc.readAllStandardError()).decode(errors="replace")
         elapsed = (time.perf_counter() - self._fw_t0) * 1000
         try:
-            state = firewall.from_helper(self.client.parse(code, out, err))
+            state = firewall.from_helper(self.client.parse(code, out, err, "firewall-status"))
             state.call_ms = elapsed
+        except Cancelled:
+            state = self.fw_state or firewall.State(tool=self.fw_setup.tool if self.fw_setup
+                                                    else "")
+            state.error = "cancelled, the firewall was not read"
         except ActionError as exc:
             state = self.fw_state or firewall.State(tool=self.fw_setup.tool if self.fw_setup
                                                     else "")

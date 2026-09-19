@@ -22,6 +22,9 @@ class Plain(unittest.TestCase):
         self.assertEqual(plural(1, "process"), "1 process")
         self.assertEqual(plural(3, "process"), "3 processes")
         self.assertEqual(plural(2, "page"), "2 pages")
+        self.assertEqual(plural(2, "entry", "entries"), "2 entries")
+        self.assertEqual(plural(1, "entry", "entries"), "1 entry")
+        self.assertEqual(plural(0, "item"), "0 items")
 
     @unittest.skipUnless(QApplication, "PySide6 not installed")
     def test_the_process_columns_have_no_abbreviations(self):

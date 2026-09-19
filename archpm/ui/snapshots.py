@@ -29,7 +29,7 @@ from PySide6.QtWidgets import (
 )
 
 from .. import snapshots
-from ..actions import ActionError
+from ..actions import ActionError, Cancelled
 from ..helptext import CANNOT_UNDO, plural
 from ..root.client import HELPER, RootClient, check
 from ..snapshots import (
@@ -483,7 +483,7 @@ class SnapshotsView(QWidget):
         # reply in a shape the parser does not expect, a fault of our own)
         # is shown the same way, never left to Qt to drop on stderr.
         try:
-            result = self.client.parse(code, out, err)
+            result = self.client.parse(code, out, err, f"snapshots-{pending[0]}")
             if pending[0] == "list":
                 listing = snapshots.from_helper(result)
                 listing.call_ms = elapsed
@@ -500,10 +500,25 @@ class SnapshotsView(QWidget):
                                  + (f", {plural(int(left), 'snapshot')} left" if left is not None
                                     else ""))
             self._after_change()
+        except Cancelled:
+            self._cancelled(pending)
         except ActionError as exc:
             self._failed(pending, str(exc))
         except Exception as exc:  # noqa: BLE001 - reported, never swallowed
             self._failed(pending, fault(exc))
+
+    def _cancelled(self, pending: tuple) -> None:
+        """The prompt was cancelled: it says so, and nothing else happened."""
+        if pending[0] == "list":
+            listing = self.listing or snapshots.Listing(tool=self.setup.tool if self.setup
+                                                        else "")
+            listing.error = "Cancelled: the list was not read."
+            self._show_or_report(listing)
+            listing.error = ""
+        elif pending[0] == "create":
+            self.status.emit("Cancelled: no snapshot was taken.")
+        else:
+            self.status.emit(f"Cancelled: snapshot {pending[1].label} was not deleted.")
 
     def _failed(self, pending: tuple, why: str) -> None:
         """A read that failed goes on the state line, with the list as it

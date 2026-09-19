@@ -9,12 +9,13 @@ validation.
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
-from ..actions import ActionError, PermissionDenied, UserBackend
+from ..actions import ActionError, Cancelled, PermissionDenied, UserBackend
 
 # The distribution package installs the helper under /usr/lib, install.sh under
 # /usr/local/lib. Prefer the package if both exist; report the manual path when neither does.
@@ -29,9 +30,35 @@ POLICY = Path("/usr/share/polkit-1/actions/io.github.outing69.archpm.policy")
 # a few minutes; every change asks for the password again.
 ACTION_PREFIX = "io.github.outing69.archpm.helper."
 
-# pkexec exit codes that do not come from the helper itself
+# pkexec exit codes that do not come from the helper itself. 126 is a
+# dismissed dialog, 127 no authorisation; KDE's agent reports a cancelled
+# dialog as the latter, so 127 is asked about with pkcheck (challenge_possible).
 _PKEXEC_DISMISSED = 126
 _PKEXEC_NOT_AUTHORISED = 127
+CANCELLED = "The password prompt was cancelled; nothing was done."
+CANCELLED_OR_REFUSED = ("The password prompt was cancelled, or the password was not accepted; "
+                        "nothing was done.")
+NOT_ALLOWED = ("Not authorised: polkit does not ask this account for a password. Is it in the "
+               "wheel group, and is the polkit policy installed?")
+
+
+def challenge_possible(command: str, run=subprocess.run) -> bool:
+    """Would polkit have put up a password prompt for this helper command?
+    `pkcheck` without user interaction answers "requires authentication"
+    when it would, and a plain "Not authorized" when this account cannot
+    authorise it at all. Asked after a 127 from pkexec, that separates a
+    cancelled or failed prompt from a refusal. True when pkcheck cannot be
+    asked: a prompt is by far the common case."""
+    try:
+        proc = run(["pkcheck", "--action-id", ACTION_PREFIX + command,
+                    "--process", str(os.getpid())],
+                   capture_output=True, text=True, timeout=5, check=False)
+    except (OSError, subprocess.TimeoutExpired):
+        return True
+    text = (proc.stdout or "") + (proc.stderr or "")
+    if proc.returncode == 0 or "requires authentication" in text or "polkit.result=auth" in text:
+        return True
+    return "Not authorized" not in text
 
 
 @dataclass(frozen=True)
@@ -87,12 +114,14 @@ class RootClient:
             raise ActionError("The helper did not respond in time.") from None
         except OSError as exc:
             raise ActionError(str(exc)) from None
-        return self.parse(proc.returncode, proc.stdout, proc.stderr)
+        return self.parse(proc.returncode, proc.stdout, proc.stderr, args[0] if args else "")
 
     @staticmethod
-    def parse(code: int, stdout: str, stderr: str) -> dict:
+    def parse(code: int, stdout: str, stderr: str, command: str = "") -> dict:
         """The helper's reply, or pkexec's exit code when there is none. Also
-        used by the asynchronous QProcess variant in the UI."""
+        used by the asynchronous QProcess variant in the UI. `command` is the
+        helper subcommand that was run; with it a 127 is told apart: a
+        cancelled or failed prompt (Cancelled) from a refusal (ActionError)."""
         text = (stdout or "").strip()
         if text:
             try:
@@ -105,12 +134,11 @@ class RootClient:
                 raise ActionError(payload.get("error") or "unknown error")
 
         if code == _PKEXEC_DISMISSED:
-            raise ActionError("Authentication cancelled.")
+            raise Cancelled(CANCELLED)
         if code == _PKEXEC_NOT_AUTHORISED:
-            raise ActionError(
-                "Not authorised. Is your account in the wheel group, and is the "
-                "polkit policy installed?"
-            )
+            if command and not challenge_possible(command):
+                raise ActionError(NOT_ALLOWED)
+            raise Cancelled(CANCELLED_OR_REFUSED)
         detail = (stderr or "").strip().splitlines()
         raise ActionError(detail[-1] if detail else f"helper returned exit code {code}")
 
