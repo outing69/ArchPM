@@ -24,6 +24,28 @@ def system(cpu=5.0, mem_pct=50.0, cpu_temp=50.0, gpu_temp=0.0):
                         cpu_temp_c=cpu_temp, gpu=gpu)
 
 
+class HotThenStrain(unittest.TestCase):
+    def test_the_hot_line_leaves_with_the_heat_while_a_strain_builds(self):
+        w = vd.StrainWatch()
+        blender = [proc(10, "blender", cpu=800, app="Blender")]
+        self.assertEqual(w.update(system(cpu_temp=95), blender, 16).level, "hot")
+        first = w.update(system(cpu=50, cpu_temp=60), blender, 16)
+        self.assertEqual((first.level, first.text), ("calm", vd.CALM),
+                         "cooled down: the hot line goes at once, the strain has not held yet")
+        self.assertEqual(w.update(system(cpu=50, cpu_temp=60), blender, 16).level, "calm")
+        third = w.update(system(cpu=50, cpu_temp=60), blender, 16)
+        self.assertEqual((third.level, third.program), ("strain", "Blender"))
+
+    def test_hot_still_shows_at_once_and_calm_at_once(self):
+        w = vd.StrainWatch()
+        blender = [proc(10, "blender", cpu=800, app="Blender")]
+        for _ in range(vd.SUSTAIN):
+            w.update(system(cpu=50), blender, 16)
+        self.assertEqual(w.verdict.level, "strain")
+        self.assertEqual(w.update(system(cpu_temp=95), blender, 16).level, "hot")
+        self.assertEqual(w.update(system(), [], 16).level, "calm")
+
+
 class Candidate(unittest.TestCase):
     def test_calm_when_nothing_reaches_a_threshold(self):
         v = vd.candidate(system(), [proc(10, "brave", cpu=50, app="Brave")], 16)

@@ -115,7 +115,14 @@ class StrainWatch:
         if now.level in ("calm", "hot"):
             self._streak = 0
             self.verdict = now
-        elif now.level == self._last.level and now.program == self._last.program:
+            self._last = now
+            return self.verdict
+        if self.verdict.level == "hot":
+            # Hot is this sample's reading and no longer holds: the line is
+            # calm until the strain now building has held for SUSTAIN samples.
+            # (Through 0.2.53 the hot line stayed up for those samples.)
+            self.verdict = Verdict()
+        if now.level == self._last.level and now.program == self._last.program:
             self._streak += 1
             if self._streak >= SUSTAIN:
                 self.verdict = now
