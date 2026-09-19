@@ -158,6 +158,7 @@ class ProcModel(QAbstractItemModel):
         self._root = Node(None, None)
         self._nodes: dict[int, Node] = {}
         self._last: list[ProcSample] = []
+        self._alive: set[int] = set()            # rows of the latest update, groups and sections
         self.busy_until: dict[int, float] = {}   # pid -> monotonic deadline
         self._expanded: set[int] = set()         # pids whose row the view shows expanded
         self.steam_pid = 0                       # the Steam client, if it runs
@@ -432,6 +433,12 @@ class ProcModel(QAbstractItemModel):
         node = self._nodes.get(pid)
         return self.createIndex(node.row, 0, node) if node else QModelIndex()
 
+    def is_alive(self, pid: int) -> bool:
+        """Is this row in the update being applied (or the last one)? During
+        an update a row may be removed to be inserted again under another
+        parent; the view tells that from a process that is gone by this."""
+        return pid in self._alive
+
     def subtree_pids(self, pid: int) -> list[int]:
         """The process and all its descendants, deepest first (children before
         parents). Real pids only: a group row stands for its members."""
@@ -616,6 +623,7 @@ class ProcModel(QAbstractItemModel):
             self._group_of = {}
         if self.sectioned:
             incoming = self._with_sections(incoming)
+        self._alive = set(incoming)
 
         # 1. Remove what is gone, and what must move (its parent changed). A
         #    removed subtree may contain processes that still exist: they are
@@ -709,6 +717,7 @@ class ProcModel(QAbstractItemModel):
         self._expanded = set()
         self._section_of = {}
         self._group_of = {}
+        self._alive = set()
         self.endResetModel()
         if self._last:
             self.update(self._last)

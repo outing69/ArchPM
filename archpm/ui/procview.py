@@ -6,6 +6,7 @@ import time
 
 import psutil
 from PySide6.QtCore import (
+    QEvent,
     QItemSelectionModel,
     QModelIndex,
     QSettings,
@@ -196,10 +197,14 @@ class ProcessView(QWidget):
         self.history = history
         # The process whose history is shown, kept when its row disappears:
         # after a kill you want to see what it was doing, not whatever row Qt
-        # happens to make current next.
+        # happens to make current next. That hold (_frozen) ends when the
+        # user moves on, by mouse or by keyboard. A row that is only moved
+        # under another parent (the model removes and re-inserts it) is not
+        # gone: it is selected again where it lands (_rehome).
         self._pinned: tuple[ProcSample, list[int]] | None = None
         self._pending = None          # newest snapshot received while hidden
         self._frozen = False
+        self._rehome: int | None = None
         self.settings = QSettings("archpm", "ArchPM")
 
         outer = QVBoxLayout(self)
@@ -333,6 +338,7 @@ class ProcessView(QWidget):
         outer.addWidget(self.split, 1)
         self.table.selectionModel().currentRowChanged.connect(self._current_changed)
         self.table.pressed.connect(lambda _: self._unfreeze())
+        self.table.installEventFilter(self)     # the keyboard unfreezes as the mouse does
 
         # Collapsed by default, or a browser's twenty renderers bury everything.
         # The programs sit at the root (the model hoists them out from under
@@ -389,6 +395,12 @@ class ProcessView(QWidget):
         self._check_watches(snap)
         self._pending = None
         self.model.update(snap.procs)
+        if self._rehome is not None:
+            pid, self._rehome = self._rehome, None
+            idx = self.proxy.mapFromSource(self.model.index_for_pid(pid))
+            if idx.isValid():
+                flag = QItemSelectionModel.SelectionFlag
+                self.table.selectionModel().setCurrentIndex(idx, flag.ClearAndSelect | flag.Rows)
         self._expand_sections()
         if self.model.hierarchical and not self.model.frozen:
             if self.model.tree:
@@ -414,6 +426,15 @@ class ProcessView(QWidget):
     def _unfreeze(self) -> None:
         self._frozen = False
 
+    NAV_KEYS = (Qt.Key.Key_Up, Qt.Key.Key_Down, Qt.Key.Key_PageUp, Qt.Key.Key_PageDown,
+                Qt.Key.Key_Home, Qt.Key.Key_End)
+
+    def eventFilter(self, obj, event) -> bool:
+        if (obj is self.table and event.type() == QEvent.Type.KeyPress
+                and event.key() in self.NAV_KEYS):
+            self._unfreeze()      # the user moves on; the panel follows the cursor again
+        return super().eventFilter(obj, event)
+
     def _rows_going(self, parent: QModelIndex, first: int, last: int) -> None:
         if self._pinned is None or self._frozen:
             return
@@ -421,7 +442,10 @@ class ProcessView(QWidget):
         for row in range(first, last + 1):
             idx = self.model.index(row, 0, parent)
             if pinned_pid in self.model.subtree_pids(idx.data(PID_ROLE)):
-                self._frozen = True
+                if self.model.is_alive(pinned_pid):
+                    self._rehome = pinned_pid   # moved, not gone: selected again once back
+                else:
+                    self._frozen = True
                 return
 
     def _show_history(self) -> None:

@@ -11,7 +11,8 @@ import unittest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 try:
-    from PySide6.QtCore import QSettings
+    from PySide6.QtCore import QItemSelectionModel, QSettings, Qt
+    from PySide6.QtTest import QTest
     from PySide6.QtWidgets import QApplication
 except ImportError:                       # pragma: no cover
     QApplication = None
@@ -334,6 +335,79 @@ class Tooltip(unittest.TestCase):
             self.assertIn("…", tip, "cut short")
             self.assertLess(len(tip), 400)
         self.assertEqual(m.data(m.index(0, COL_CMD)), long_cmd, "the column keeps it all")
+
+
+@unittest.skipUnless(QApplication, "PySide6 not installed")
+class PinnedHistory(unittest.TestCase):
+    """The history panel stays on a process whose row vanished, until the
+    user moves on: by mouse, and (through 0.2.53 not) by keyboard. A row
+    that is only moved under another parent is not gone and stays selected."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.TemporaryDirectory()
+        for fmt in (QSettings.Format.NativeFormat, QSettings.Format.IniFormat):
+            QSettings.setPath(fmt, QSettings.Scope.UserScope, cls.tmp.name)
+        cls.app = QApplication.instance() or QApplication([])
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.tmp.cleanup()
+
+    def setUp(self):
+        from archpm.actions import UserBackend
+        from archpm.ui.history import ProcHistory
+        from archpm.ui.procview import ProcessView
+        self.view = ProcessView(8, UserBackend(), ProcHistory())
+        self.view.show()
+        self.view.set_mode("tree")
+        self.view.cb_all.setChecked(True)
+        self.feed(PROCS)
+
+    def feed(self, procs):
+        snap = Snapshot(system=SystemSample(), procs=procs)
+        self.view.history.update(procs)
+        self.view.update_view(snap)
+        self.app.processEvents()
+
+    def select(self, pid):
+        idx = self.view.proxy.mapFromSource(self.view.model.index_for_pid(pid))
+        self.assertTrue(idx.isValid(), f"pid {pid} not visible")
+        flag = QItemSelectionModel.SelectionFlag
+        self.view.table.selectionModel().setCurrentIndex(idx, flag.ClearAndSelect | flag.Rows)
+        self.app.processEvents()
+
+    def current_pid(self):
+        idx = self.view.table.selectionModel().currentIndex()
+        p = self.view.model.proc_at(self.view.proxy.mapToSource(idx)) if idx.isValid() else None
+        return p.pid if p else None
+
+    def test_the_keyboard_moves_on_after_the_selected_row_vanished(self):
+        self.select(5000)
+        self.assertEqual(self.view._pinned[0].pid, 5000)
+        self.feed([p for p in PROCS if p.pid != 5000])
+        self.assertTrue(self.view._frozen, "the killed process stays on the panel")
+        self.assertEqual(self.view._pinned[0].pid, 5000)
+        self.assertEqual(self.view.table.selectionModel().selectedRows(), [])
+        QTest.keyClick(self.view.table, Qt.Key.Key_Down)
+        self.app.processEvents()
+        self.assertFalse(self.view._frozen)
+        self.assertEqual(len(self.view.table.selectionModel().selectedRows()), 1)
+        self.assertEqual(self.view._pinned[0].pid, self.current_pid())
+        self.assertNotEqual(self.current_pid(), 5000)
+
+    def test_a_live_row_moved_under_another_parent_stays_selected(self):
+        self.view.search.setText("game")     # opens the way to the game
+        self.view.search.setText("")
+        self.select(4000)
+        self.assertEqual(self.view._pinned[0].pid, 4000)
+        adopted = [p for p in PROCS if p.pid != 3000]
+        adopted = [proc(4000, 2000, "game.exe") if p.pid == 4000 else p for p in adopted]
+        self.feed(adopted)          # reaper is gone; the game now hangs under steam
+        self.assertFalse(self.view._frozen, "moved, not gone")
+        self.assertEqual(self.current_pid(), 4000)
+        self.assertEqual(self.view._pinned[0].pid, 4000)
+        self.assertEqual(len(self.view.table.selectionModel().selectedRows()), 1)
 
 
 if __name__ == "__main__":
