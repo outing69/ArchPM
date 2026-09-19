@@ -149,7 +149,7 @@ class Escalation(unittest.TestCase):
             v = CleanupView(RootClient())
             v.scan = lambda: None
             v.items = [CleanupItem(id="journal", name="System logs", description="", size=1 << 20,
-                                   needs_root=True, helper_command="journal-vacuum")]
+                                   needs_root=True, helper_item="journal")]
             v._fill()
             v._checks[0].setChecked(True)
             v._clean()

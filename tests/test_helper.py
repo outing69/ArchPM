@@ -396,16 +396,31 @@ class MemoryCommands(unittest.TestCase):
 
 
 class CleanupCommands(unittest.TestCase):
-    """The two cleanup subcommands take nothing from the caller."""
+    """One cleanup subcommand, two fixed words, nothing else from the caller."""
 
-    def test_take_no_arguments(self):
-        for argv in (["paccache-clean", "-rk0"], ["paccache-clean", "/"],
-                     ["journal-vacuum", "--vacuum-size=0"], ["journal-vacuum", "x"]):
+    def test_only_the_two_words_and_nothing_else(self):
+        # no word, or an option: argparse refuses before the command exists
+        for argv in (["cleanup"], ["cleanup", "-rk0"], ["cleanup", "--vacuum-size=0"]):
             with self.subTest(argv=argv), self.assertRaises(SystemExit), \
                     redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
                 helper.main(argv)
+        # a word outside the two: a JSON refusal, and nothing runs
+        out = io.StringIO()
+        with redirect_stdout(out):
+            self.assertEqual(helper.main(["cleanup", "/"]), 1)
+        self.assertIn("cleanup takes pacman, journal", json.loads(out.getvalue())["error"])
+        calls = []
+        original, helper.run = helper.run, lambda *cmd, timeout=20: calls.append(cmd) or ""
+        try:
+            for word in ("x", "pacman;rm", "PACMAN", "journal "):
+                with self.subTest(word=word), self.assertRaises(helper.HelperError) as ctx:
+                    helper.cmd_cleanup(args(items=["pacman", word]))
+                self.assertIn("cleanup takes pacman, journal", str(ctx.exception))
+        finally:
+            helper.run = original
+        self.assertEqual(calls, [], "a bad word runs nothing, not even the good one")
 
-    def test_run_fixed_command_lines(self):
+    def test_runs_the_fixed_command_lines_once_each_in_one_call(self):
         calls = []
 
         def fake_run(*cmd, timeout=20):
@@ -413,13 +428,46 @@ class CleanupCommands(unittest.TestCase):
             return "done"
         original, helper.run = helper.run, fake_run
         try:
-            helper.cmd_paccache_clean(None)
-            helper.cmd_journal_vacuum(None)
+            reply = helper.cmd_cleanup(args(items=["journal", "pacman", "pacman"]))
         finally:
             helper.run = original
         self.assertEqual(calls, [("paccache", "-rk2"), ("journalctl", "--vacuum-size=100M")])
+        self.assertEqual(reply, {"done": {"pacman": "done", "journal": "done"}, "failed": {}})
 
+    def test_one_word_runs_one_command(self):
+        calls = []
+        original, helper.run = helper.run, lambda *cmd, timeout=20: calls.append(cmd) or ""
+        try:
+            reply = helper.cmd_cleanup(args(items=["journal"]))
+        finally:
+            helper.run = original
+        self.assertEqual(calls, [("journalctl", "--vacuum-size=100M")])
+        self.assertEqual(reply, {"done": {"journal": "nothing to do"}, "failed": {}})
 
+    def test_a_failure_of_one_does_not_stop_the_other(self):
+        def fake_run(*cmd, timeout=20):
+            if cmd[0] == "paccache":
+                raise helper.HelperError("paccache not found")
+            return "Vacuuming done, freed 300M"
+        original, helper.run = helper.run, fake_run
+        try:
+            reply = helper.cmd_cleanup(args(items=["pacman", "journal"]))
+            self.assertEqual(reply, {"done": {"journal": "Vacuuming done, freed 300M"},
+                                     "failed": {"pacman": "paccache not found"}})
+            with self.assertRaises(helper.HelperError) as ctx:
+                helper.cmd_cleanup(args(items=["pacman"]))
+            self.assertIn("paccache not found", str(ctx.exception))
+        finally:
+            helper.run = original
+
+    def test_the_old_subcommands_are_refused_with_a_hint(self):
+        for old, hint in (("paccache-clean", "cleanup pacman"),
+                          ("journal-vacuum", "cleanup journal")):
+            out = io.StringIO()
+            with redirect_stdout(out):
+                code = helper.main([old])
+            self.assertEqual(code, 1)
+            self.assertIn(hint, json.loads(out.getvalue())["error"])
 class FirewallCommand(unittest.TestCase):
     """One read-only subcommand: the tool's own status text, fixed argv,
     nothing from the caller, and never the raw nftables ruleset."""

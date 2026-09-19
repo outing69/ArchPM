@@ -387,7 +387,7 @@ for something you were already allowed to do.
 | Processes | raising priority, realtime disk priority, acting on other users' processes |
 | Your session's services | start/stop/restart the services of your own login session, through `systemctl --user` as you: no root involved |
 | Memory | swappiness, drop caches |
-| Cleanup | `paccache -rk2` and `journalctl --vacuum-size=100M`, fixed, no arguments |
+| Cleanup | one command, `cleanup`, with the fixed words `pacman` (runs `paccache -rk2`) and `journal` (runs `journalctl --vacuum-size=100M`); both together are one prompt |
 | Snapshots | `snapper list`, `snapper create` and `snapper delete` (or Timeshift's `--list`, `--create`, `--delete`), with a config name checked against `snapper list-configs`, a snapshot number that must exist, a description from a fixed character set, and a refusal to delete the last snapshot; never `rollback` or `--restore` |
 
 **System services are deliberately left out.** The helper no longer manages

@@ -62,7 +62,7 @@ The helper does **not** defend against:
   `auth_admin_keep`, which makes polkit remember a successful authentication
   for roughly five minutes; during that window any process in your session
   can run that read again without a new prompt, and nothing else: every
-  change (a signal, a priority, swappiness, the caches, the two cleanups,
+  change (a signal, a priority, swappiness, the caches, the cleanup,
   taking or deleting a snapshot) has `auth_admin` and asks every time, so a
   kept read never unlocks a change. If you prefer a prompt for the reads as
   well, there are two routes, depending on how you installed the root part:
@@ -143,14 +143,17 @@ an attacker: anything running as you can run `systemctl --user` itself.
 An old client that still sends `service` to the helper gets a JSON refusal and
 no command is run.
 
-## The two cleanup commands
+## The cleanup command
 
-`paccache-clean` runs `paccache -rk2` and `journal-vacuum` runs
-`journalctl --vacuum-size=100M`, exactly like that, with no argument from the
-caller: the subcommands accept none. They remove old package versions (the last
-two of each package are kept) and archived journal files beyond 100 MB. Nothing
-else on the Cleanup tab needs root; the user-level items are emptied by the GUI
-inside the user's own cache folders, symlinks never followed.
+`cleanup` takes one or two fixed words and nothing else: `pacman` runs
+`paccache -rk2`, `journal` runs `journalctl --vacuum-size=100M`, exactly like
+that, and any other word is refused before anything runs. The two together
+are one helper call and so one password prompt. They remove old package
+versions (the last two of each package are kept) and archived journal files
+beyond 100 MB. Nothing else on the Cleanup page needs root; the user-level
+items are emptied by the GUI inside the user's own cache folders, symlinks
+never followed. Through 0.2.51 these were two subcommands, `paccache-clean`
+and `journal-vacuum`, which the helper now refuses with a hint.
 
 ## The status file and the widgets
 

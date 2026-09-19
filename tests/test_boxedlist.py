@@ -425,18 +425,18 @@ class Pages(unittest.TestCase):
         v = CleanupView(RootClient())
         v.scan = lambda: None
         empty = CleanupItem(id="journal", name="System logs", description="", size=0,
-                            needs_root=True, helper_command="journal-vacuum")
+                            needs_root=True, helper_item="journal")
         text, colour = v._note_for(empty)
         self.assertEqual((text, colour), ("root · nothing to remove", "MUTED"))
         some = CleanupItem(id="journal", name="System logs", description="", size=1 << 20,
-                           needs_root=True, helper_command="journal-vacuum")
+                           needs_root=True, helper_item="journal")
         self.assertIn("asks for your password on Remove", v._note_for(some)[0])
         v.items = [empty, some]
         v._fill()
         rows = v.list.rows()
         self.assertFalse(rows[0].prefix.isEnabled(), "nothing to tick when there is nothing")
         self.assertEqual(rows[0].suffix[0].text(), "root · nothing to remove")
-        if v.items[1].helper_command and rows[1].prefix.isEnabled():
+        if v.items[1].helper_item and rows[1].prefix.isEnabled():
             self.assertIn("password", rows[1].suffix[0].text(), "and this one keeps its promise")
 
     def test_the_groups_control_sits_right_after_its_title(self):

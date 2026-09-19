@@ -3,8 +3,8 @@
 The first visit in a session explains what the page does and does not
 delete. Everything is listed with its size first; nothing is removed until
 the user ticks items, presses the button and confirms the list. The two root
-items ask for the password when they are removed, each through pkexec; no
-password is asked at page entry.
+items ask for the password when they are removed, together in one helper
+call so one prompt covers both; no password is asked at page entry.
 """
 from __future__ import annotations
 
@@ -248,7 +248,7 @@ class CleanupView(QWidget):
         for it in self.items:
             # a root item can be ticked as soon as the helper is installed; the
             # password comes at removal, through pkexec, not at page entry
-            usable = it.size > 0 and (not it.needs_root or (check().ready and it.helper_command))
+            usable = it.size > 0 and (not it.needs_root or (check().ready and it.helper_item))
             box = QCheckBox()
             box.setEnabled(bool(usable))
             box.setAccessibleName(f"Remove {it.name}")
@@ -261,7 +261,8 @@ class CleanupView(QWidget):
             size.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
             desc = it.description + (f"  {it.note}" if it.note else "")
             row = ListRow(it.name, desc, prefix=box, suffix=[note, size])
-            row.setToolTip("\n".join(str(p) for p in it.paths) or it.helper_command or desc)
+            where = f"root helper: cleanup {it.helper_item}" if it.helper_item else desc
+            row.setToolTip("\n".join(str(p) for p in it.paths) or where)
             if usable:
                 row.set_activatable(True)      # a click anywhere on the row ticks it
                 row.activated.connect(box.toggle)
@@ -312,6 +313,12 @@ class CleanupView(QWidget):
                         "of an earlier crash you might still want to look up "
                         "(<code>journalctl -b -1</code> shows the previous boot). If you are "
                         f"chasing a problem, keep them for now. {CANNOT_UNDO}</span>")
+        root_items = [i for i in sel if i.needs_root]
+        if len(root_items) == 2:
+            caution += ("<br><br>The package cache and the system logs need root: one "
+                        "password prompt covers both, they go as one root task.")
+        elif root_items:
+            caution += f"<br><br>{root_items[0].name} needs root: it asks for your password."
         answer = QMessageBox.question(
             self, "Remove these?",
             f"This frees about <b>{human(total)}</b> by emptying:<br><br>{names}{caution}"
@@ -341,21 +348,19 @@ class CleanupView(QWidget):
         self._next_root()
 
     def _next_root(self) -> None:
+        """The root items, all of them in one helper call: one password prompt."""
         if not self._queue:
-            self._say("Done.")
-            if self._thread is not None:
-                self._rescan_pending = True   # the worker is still winding down
-            else:
-                self.scan()
+            self._finish()
             return
-        item = self._queue.pop(0)
-        self._say(f"  → {item.name} (root)")
+        items, self._queue = self._queue, []
+        for item in items:
+            self._say(f"  → {item.name} (root)")
         self._proc = QProcess(self)
-        self._proc.finished.connect(lambda code, *_: self._root_done(item, code))
-        argv = self.client.argv(item.helper_command)
+        self._proc.finished.connect(lambda code, *_: self._root_done(items, code))
+        argv = self.client.argv("cleanup", *(i.helper_item for i in items))
         self._proc.start(argv[0], argv[1:])
 
-    def _root_done(self, item: CleanupItem, code: int) -> None:
+    def _root_done(self, items: list[CleanupItem], code: int) -> None:
         proc, self._proc = self._proc, None
         if proc is None:
             return
@@ -363,10 +368,24 @@ class CleanupView(QWidget):
         err = bytes(proc.readAllStandardError()).decode(errors="replace")
         try:
             result = self.client.parse(code, out, err)
-            self._say(f"  ✓ {item.name}: {next(iter(result.values()), 'ok')}")
         except ActionError as exc:
-            self._say(f"  ✗ {item.name}: {exc}")
-        self._next_root()
+            for item in items:
+                self._say(f"  ✗ {item.name}: {exc}")
+        else:
+            done, failed = result.get("done") or {}, result.get("failed") or {}
+            for item in items:
+                if item.helper_item in failed:
+                    self._say(f"  ✗ {item.name}: {failed[item.helper_item]}")
+                else:
+                    self._say(f"  ✓ {item.name}: {done.get(item.helper_item, 'ok')}")
+        self._finish()
+
+    def _finish(self) -> None:
+        self._say("Done.")
+        if self._thread is not None:
+            self._rescan_pending = True   # the worker is still winding down
+        else:
+            self.scan()
 
     def _say(self, text: str) -> None:
         self.log.appendPlainText(text)

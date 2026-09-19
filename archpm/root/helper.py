@@ -2,8 +2,8 @@
 """archpm-helper -- the only piece of ArchPM that runs as root.
 
 Invoked via pkexec, one action per call, and replies with JSON on stdout.
-Limited to process management, memory, two fixed cleanup commands (package
-cache, journal), filesystem snapshots (list, take, delete; never restore:
+Limited to process management, memory, one fixed cleanup command (the
+package cache, the journal, or both), filesystem snapshots (list, take, delete; never restore:
 that changes what the machine boots and stays outside ArchPM) and one look
 at the firewall's own status output (ufw's or firewalld's; it changes no
 rule and switches nothing on or off); GPU tuning
@@ -63,6 +63,8 @@ UNIT_SUFFIXES = (".service", ".socket", ".timer", ".path")
 REMOVED_COMMANDS = {
     "service": "the helper no longer manages services; ArchPM runs your own "
                "session's services through systemctl --user without root",
+    "paccache-clean": "use: cleanup pacman",
+    "journal-vacuum": "use: cleanup journal",
 }
 # Processes of system accounts (root, polkitd, dbus, ...) are never touched:
 # that is how you would kill logind or the display manager by pid, or renice
@@ -312,17 +314,38 @@ def cmd_drop_caches(args) -> dict:
     return {"dropped": level}
 
 
-# -- cleanup: fixed commands, nothing from the caller reaches them --------------
-def cmd_paccache_clean(_args) -> dict:
-    """Remove cached package versions beyond the last two of each package."""
-    out = run("paccache", "-rk2", timeout=120)
-    return {"paccache": out.splitlines()[-1] if out else "nothing to do"}
+# -- cleanup: one command, two fixed words, nothing else from the caller ------
+# "cleanup pacman", "cleanup journal" or "cleanup pacman journal": one polkit
+# prompt for both. Each word runs exactly its command line below.
+CLEANUP = {
+    "pacman": (("paccache", "-rk2"), 120),               # keep the last two of each package
+    "journal": (("journalctl", "--vacuum-size=100M"), 60),   # archived logs beyond 100 MB
+}
 
 
-def cmd_journal_vacuum(_args) -> dict:
-    """Shrink archived journal files to the most recent 100 MB."""
-    out = run("journalctl", "--vacuum-size=100M", timeout=60)
-    return {"journal": out.splitlines()[-1] if out else "nothing to do"}
+def cmd_cleanup(args) -> dict:
+    """Run the fixed command of each word given, each once, in the order of
+    CLEANUP. A word outside the two is refused before anything runs. The
+    reply names each word's last output line under "done", or its error
+    under "failed"; only when every word failed is the whole call an error."""
+    words = list(args.items)
+    for word in words:
+        if word not in CLEANUP:
+            raise HelperError(f"cleanup takes {', '.join(CLEANUP)}; not {word!r}")
+    done: dict[str, str] = {}
+    failed: dict[str, str] = {}
+    for word, (cmd, timeout) in CLEANUP.items():
+        if word not in words:
+            continue
+        try:
+            out = run(*cmd, timeout=timeout)
+        except HelperError as exc:
+            failed[word] = str(exc)
+            continue
+        done[word] = out.splitlines()[-1] if out else "nothing to do"
+    if failed and not done:
+        raise HelperError("; ".join(f"{word}: {why}" for word, why in failed.items()))
+    return {"done": done, "failed": failed}
 
 
 # -- snapshots: Snapper or Timeshift, fixed commands, one validated name and
@@ -516,8 +539,8 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("swappiness"); p.add_argument("value"); p.set_defaults(fn=cmd_swappiness)
     p = sub.add_parser("drop-caches"); p.add_argument("level", nargs="?", default="3")
     p.set_defaults(fn=cmd_drop_caches)
-    sub.add_parser("paccache-clean").set_defaults(fn=cmd_paccache_clean)
-    sub.add_parser("journal-vacuum").set_defaults(fn=cmd_journal_vacuum)
+    p = sub.add_parser("cleanup"); p.add_argument("items", nargs="+")
+    p.set_defaults(fn=cmd_cleanup)
     sub.add_parser("snapshots-list").set_defaults(fn=cmd_snapshots_list)
     p = sub.add_parser("snapshots-create"); p.add_argument("config")
     p.add_argument("description", nargs="?", default="")

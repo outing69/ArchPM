@@ -48,7 +48,7 @@ class NoPasswordAtEntry(unittest.TestCase):
     def test_root_rows_say_when_the_password_comes(self):
         v = self.view()
         pacman = CleanupItem(id="pacman", name="Package cache", description="", size=10 << 20,
-                             needs_root=True, helper_command="paccache-clean")
+                             needs_root=True, helper_item="pacman")
         text, _ = v._note_for(pacman)
         self.assertIn("asks for your password on Remove", text)
         missing = CleanupItem(id="pacman", name="Package cache", description="", size=0,
@@ -68,7 +68,7 @@ class NoPasswordAtEntry(unittest.TestCase):
             self.skipTest("root helper not installed here")
         v = self.view()
         v.items = [CleanupItem(id="journal", name="System logs", description="", size=5 << 20,
-                               needs_root=True, helper_command="journal-vacuum")]
+                               needs_root=True, helper_item="journal")]
         v._fill()
         box = v._checks[0]
         self.assertTrue(box.isEnabled())

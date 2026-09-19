@@ -90,15 +90,15 @@ class Scanning(unittest.TestCase):
         self.assertEqual(shader[0].name, "Shader cache: Cyberpunk 2077")
         self.assertEqual(shader[0].size, 4 << 20)
 
-    def test_root_items_are_estimates_and_use_fixed_helper_commands(self):
+    def test_root_items_are_estimates_and_use_fixed_helper_items(self):
         items = self.by_id()
-        if items["pacman"].helper_command:  # paccache is installed on this machine
+        if items["pacman"].helper_item:  # paccache is installed on this machine
             self.assertAlmostEqual(items["pacman"].size / (1 << 30), 1.5, places=2)
-            self.assertEqual(items["pacman"].helper_command, "paccache-clean")
+            self.assertEqual(items["pacman"].helper_item, "pacman")
             self.assertTrue(items["pacman"].needs_root)
         j = items["journal"]
         self.assertTrue(j.needs_root)
-        self.assertEqual(j.helper_command, "journal-vacuum")
+        self.assertEqual(j.helper_item, "journal")
         self.assertEqual(j.size, 150 << 20, "what is above the 100 MB we keep")
         self.assertFalse(j.paths, "root items have no paths for us to touch")
 

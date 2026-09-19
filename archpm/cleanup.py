@@ -4,8 +4,9 @@ Only things a program rebuilds on its own: per-program caches under
 ~/.cache, Steam's shader caches, thumbnails, the pacman package cache (kept
 to the last two versions of each package) and old journal logs. Never Proton
 prefixes, saves, settings or documents. The user-level items are removed by
-this module directly; the two that need root run through the helper as fixed
-commands with no arguments from us.
+this module directly; the two that need root go to the helper as one fixed
+command, `cleanup`, with one word per item and nothing else from us, so
+both together cost one password prompt.
 
 Deleting is restricted twice: an item's path must resolve inside one of the
 roots this module itself discovered, and symlinks are never followed. The
@@ -109,7 +110,7 @@ class CleanupItem:
     size: int                    # bytes; for root items an estimate
     needs_root: bool = False
     paths: list[Path] = field(default_factory=list)   # what gets emptied (user items)
-    helper_command: str = ""                          # helper subcommand (root items)
+    helper_item: str = ""            # the word the helper's cleanup command takes (root items)
     note: str = ""                                    # e.g. "close the program first"
 
     @property
@@ -263,14 +264,14 @@ class Cleaner:
                 id="pacman", name="Package cache (pacman)",
                 description="Old package versions in /var/cache/pacman/pkg. Needs the "
                             "'pacman-contrib' package for paccache before it can be cleaned.",
-                size=0, needs_root=True, helper_command="", note="install pacman-contrib")]
+                size=0, needs_root=True, helper_item="", note="install pacman-contrib")]
         count, size = parse_paccache_dry_run(self._run("paccache", "-dk2"))
         return [CleanupItem(
             id="pacman", name="Package cache (pacman)",
             description=f"Old package versions in /var/cache/pacman/pkg: {count} files that are "
                         "not among the last two versions of a package. Kept versions still "
                         "let you downgrade.",
-            size=size, needs_root=True, helper_command="paccache-clean")]
+            size=size, needs_root=True, helper_item="pacman")]
 
     def _scan_journal(self) -> list[CleanupItem]:
         size = parse_journal_usage(self._run("journalctl", "--disk-usage"))
@@ -280,7 +281,7 @@ class Cleaner:
             description=f"Removes, for good, every log older than the newest 100 MB, "
                         f"including those of an earlier crash you might still want to look "
                         f"up. The journal takes {human(size)}.",
-            size=max(0, size - keep), needs_root=True, helper_command="journal-vacuum")]
+            size=max(0, size - keep), needs_root=True, helper_item="journal")]
 
     # -- deleting (user items only) ----------------------------------------------
     def _allowed(self, path: Path) -> bool:
