@@ -3,6 +3,30 @@
 All notable changes, newest first. Versions are git tags on
 [github.com/outing69/ArchPM](https://github.com/outing69/ArchPM).
 
+## 0.2.53 (2026-09-19)
+
+- Cancelling the password prompt was reported as "Not authorised. Is your
+  account in the wheel group, and is the polkit policy installed?", and the
+  Cleanup page then said "Done." although nothing had run. pkexec exits 126
+  for a dismissed dialog and 127 for no authorisation, but KDE's agent
+  completes a cancelled dialog without an error, so polkit reports it as
+  not authorised and pkexec says 127 for a cancel and a wrong password
+  alike. The client now asks pkcheck, without interaction, whether a
+  prompt was possible for that command: if so, a 127 means the prompt was
+  cancelled or the password not accepted, and nothing was done; if polkit
+  would not have asked at all, it is the refusal it was, with the wheel
+  group hint. Every page that calls the helper says which: Cleanup logs
+  "cancelled: Package cache and System logs not touched" and no "Done.";
+  Snapshots says the list was not read, no snapshot was taken or none was
+  deleted; the firewall block says "Not read: cancelled, the firewall was
+  not read"; Root tasks logs "cancelled, nothing was changed"; the process
+  list stops asking for the rest of a selection and says "Cancelled:
+  nothing was done", with no failure box.
+- "Removing 1 item(s)" on the Cleanup page reads "Removing 1 item": the
+  third argument of plural(), the irregular plural, was dead by operator
+  precedence, so plural(2, "entry", "entries") gave "2 entrys". Fixed and
+  pinned by a test.
+
 ## 0.2.52 (2026-09-19)
 
 - One polkit action covered every root helper command, with the password
