@@ -552,13 +552,16 @@ PlasmoidItem {
             property string iconFallback
             property real value: 0        // the percentage, 0..100
             property real temp: 0         // degrees, 0 when unknown
+            property bool hasTemp: false  // a sensor reads it: RAM has none, nor a CPU without one
             property real limit: 100      // where the application calls it busy or full
             property bool isPct: true
             readonly property bool high: value >= limit
-            readonly property bool hot: temp >= root.hotC
+            readonly property bool hot: hasTemp && temp >= root.hotC
             readonly property color fill: high ? Kirigami.Theme.negativeTextColor : Kirigami.Theme.highlightColor
-            readonly property string label: root.panelMode === 1 ? root.deg(temp)
-                                            : root.panelMode === 2 ? root.pct(value) + " " + root.deg(temp)
+            // The temperature modes show the percentage where there is no
+            // temperature, never a made-up "0°".
+            readonly property string label: root.panelMode === 1 ? (hasTemp ? root.deg(temp) : root.pct(value))
+                                            : root.panelMode === 2 ? (hasTemp ? root.pct(value) + " " + root.deg(temp) : root.pct(value))
                                             : root.pct(value)
             columns: compact.vertical ? 1 : 3
             rowSpacing: compact.vertical ? 2 : 0
@@ -640,12 +643,14 @@ PlasmoidItem {
             Meter {
                 icon: "cpu"; iconFallback: "computer"
                 value: root.stats.cpu || 0; temp: root.stats.cpu_temp || 0; limit: root.busyPct
+                hasTemp: (root.stats.cpu_temp || 0) > 0
             }
             Meter {
                 visible: root.stats.gpu !== undefined
                 icon: "video-display"; iconFallback: "preferences-desktop-display"
                 value: root.stats.gpu ? root.stats.gpu.util : 0
                 temp: root.stats.gpu ? root.stats.gpu.temp : 0
+                hasTemp: root.stats.gpu ? (root.stats.gpu.temp || 0) > 0 : false
                 limit: root.gpuFullPct
             }
             Meter {

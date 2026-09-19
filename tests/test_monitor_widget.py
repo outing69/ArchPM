@@ -35,6 +35,24 @@ class CompactForm(unittest.TestCase):
         self.qml = MAIN.read_text()
         self.compact = block(self.qml, "compactRepresentation:")
 
+    def test_no_temperature_means_the_percentage_not_a_zero_degree(self):
+        """RAM has no sensor, and a CPU may have none: the temperature modes
+        then show the percentage. Through 0.2.53 they showed "0°"."""
+        meter = block(self.compact, "component Meter:")
+        label = re.search(r"readonly property string label:.*?root\.pct\(value\)\n", meter,
+                          re.S).group(0)
+        self.assertIn("hasTemp ? root.deg(temp) : root.pct(value)", label, "mode 1 falls back")
+        self.assertIn("hasTemp ? root.pct(value) + \" \" + root.deg(temp) : root.pct(value)", label)
+        self.assertIn("hasTemp && temp >= root.hotC", meter, "no sensor is never hot")
+        meters = [block(self.compact, "Meter {", i)
+                  for i in [m.start() for m in re.finditer(r"\n\s+Meter \{", self.compact)]]
+        self.assertEqual(len(meters), 3)
+        cpu, gpu, ram = meters
+        self.assertIn("hasTemp: (root.stats.cpu_temp || 0) > 0", cpu)
+        self.assertIn("hasTemp: root.stats.gpu ? (root.stats.gpu.temp || 0) > 0 : false", gpu)
+        self.assertNotIn("temp:", ram, "RAM sets no temperature and so keeps hasTemp false")
+        self.assertNotIn("hasTemp", ram)
+
     def test_the_limits_are_the_applications(self):
         self.assertEqual(prop(self.qml, "busyPct"), verdict.MACHINE_BUSY)
         self.assertEqual(prop(self.qml, "gpuFullPct"), verdict.GAME_GPU_FULL)
