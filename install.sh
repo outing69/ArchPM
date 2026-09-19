@@ -13,6 +13,10 @@ ROOT="$PWD"
 
 HELPER_DST=/usr/local/lib/archpm/archpm-helper
 POLICY_DST=/usr/share/polkit-1/actions/io.github.outing69.archpm.policy
+# The package (PKGBUILD) puts the helper here and the policy at POLICY_DST.
+# When this file exists the root part is the package's, and install.sh
+# neither installs over it nor removes it.
+PKG_HELPER=/usr/lib/archpm/archpm-helper
 UNIT_DST=~/.config/systemd/user/archpm-agent.service
 MENU_DST=~/.local/share/applications/archpm.desktop
 
@@ -109,8 +113,8 @@ install_user() {
 }
 
 install_root() {
-    if [ -f /usr/lib/archpm/archpm-helper ]; then
-        echo "ArchPM is installed as a package (/usr/lib/archpm/archpm-helper exists);"
+    if [ -f "$PKG_HELPER" ]; then
+        echo "ArchPM is installed as a package ($PKG_HELPER exists);"
         echo "the root part comes from the package, not from install.sh. Nothing to do."
         return
     fi
@@ -128,6 +132,20 @@ install_root() {
 }
 
 uninstall_root() {
+    if [ -f "$PKG_HELPER" ]; then
+        # The policy at POLICY_DST is the package's (pacman would not have
+        # installed over one of ours), so it stays; only a helper left in
+        # /usr/local by an earlier install.sh --root is ours to remove.
+        echo "ArchPM is installed as a package ($PKG_HELPER exists);"
+        echo "the root part is the package's and stays. Remove it with pacman -R archpm."
+        if [ -e "$HELPER_DST" ]; then
+            echo "→ a helper left behind by an earlier install.sh --root (asks for your password)"
+            sudo rm -f "$HELPER_DST"
+            sudo rmdir --ignore-fail-on-non-empty /usr/local/lib/archpm 2>/dev/null || true
+            echo "   $HELPER_DST removed"
+        fi
+        return
+    fi
     if [ ! -e "$HELPER_DST" ] && [ ! -e "$POLICY_DST" ]; then
         echo "root part: not installed, nothing to remove"
         return
