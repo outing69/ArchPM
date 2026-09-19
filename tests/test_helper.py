@@ -9,6 +9,7 @@ Run with:  python3 -m unittest discover tests
 """
 from __future__ import annotations
 
+import argparse
 import contextlib
 import io
 import json
@@ -147,7 +148,7 @@ class Pinning(unittest.TestCase):
 
     def test_change_checks_the_target_before_apply(self):
         original = helper.proc_units
-        helper.proc_units = lambda pid: {"systemd-journald.service"}
+        helper.proc_units = lambda pid: {"pipewire.service"}
         try:
             if not regular():
                 self.skipTest("test itself runs as a system account")
@@ -193,9 +194,9 @@ class Pinning(unittest.TestCase):
             helper.cmd_proc_signal(args(pid="2", signal="CONT"))
         self.assertIn("not a regular user", str(ctx.exception))
 
-    def test_nice_affinity_ionice_refuse_a_protected_unit(self):
+    def test_nice_affinity_ionice_refuse_a_session_piece(self):
         original = helper.proc_units
-        helper.proc_units = lambda pid: {"sddm.service"}
+        helper.proc_units = lambda pid: {"plasma-kwin_wayland.service"}
         try:
             if not regular():
                 self.skipTest("test itself runs as a system account")
@@ -206,7 +207,7 @@ class Pinning(unittest.TestCase):
                             ("ionice", args(pid=me, klass="3", value="0"))):
                 with self.subTest(name), self.assertRaises(helper.HelperError) as ctx:
                     getattr(helper, f"cmd_proc_{name}")(a)
-                self.assertIn("protected", str(ctx.exception))
+                self.assertIn("desktop session", str(ctx.exception))
             self.assertEqual(os.getpriority(os.PRIO_PROCESS, 0), before, "nothing was applied")
         finally:
             helper.proc_units = original
@@ -243,17 +244,48 @@ class ProcCommands(unittest.TestCase):
             self.skipTest("test itself runs as a system account")
         helper.check_target(os.getpid())  # must not raise
 
-    def test_target_check_refuses_protected_cgroup(self):
+    def test_target_check_refuses_a_session_piece_of_any_user(self):
+        """The units a root signal can reach are a regular user's session
+        pieces; root's daemons never get this far (the uid check refuses
+        them first). One of another user's session, one of the caller's own:
+        the same refusal."""
         original = helper.proc_units
-        helper.proc_units = lambda pid: {"sddm.service", "system.slice"}
         try:
             if not regular():
                 self.skipTest("test itself runs as a system account")
-            with self.assertRaises(helper.HelperError) as ctx:
-                helper.check_target(os.getpid())
-            self.assertIn("protected", str(ctx.exception))
+            for units in ({"user.slice", "user-1001.slice", "user@1001.service",
+                           "plasma-plasmashell.service"},
+                          {"user@1000.service", "dbus-broker.service"},
+                          {"pipewire-pulse.socket"}, {"xdg-desktop-portal-kde.service"}):
+                helper.proc_units = lambda pid, u=units: u
+                with self.subTest(units=sorted(units)), \
+                        self.assertRaises(helper.HelperError) as ctx:
+                    helper.check_target(os.getpid())
+                self.assertIn("desktop session", str(ctx.exception))
+            # a program launched from the desktop, and a dbus-activated one, are not pieces
+            for units in ({"user@1000.service", "app-brave\\x2dbrowser@1.service"},
+                          {"dbus-:1.2-org.kde.kwalletd6@0.service"}, {"session-2.scope"}):
+                helper.proc_units = lambda pid, u=units: u
+                with self.subTest(units=sorted(units)):
+                    helper.check_target(os.getpid())   # must not raise
         finally:
             helper.proc_units = original
+
+    def test_session_pieces_are_the_gui_list_and_match_the_same_way(self):
+        """The helper cannot import archpm.session, so this pins the copy."""
+        from archpm import session
+        self.assertEqual(helper.SESSION_PIECES, tuple(session.SESSION))
+        self.assertEqual(helper.UNIT_SUFFIXES, session.UNIT_SUFFIXES)
+        units = ["plasma-plasmashell.service", "plasma-kwin_wayland.service", "kwin_x11.service",
+                 "plasma-ksmserver.service", "dbus-broker.service", "dbus.socket",
+                 "dbus-:1.2-org.kde.kwalletd6@0.service", "pipewire.service",
+                 "pipewire-pulse.socket", "wireplumber.service", "xdg-desktop-portal.service",
+                 "xdg-desktop-portal-kde.service", "app-brave\\x2dbrowser@1.service",
+                 "app-org.kde.konsole-1234.scope", "sddm.service", "user@1000.service",
+                 "session-2.scope", "init.scope", "kwinner.service", "dbusx.service"]
+        for unit in units:
+            with self.subTest(unit=unit):
+                self.assertEqual(bool(helper.session_piece(unit)), bool(session.unit_loss(unit)))
 
     def test_affinity_rejects_empty_and_out_of_range_cores(self):
         with self.assertRaises(helper.HelperError):
@@ -295,10 +327,60 @@ class ServiceCommandRemoved(unittest.TestCase):
             helper.build_parser().parse_args(["service", "restart", "sshd"])
 
     def test_service_machinery_is_gone_but_signal_protection_stays(self):
-        for name in ("cmd_service", "unit_names", "DENIED_UNITS", "SERVICE_ACTIONS", "UNIT_RE"):
+        for name in ("cmd_service", "unit_names", "DENIED_UNITS", "SERVICE_ACTIONS", "UNIT_RE",
+                     "PROTECTED_UNITS"):
             self.assertFalse(hasattr(helper, name), name)
-        self.assertIn("sddm.service", helper.PROTECTED_UNITS)
-        self.assertIn("dbus.service", helper.PROTECTED_UNITS)
+        self.assertEqual(helper.session_piece("plasma-kwin_wayland.service"), "kwin")
+        self.assertEqual(helper.session_piece("dbus-broker.service"), "dbus")
+
+
+class PolkitPolicy(unittest.TestCase):
+    """One polkit action per subcommand, matched on argv1: the reads keep,
+    the changes ask every time, and nothing is a catch-all."""
+
+    READS = {"snapshots-list", "firewall-status"}
+
+    def actions(self):
+        import xml.etree.ElementTree as ET
+        root = ET.parse(os.path.join(os.path.dirname(__file__), "..", "polkit",
+                                     "io.github.outing69.archpm.policy")).getroot()
+        out = {}
+        for a in root.findall("action"):
+            notes = {n.get("key"): n.text for n in a.findall("annotate")}
+            out[a.get("id")] = (notes, a.find("defaults/allow_active").text,
+                                a.find("defaults/allow_inactive").text,
+                                a.find("defaults/allow_any").text)
+        return out
+
+    def test_every_subcommand_but_status_has_its_own_action(self):
+        sub = build_parser_commands()
+        self.assertIn("status", sub)
+        want = {f"io.github.outing69.archpm.helper.{cmd}" for cmd in sub if cmd != "status"}
+        self.assertEqual(set(self.actions()), want)
+
+    def test_each_action_is_pinned_to_the_helper_and_its_own_argv1(self):
+        for action_id, (notes, *_rest) in self.actions().items():
+            with self.subTest(action=action_id):
+                self.assertEqual(notes.get("org.freedesktop.policykit.exec.path"), "@HELPER@")
+                self.assertEqual(notes.get("org.freedesktop.policykit.exec.argv1"),
+                                 action_id.rsplit(".", 1)[1])
+                self.assertEqual(notes.get("org.freedesktop.policykit.exec.allow_gui"), "true")
+
+    def test_reads_keep_and_changes_ask_every_time(self):
+        for action_id, (_notes, active, inactive, any_) in self.actions().items():
+            cmd = action_id.rsplit(".", 1)[1]
+            with self.subTest(action=cmd):
+                self.assertEqual(active, "auth_admin_keep" if cmd in self.READS else "auth_admin")
+                self.assertEqual((inactive, any_), ("auth_admin", "auth_admin"))
+
+
+def build_parser_commands() -> set[str]:
+    sub = next(a for a in build_parser_actions() if isinstance(a, argparse._SubParsersAction))
+    return set(sub.choices)
+
+
+def build_parser_actions():
+    return helper.build_parser()._actions
 
 
 class MemoryCommands(unittest.TestCase):

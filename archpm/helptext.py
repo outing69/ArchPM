@@ -91,7 +91,7 @@ GLOSSARY: tuple[Section, ...] = (
              "Whose process it is. Almost everything you see is yours; root owns the "
              "system's services and other names belong to services that run under their "
              "own account (for example \"nobody\" or \"systemd-network\"). ArchPM can only "
-             "act on your own processes unless you unlock root.",
+             "act on your own processes unless you enable root actions under Root tasks.",
              "Processes page, User column"),
         Term("Show all processes",
              "Off, the list shows your own programs (anything with a menu entry or a Steam "
@@ -249,7 +249,10 @@ GLOSSARY: tuple[Section, ...] = (
         Term("Root",
              "The administrator account. Most of ArchPM works without it: your own "
              "processes, raising nice, affinity, your own session's services. Lowering "
-             "nice, other users' processes, memory settings and the two cleanup items need it.",
+             "nice, other users' processes, memory settings, the two cleanup items, taking "
+             "and deleting snapshots, and on some machines reading the snapshot list and "
+             "the firewall need it. Every change asks for your password; the two reads "
+             "keep it for a few minutes.",
              "Root tasks button"),
         Term("pkexec and polkit",
              "The standard way a desktop program asks for admin rights: polkit shows the "

@@ -40,24 +40,20 @@ class NoPasswordAtEntry(unittest.TestCase):
     def test_first_visit_starts_no_pkexec(self):
         v = self.view()
         v._first_visit = lambda: True    # the user pressed "I understand"
-        calls = []
-        v._authenticate = lambda: calls.append("pkexec")
         v._first_visit_flow()
         self.assertTrue(v._acknowledged)
-        self.assertEqual(calls, [], "the scan needs no root, so no prompt at entry")
-        self.assertIsNone(v._proc)
+        self.assertIsNone(v._proc, "the scan needs no root, so no pkexec at entry")
+        self.assertFalse(hasattr(v, "_authenticate"), "no pre-authentication exists any more")
 
     def test_root_rows_say_when_the_password_comes(self):
         v = self.view()
         pacman = CleanupItem(id="pacman", name="Package cache", description="", size=10 << 20,
                              needs_root=True, helper_command="paccache-clean")
-        text, _ = v._note_for(pacman, root_ok=False)
+        text, _ = v._note_for(pacman)
         self.assertIn("asks for your password on Remove", text)
-        text, _ = v._note_for(pacman, root_ok=True)
-        self.assertIn("unlocked", text)
         missing = CleanupItem(id="pacman", name="Package cache", description="", size=0,
                               needs_root=True, note="install pacman-contrib")
-        self.assertIn("install pacman-contrib", v._note_for(missing, root_ok=False)[0])
+        self.assertIn("install pacman-contrib", v._note_for(missing)[0])
 
     def test_the_page_says_which_parts_need_root(self):
         from PySide6.QtWidgets import QLabel
@@ -78,7 +74,7 @@ class NoPasswordAtEntry(unittest.TestCase):
         self.assertTrue(box.isEnabled())
         box.toggle()
         self.assertEqual([i.id for i in v._selected()], ["journal"])
-        self.assertFalse(v.client.authenticated, "and no password was asked for it")
+        self.assertFalse(hasattr(v.client, "authenticated"), "the client keeps no lock state")
 
 
 if __name__ == "__main__":

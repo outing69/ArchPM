@@ -5,19 +5,187 @@
 <policyconfig>
   <vendor>ArchPM</vendor>
 
-  <action id="io.github.outing69.archpm.helper.run">
-    <description>Manage processes and memory with ArchPM</description>
-    <message>Authentication is required to give a process more priority than a normal user may, to act on processes of other users, to change how eagerly the system uses swap and free its caches, to remove old package versions and old logs, to list, take and delete filesystem snapshots, and to read the firewall's state.</message>
+  <!-- One action per helper subcommand, matched by pkexec on the program's
+       first argument (org.freedesktop.policykit.exec.argv1). The two reads
+       keep a successful authentication for about five minutes
+       (auth_admin_keep); every change asks again (auth_admin), so reading
+       the firewall never unlocks deleting a snapshot. pkexec takes the first
+       action whose path and argv1 match and has no notion of a fallback, so
+       every subcommand is listed and none is a catch-all; a subcommand that
+       is not listed falls to polkit's own org.freedesktop.policykit.exec,
+       which asks every time as well. A subcommand added to the helper needs
+       an action here (tests/test_helper.py pins the two lists equal).
+
+       @HELPER@ is filled in at install time: /usr/lib/archpm/archpm-helper by
+       the package, /usr/local/lib/archpm/archpm-helper by install.sh -->
+
+  <!-- reads: kept for a few minutes -->
+  <action id="io.github.outing69.archpm.helper.snapshots-list">
+    <description>ArchPM: snapshots-list</description>
+    <message>Authentication is required to list the filesystem snapshots.</message>
     <icon_name>utilities-system-monitor</icon_name>
     <defaults>
       <allow_any>auth_admin</allow_any>
       <allow_inactive>auth_admin</allow_inactive>
-      <!-- keep: after entering it once the session stays valid for ~5 minutes -->
       <allow_active>auth_admin_keep</allow_active>
     </defaults>
-    <!-- @HELPER@ is filled in at install time: /usr/lib/archpm/archpm-helper by the package,
-         /usr/local/lib/archpm/archpm-helper by install.sh -->
     <annotate key="org.freedesktop.policykit.exec.path">@HELPER@</annotate>
+    <annotate key="org.freedesktop.policykit.exec.argv1">snapshots-list</annotate>
+    <annotate key="org.freedesktop.policykit.exec.allow_gui">true</annotate>
+  </action>
+
+  <action id="io.github.outing69.archpm.helper.firewall-status">
+    <description>ArchPM: firewall-status</description>
+    <message>Authentication is required to read the firewall's state.</message>
+    <icon_name>utilities-system-monitor</icon_name>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin_keep</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">@HELPER@</annotate>
+    <annotate key="org.freedesktop.policykit.exec.argv1">firewall-status</annotate>
+    <annotate key="org.freedesktop.policykit.exec.allow_gui">true</annotate>
+  </action>
+
+  <!-- changes: a password every time -->
+  <action id="io.github.outing69.archpm.helper.proc-nice">
+    <description>ArchPM: proc-nice</description>
+    <message>Authentication is required to give a process more priority than a normal user may, or to change the priority of another user's process.</message>
+    <icon_name>utilities-system-monitor</icon_name>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">@HELPER@</annotate>
+    <annotate key="org.freedesktop.policykit.exec.argv1">proc-nice</annotate>
+    <annotate key="org.freedesktop.policykit.exec.allow_gui">true</annotate>
+  </action>
+
+  <action id="io.github.outing69.archpm.helper.proc-signal">
+    <description>ArchPM: proc-signal</description>
+    <message>Authentication is required to end, pause or resume another user's process.</message>
+    <icon_name>utilities-system-monitor</icon_name>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">@HELPER@</annotate>
+    <annotate key="org.freedesktop.policykit.exec.argv1">proc-signal</annotate>
+    <annotate key="org.freedesktop.policykit.exec.allow_gui">true</annotate>
+  </action>
+
+  <action id="io.github.outing69.archpm.helper.proc-affinity">
+    <description>ArchPM: proc-affinity</description>
+    <message>Authentication is required to change which processor cores another user's process may use.</message>
+    <icon_name>utilities-system-monitor</icon_name>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">@HELPER@</annotate>
+    <annotate key="org.freedesktop.policykit.exec.argv1">proc-affinity</annotate>
+    <annotate key="org.freedesktop.policykit.exec.allow_gui">true</annotate>
+  </action>
+
+  <action id="io.github.outing69.archpm.helper.proc-ionice">
+    <description>ArchPM: proc-ionice</description>
+    <message>Authentication is required to give a process a realtime disk priority, or to change the disk priority of another user's process.</message>
+    <icon_name>utilities-system-monitor</icon_name>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">@HELPER@</annotate>
+    <annotate key="org.freedesktop.policykit.exec.argv1">proc-ionice</annotate>
+    <annotate key="org.freedesktop.policykit.exec.allow_gui">true</annotate>
+  </action>
+
+  <action id="io.github.outing69.archpm.helper.swappiness">
+    <description>ArchPM: swappiness</description>
+    <message>Authentication is required to change how eagerly the system uses swap.</message>
+    <icon_name>utilities-system-monitor</icon_name>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">@HELPER@</annotate>
+    <annotate key="org.freedesktop.policykit.exec.argv1">swappiness</annotate>
+    <annotate key="org.freedesktop.policykit.exec.allow_gui">true</annotate>
+  </action>
+
+  <action id="io.github.outing69.archpm.helper.drop-caches">
+    <description>ArchPM: drop-caches</description>
+    <message>Authentication is required to free the system's caches.</message>
+    <icon_name>utilities-system-monitor</icon_name>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">@HELPER@</annotate>
+    <annotate key="org.freedesktop.policykit.exec.argv1">drop-caches</annotate>
+    <annotate key="org.freedesktop.policykit.exec.allow_gui">true</annotate>
+  </action>
+
+  <action id="io.github.outing69.archpm.helper.paccache-clean">
+    <description>ArchPM: paccache-clean</description>
+    <message>Authentication is required to remove old package versions from the package cache.</message>
+    <icon_name>utilities-system-monitor</icon_name>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">@HELPER@</annotate>
+    <annotate key="org.freedesktop.policykit.exec.argv1">paccache-clean</annotate>
+    <annotate key="org.freedesktop.policykit.exec.allow_gui">true</annotate>
+  </action>
+
+  <action id="io.github.outing69.archpm.helper.journal-vacuum">
+    <description>ArchPM: journal-vacuum</description>
+    <message>Authentication is required to remove old system logs.</message>
+    <icon_name>utilities-system-monitor</icon_name>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">@HELPER@</annotate>
+    <annotate key="org.freedesktop.policykit.exec.argv1">journal-vacuum</annotate>
+    <annotate key="org.freedesktop.policykit.exec.allow_gui">true</annotate>
+  </action>
+
+  <action id="io.github.outing69.archpm.helper.snapshots-create">
+    <description>ArchPM: snapshots-create</description>
+    <message>Authentication is required to take a filesystem snapshot.</message>
+    <icon_name>utilities-system-monitor</icon_name>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">@HELPER@</annotate>
+    <annotate key="org.freedesktop.policykit.exec.argv1">snapshots-create</annotate>
+    <annotate key="org.freedesktop.policykit.exec.allow_gui">true</annotate>
+  </action>
+
+  <action id="io.github.outing69.archpm.helper.snapshots-delete">
+    <description>ArchPM: snapshots-delete</description>
+    <message>Authentication is required to delete a filesystem snapshot.</message>
+    <icon_name>utilities-system-monitor</icon_name>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">@HELPER@</annotate>
+    <annotate key="org.freedesktop.policykit.exec.argv1">snapshots-delete</annotate>
     <annotate key="org.freedesktop.policykit.exec.allow_gui">true</annotate>
   </action>
 

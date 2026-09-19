@@ -24,7 +24,10 @@ _HELPER_CANDIDATES = (
 )
 HELPER = next((p for p in _HELPER_CANDIDATES if p.is_file()), _HELPER_CANDIDATES[1])
 POLICY = Path("/usr/share/polkit-1/actions/io.github.outing69.archpm.policy")
-ACTION_ID = "io.github.outing69.archpm.helper.run"
+# One polkit action per helper subcommand: ACTION_PREFIX + the subcommand.
+# The two reads (snapshots-list, firewall-status) keep an authentication for
+# a few minutes; every change asks for the password again.
+ACTION_PREFIX = "io.github.outing69.archpm.helper."
 
 # pkexec exit codes that do not come from the helper itself
 _PKEXEC_DISMISSED = 126
@@ -61,10 +64,8 @@ def check() -> RootStatus:
 
 
 class RootClient:
-    """Calls the helper; remembers whether we have ever authenticated successfully."""
-
-    def __init__(self) -> None:
-        self.authenticated = False
+    """Calls the helper. It keeps no notion of being "unlocked": polkit keeps
+    an authentication only for the two reads, and a change asks every time."""
 
     def argv(self, *args: str, elevated: bool = True) -> list[str]:
         cmd = [str(HELPER), *args]
@@ -86,10 +87,12 @@ class RootClient:
             raise ActionError("The helper did not respond in time.") from None
         except OSError as exc:
             raise ActionError(str(exc)) from None
-        return self.parse(proc.returncode, proc.stdout, proc.stderr, elevated=elevated)
+        return self.parse(proc.returncode, proc.stdout, proc.stderr)
 
-    def parse(self, code: int, stdout: str, stderr: str, elevated: bool = True) -> dict:
-        """Also used by the asynchronous QProcess variant in the UI."""
+    @staticmethod
+    def parse(code: int, stdout: str, stderr: str) -> dict:
+        """The helper's reply, or pkexec's exit code when there is none. Also
+        used by the asynchronous QProcess variant in the UI."""
         text = (stdout or "").strip()
         if text:
             try:
@@ -98,8 +101,6 @@ class RootClient:
                 payload = None
             if isinstance(payload, dict) and "ok" in payload:
                 if payload["ok"]:
-                    if elevated:
-                        self.authenticated = True
                     return payload.get("result") or {}
                 raise ActionError(payload.get("error") or "unknown error")
 
@@ -116,7 +117,7 @@ class RootClient:
     # -- convenience methods -----------------------------------------------
     @staticmethod
     def status() -> dict:
-        """Current GPU limits and swappiness.
+        """The helper's status: its uid and the current swappiness.
 
         Reading requires no privileges, so we do it in-process with the local
         copy of the helper. That way the panel fills in its controls even when

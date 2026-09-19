@@ -15,11 +15,18 @@ installed from a checkout) and must not be able to load anything from a
 directory a regular user can write to.
 
 Everything that comes in is validated: fixed subcommands, numeric bounds, a
-fixed character set for a snapshot's description, and
-one target check for every process command (signal, nice, affinity, IO class):
-only a regular user's process, never one inside a unit your session or the
-system would collapse without, and pinned by a pidfd so a recycled pid cannot
-become the target. A shell is never started.
+fixed character set for a snapshot's description, and one target check for
+every process command (signal, nice, affinity, IO class): only a regular
+user's process, which is what keeps root's and the system accounts' daemons
+(logind, journald, the session bus, the display manager) out of reach; never
+a piece a desktop session runs on (plasmashell, kwin, pipewire, ...), which
+do run as a regular user and are the ones a root signal could otherwise
+reach; and pinned by a pidfd so a recycled pid cannot become the target. A
+shell is never started.
+
+polkit matches one action per subcommand on the first argument (see
+polkit/io.github.outing69.archpm.policy): the two reads keep an
+authentication for a few minutes, every change asks again.
 """
 from __future__ import annotations
 
@@ -38,18 +45,19 @@ PATH = "/usr/bin:/usr/sbin:/bin:/sbin"
 ALLOWED_SIGNALS = {"TERM", "KILL", "STOP", "CONT", "HUP", "INT", "USR1", "USR2"}
 INT_RE = re.compile(r"-?[0-9]{1,10}")
 
-# Units your graphical session or the system cannot live without. A process
-# inside one of these cgroups is never signalled, whatever the caller says.
-PROTECTED_UNITS = {
-    "dbus.service", "dbus-broker.service", "dbus.socket",
-    "systemd-logind.service", "systemd-logind-varlink.socket",
-    "systemd-journald.service", "systemd-journald.socket",
-    "systemd-journald-dev-log.socket", "systemd-journald-audit.socket",
-    "systemd-udevd.service", "systemd-udevd-control.socket", "systemd-udevd-kernel.socket",
-    "polkit.service", "systemd-oomd.service", "systemd-oomd.socket",
-    "display-manager.service", "sddm.service", "gdm.service", "lightdm.service",
-    "ly.service", "greetd.service", "lxdm.service", "xdm.service",
-}
+# The pieces a desktop session runs on, by the name of their unit under the
+# user's own service manager: plasma-plasmashell.service,
+# plasma-kwin_wayland.service, dbus-broker.service, pipewire-pulse.socket,
+# xdg-desktop-portal-kde.service and so on. They run as a regular user, so
+# the uid check below lets them through; this list is what refuses them,
+# whoever's session it is. Root's and the system's own daemons (logind,
+# journald, the system bus, the display manager) need no list: they run as
+# root or a system account and the uid check refuses them first.
+# The same seven names as archpm/session.py's SESSION, matched the same way;
+# this file may import nothing from the package, so a test pins them equal.
+SESSION_PIECES = ("plasmashell", "kwin", "ksmserver", "dbus", "pipewire", "wireplumber",
+                  "xdg-desktop-portal")
+UNIT_SUFFIXES = (".service", ".socket", ".timer", ".path")
 # Subcommands that used to exist. Refused explicitly so an old client gets a
 # JSON error it understands instead of argparse usage text.
 REMOVED_COMMANDS = {
@@ -58,7 +66,8 @@ REMOVED_COMMANDS = {
 }
 # Processes of system accounts (root, polkitd, dbus, ...) are never touched:
 # that is how you would kill logind or the display manager by pid, or renice
-# journald, and bypass the unit protection above. A regular user is what
+# journald. This bound guards the system, the list above guards a session.
+# A regular user is what
 # /etc/login.defs calls UID_MIN to UID_MAX, 1000 to 60000 on Arch and most
 # distributions. Above that range sit nobody (65534) and systemd's DynamicUser
 # accounts (61184 to 65519), and neither is a person whose processes the helper
@@ -153,6 +162,26 @@ def proc_units(pid: int) -> set[str]:
         return set()
 
 
+def session_piece(unit: str) -> str:
+    """Which piece of a desktop session a unit name is, or "". The rule of
+    archpm/session.py's unit_loss: the suffix off, Plasma's "plasma-" prefix
+    off, a dbus-activated program's unit (dbus-:1.2-...@0.service) is that
+    program and not the bus, then the name itself or a "-" or "_" variant
+    (kwin_wayland, pipewire-pulse, xdg-desktop-portal-kde)."""
+    base = unit
+    for suffix in UNIT_SUFFIXES:
+        if base.endswith(suffix):
+            base = base[:-len(suffix)]
+            break
+    if base.startswith("dbus-:"):
+        return ""
+    base = base.removeprefix("plasma-")
+    for key in SESSION_PIECES:
+        if base == key or base.startswith(key + "-") or base.startswith(key + "_"):
+            return key
+    return ""
+
+
 def check_target(pid: int) -> None:
     """Refuse pids the helper must never touch, whatever the caller says. The
     same rule for a signal, a nice value, an affinity mask and an IO class."""
@@ -163,9 +192,13 @@ def check_target(pid: int) -> None:
             f"process {pid} runs as uid {uid}, which is not a regular user ({lo} to {hi}); "
             "the helper only acts on processes of regular users"
         )
-    hit = proc_units(pid) & PROTECTED_UNITS
-    if hit:
-        raise HelperError(f"process {pid} belongs to {sorted(hit)[0]}, which is protected")
+    for unit in sorted(proc_units(pid)):
+        piece = session_piece(unit)
+        if piece:
+            raise HelperError(
+                f"process {pid} belongs to {unit}, a piece a desktop session runs on "
+                f"({piece}); the helper never touches those, in any user's session"
+            )
 
 
 def pin(pid: int) -> int:
@@ -465,6 +498,8 @@ def cmd_status(_args) -> dict:
 
 
 def build_parser() -> argparse.ArgumentParser:
+    # Every subcommand but "status" (never run through pkexec) has a polkit
+    # action of its own, matched on this word; see the policy file.
     ap = argparse.ArgumentParser(prog="archpm-helper", description="ArchPM root helper")
     sub = ap.add_subparsers(dest="cmd", required=True)
 

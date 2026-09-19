@@ -27,11 +27,19 @@ session** and treats every argument as hostile. It defends against:
     a regular user: `UID_MIN` to `UID_MAX`, 1000 to 60000 on Arch and most
     distributions. System accounts below that range are refused, and so are
     `nobody` (65534) and systemd's `DynamicUser` accounts (61184 to 65519)
-    above it. And it must not sit inside a protected unit's cgroup (dbus,
-    logind, journald, udev, polkit, oomd, the common display managers and
-    their sockets). So root daemons, polkitd, dbus, the display manager and
-    their children cannot be signalled, reniced, pinned to a core or given a
-    realtime IO class by pid at all.
+    above it. That bound alone is what keeps root's and the system accounts'
+    daemons out of reach: logind, journald, the system bus, polkitd, the
+    display manager and their children cannot be signalled, reniced, pinned
+    to a core or given a realtime IO class by pid at all. What a root signal
+    can reach is a regular user's process, and among those the pieces a
+    desktop session runs on (plasmashell, kwin, the session manager, the
+    session bus, pipewire, wireplumber, the desktop portal), so the target
+    must not sit in one of their units either, in any user's session. The
+    helper matches the same seven names, the same way, as the guard in
+    `archpm/session.py`; it may import nothing from the package, so a test
+    pins the two equal. Through 0.2.51 the helper carried a list of system
+    units instead (dbus, logind, journald, the display managers), which the
+    uid bound had already refused, and knew nothing of a session's pieces.
   - Every command pins the target with a pidfd before it looks at who it is. A
     signal is delivered through that pidfd, so a pid recycled mid-call cannot
     receive it. Nice, affinity and IO class have to address a pid, so after
@@ -47,16 +55,20 @@ session** and treats every argument as hostile. It defends against:
 
 The helper does **not** defend against:
 
-- A caller who has already authenticated. The policy sets `allow_active` to
+- A caller who has already authenticated for one of the two reads. The
+  policy holds one action per helper command, matched by pkexec on the
+  command word (`org.freedesktop.policykit.exec.argv1`). The two reads,
+  `snapshots-list` and `firewall-status`, set `allow_active` to
   `auth_admin_keep`, which makes polkit remember a successful authentication
-  for roughly five minutes. During that window any process in your session can
-  call the helper without a new prompt. This retention is a property of that
-  setting, not of the action, which is why the password prompt itself does not
-  mention it. If you prefer a prompt every time, there are two routes,
-  depending on how you installed the root part:
+  for roughly five minutes; during that window any process in your session
+  can run that read again without a new prompt, and nothing else: every
+  change (a signal, a priority, swappiness, the caches, the two cleanups,
+  taking or deleting a snapshot) has `auth_admin` and asks every time, so a
+  kept read never unlocks a change. If you prefer a prompt for the reads as
+  well, there are two routes, depending on how you installed the root part:
   - **Manual install (`install.sh`)**: change `auth_admin_keep` to `auth_admin`
-    in `polkit/io.github.outing69.archpm.policy` and reinstall with
-    `./install.sh --root`.
+    for the two read actions in `polkit/io.github.outing69.archpm.policy` and
+    reinstall with `./install.sh --root`.
   - **Package**: do not edit the packaged policy. Pacman never overwrites a
     file it owns that you have edited; on an update it writes the new version
     as a `.pacnew` next to it and leaves your edit in place until you merge
@@ -65,10 +77,10 @@ The helper does **not** defend against:
     `/etc/polkit-1/rules.d/49-archpm.rules` containing:
 
     ```js
-    // Ask for the administrator password on every ArchPM root action
+    // Ask for the administrator password on ArchPM's two root reads as well,
     // instead of remembering it for a few minutes.
     polkit.addRule(function(action, subject) {
-        if (action.id == "io.github.outing69.archpm.helper.run") {
+        if (action.id.indexOf("io.github.outing69.archpm.helper.") == 0) {
             return polkit.Result.AUTH_ADMIN;
         }
     });
@@ -81,6 +93,10 @@ The helper does **not** defend against:
     polkitd group, so the file needs `sudo`; plain `root:root 0644` is fine.
     Polkit picks the change up immediately. Syntax checked against the
     polkit(8) manual page of polkit 127.
+  The window keeps no lock state of its own: through 0.2.51 the root panel had
+  an Unlock button and showed "Unlocked" for the rest of the session, while
+  polkit's window had long closed; that button and the flag behind it are
+  gone, and each change simply asks.
 - Malicious software already running as root. That is game over regardless.
 - The last line of ionice's, paccache's or journalctl's stderr is passed back
   to the caller in the JSON error. That can name paths; it cannot leak secrets.
@@ -184,8 +200,10 @@ pids are gone. Both are the safe failure. Reinstall the widgets with
 
 `tests/test_helper.py` pins every refusal rule above so that a later change
 cannot silently loosen it: the uid range with `nobody` and `DynamicUser`
-refused, the protected units, the pidfd pin for all four process commands,
-and that the `service` subcommand stays gone. `tests/test_actions.py` pins
+refused, the session pieces (pinned equal to `archpm/session.py`), the pidfd
+pin for all four process commands, that the `service` subcommand stays gone,
+and that the polkit policy holds one action per subcommand with `argv1`,
+the two reads with `auth_admin_keep` and every change with `auth_admin`. `tests/test_actions.py` pins
 that the elevated backend retries only a permission refusal through the helper.
 `tests/test_actions.py` pins the session guard and that services never go
 through `pkexec`. `tests/test_publisher_agent.py` pins the directory check (a

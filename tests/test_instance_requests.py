@@ -42,6 +42,33 @@ class ParseRequest(unittest.TestCase):
 
 
 @unittest.skipUnless(app, "PySide6 not installed")
+class SocketPlace(unittest.TestCase):
+    """The socket lives in the session's runtime directory, which only this
+    user can enter, so another user cannot take its name first; without one
+    it is a bare name in the shared temporary directory, as before."""
+
+    def test_in_the_runtime_directory_when_there_is_one(self):
+        name = app.instance_socket({"XDG_RUNTIME_DIR": "/run/user/1000"})
+        self.assertEqual(name, f"/run/user/1000/archpm-{os.getuid()}")
+
+    def test_a_bare_name_without_one(self):
+        self.assertEqual(app.instance_socket({}), f"archpm-{os.getuid()}")
+        self.assertEqual(app.instance_socket({"XDG_RUNTIME_DIR": ""}), f"archpm-{os.getuid()}")
+
+    def test_a_name_that_cannot_be_taken_is_reported_not_hidden(self):
+        import io
+        from contextlib import redirect_stderr
+        err = io.StringIO()
+        with redirect_stderr(err):
+            server = app.listen_for_launches(lambda _w: None, "/nonexistent-dir/archpm-test")
+        try:
+            self.assertFalse(server.isListening())
+            self.assertIn("not listening", err.getvalue())
+        finally:
+            server.close()
+
+
+@unittest.skipUnless(app, "PySide6 not installed")
 class OverTheSocket(unittest.TestCase):
     """The same through a real server and client, in process. On a socket of
     its own, so a running ArchPM window keeps the real one."""

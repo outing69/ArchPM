@@ -426,12 +426,11 @@ class Pages(unittest.TestCase):
         v.scan = lambda: None
         empty = CleanupItem(id="journal", name="System logs", description="", size=0,
                             needs_root=True, helper_command="journal-vacuum")
-        text, colour = v._note_for(empty, root_ok=False)
+        text, colour = v._note_for(empty)
         self.assertEqual((text, colour), ("root · nothing to remove", "MUTED"))
-        self.assertEqual(v._note_for(empty, root_ok=True)[0], "root · nothing to remove")
         some = CleanupItem(id="journal", name="System logs", description="", size=1 << 20,
                            needs_root=True, helper_command="journal-vacuum")
-        self.assertIn("asks for your password on Remove", v._note_for(some, root_ok=False)[0])
+        self.assertIn("asks for your password on Remove", v._note_for(some)[0])
         v.items = [empty, some]
         v._fill()
         rows = v.list.rows()

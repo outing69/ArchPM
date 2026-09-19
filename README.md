@@ -358,16 +358,23 @@ That separation is the core of the design:
   from a checkout; pkexec refuses a program that
   a regular user can modify), imports nothing from this project and never
   starts a shell.
-- `polkit/io.github.outing69.archpm.policy` decides who may authenticate. With
-  `auth_admin_keep` polkit asks for your password once and remembers it for
-  about five minutes.
+- `polkit/io.github.outing69.archpm.policy` decides who may authenticate: one
+  action per helper command, matched by pkexec on the command word. The two
+  reads (the snapshot list, the firewall's state) use `auth_admin_keep`, so
+  polkit asks once and remembers it for about five minutes; every change
+  uses `auth_admin` and asks every time, so reading the firewall never
+  unlocks deleting a snapshot.
 - `archpm/root/client.py` only builds the `pkexec` call and reads the JSON reply.
   The GUI never sees a password.
 - The helper validates on its own: fixed subcommands, numeric bounds, a fixed
-  character set for a snapshot's description, and a list of units whose
-  processes it refuses to signal, whatever the caller says: dbus, logind,
-  journald, udevd, polkit, oomd and the display manager. It does not manage
-  services at all, and it never restores a snapshot.
+  character set for a snapshot's description, and one target check for every
+  process command, whatever the caller says: the process must belong to a
+  regular user, which keeps root's and the system accounts' daemons (logind,
+  journald, the system bus, polkit, the display manager) out of reach, and it
+  must not be a piece a desktop session runs on (plasmashell, kwin, the
+  session manager, the session bus, pipewire, wireplumber, the desktop
+  portal), in any user's session. It does not manage services at all, and it
+  never restores a snapshot.
 
 `ElevatedBackend` tries every action without privileges first. Only when that
 is denied does it go through the helper, so you never get a password prompt
@@ -428,7 +435,7 @@ Root runs alongside the measurement chain, not through it:
 
 ```
 archpm/ui/rootpanel.py ─ pkexec ─→ /usr/lib/archpm/archpm-helper   (root)
-        │                            ↑ polkit: io.github.outing69.archpm.helper.run
+        │                            ↑ polkit: io.github.outing69.archpm.helper.<command>
         └─ ElevatedBackend ──────────┘   (only on AccessDenied)
 ```
 
@@ -444,7 +451,7 @@ kpackagetool6 -t Plasma/Applet -u plasmoid/package   # update the Monitor widget
 kpackagetool6 -t Plasma/Applet -u plasmoid/network   # update the Network widget
 /usr/local/lib/archpm/archpm-helper status           # test the helper without root (checkout install)
 /usr/lib/archpm/archpm-helper status                 # the same, installed as a package
-pkaction --action-id io.github.outing69.archpm.helper.run --verbose    # inspect the polkit rules
+pkaction --verbose | grep -A12 io.github.outing69.archpm.helper.snapshots-delete   # one of the twelve polkit actions
 ./install.sh --uninstall-root                        # remove the root part of a checkout install
 ./install.sh --uninstall                             # remove everything install.sh installed
 ```

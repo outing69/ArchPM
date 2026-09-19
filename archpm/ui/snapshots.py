@@ -222,17 +222,19 @@ class SnapshotsView(QWidget):
                    else "Timeshift keeps its list for root.")
             if st.ready:
                 lines.append(f"{why} Read snapshots reads it through the root helper and asks "
-                             "for your password once; the next few minutes need none. Taking "
-                             "and deleting go the same way.")
+                             "for your password; reads in the next few minutes need none. "
+                             "Taking and deleting go through the helper too and ask every "
+                             "time.")
             else:
                 lines.append(f"{why} Reading it, taking one and deleting one need the root "
                              f"helper, and {helper_missing}.")
         elif listing.as_root:
             lines.append(f"Read as root through the helper, since {name} keeps its list for "
-                         "root on this machine. Taking and deleting go the same way.")
+                         "root on this machine. Taking and deleting go through it too and "
+                         "ask for your password every time.")
         elif st.ready:
             lines.append(f"{name}'s list reads without root. Taking and deleting a snapshot go "
-                         "through the root helper and ask for your password.")
+                         "through the root helper and ask for your password every time.")
         else:
             lines.append(f"{name}'s list reads without root. Taking and deleting a snapshot need "
                          f"the root helper, and {helper_missing}.")

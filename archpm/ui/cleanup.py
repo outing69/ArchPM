@@ -1,9 +1,10 @@
 """The Cleanup tab: free up space by removing what programs rebuild anyway.
 
-The first visit in a session explains what the tab does and does not delete,
-then asks for the root password once (polkit) so the two root items can run.
-Everything is listed with its size first; nothing is removed until the user
-ticks items, presses the button and confirms the list.
+The first visit in a session explains what the page does and does not
+delete. Everything is listed with its size first; nothing is removed until
+the user ticks items, presses the button and confirms the list. The two root
+items ask for the password when they are removed, each through pkexec; no
+password is asked at page entry.
 """
 from __future__ import annotations
 
@@ -174,29 +175,6 @@ class CleanupView(QWidget):
         box.exec()
         return box.clickedButton() is ok
 
-    def _authenticate(self) -> None:
-        """Run the helper's harmless `status` through pkexec so polkit asks once."""
-        st = check()
-        if not st.ready or self.client.authenticated or self._proc is not None:
-            return
-        self._proc = QProcess(self)
-        self._proc.finished.connect(self._auth_done)
-        argv = self.client.argv("status")
-        self._proc.start(argv[0], argv[1:])
-
-    def _auth_done(self, code: int, *_) -> None:
-        proc, self._proc = self._proc, None
-        if proc is None:
-            return
-        out = bytes(proc.readAllStandardOutput()).decode(errors="replace")
-        err = bytes(proc.readAllStandardError()).decode(errors="replace")
-        try:
-            self.client.parse(code, out, err)
-            self._say("Root unlocked for this session; package cache and logs can be cleaned.")
-        except ActionError as exc:
-            self._say(f"No root ({exc}); the items marked 'root' stay unavailable.")
-        self._fill()
-
     # -- scanning ------------------------------------------------------------------
     def scan(self) -> None:
         if self._thread is not None:
@@ -226,7 +204,7 @@ class CleanupView(QWidget):
         if self.isVisible() and self.items:
             self._refresh_notes()
 
-    def _note_for(self, it: CleanupItem, root_ok: bool) -> tuple[str, str]:
+    def _note_for(self, it: CleanupItem) -> tuple[str, str]:
         """(text, colour token) for the row's note. It says what blocks the
         row when something does: a missing tool, or nothing to remove, which
         is what an empty size means and what makes the row untickable."""
@@ -235,8 +213,6 @@ class CleanupView(QWidget):
                 return "root · " + it.note, "WARN"
             if it.size <= 0:
                 return "root · nothing to remove", "MUTED"
-            if root_ok:
-                return "root · unlocked", "OK"
             return "root · asks for your password on Remove", "MUTED"
         if it.size <= 0:
             return "nothing to remove", "MUTED"
@@ -246,9 +222,8 @@ class CleanupView(QWidget):
         return "", "MUTED"
 
     def _refresh_notes(self) -> None:
-        root_ok = check().ready and self.client.authenticated
         for it, label in zip(self.items, self._notes, strict=False):
-            text, colour = self._note_for(it, root_ok)
+            text, colour = self._note_for(it)
             if label.text() != text:
                 self._set_note(label, text, colour)
 
@@ -267,7 +242,6 @@ class CleanupView(QWidget):
         self._fill()
 
     def _fill(self) -> None:
-        root_ok = check().ready and self.client.authenticated
         self.list.clear()
         self._checks, self._notes = [], []
         size_w = QFontMetrics(mono("body")).horizontalAdvance("999.9 MB")
@@ -280,7 +254,7 @@ class CleanupView(QWidget):
             box.setAccessibleName(f"Remove {it.name}")
             box.toggled.connect(self._recount)
             note = ElidedLabel()
-            self._set_note(note, *self._note_for(it, root_ok))
+            self._set_note(note, *self._note_for(it))
             size = QLabel(human(it.size) if it.size else "-")
             theme.style(size, "font-family: monospace;")
             size.setMinimumWidth(size_w)     # the sizes line up down the list

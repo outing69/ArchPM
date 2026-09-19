@@ -77,13 +77,9 @@ class RootPanel(QDialog):
         box = QGroupBox("access")
         row = QHBoxLayout(box)
         row.setSpacing(12)
-        self.lbl_lock = QLabel()
-        self.lbl_lock.setWordWrap(True)
-        row.addWidget(self.lbl_lock, 1)
-        self.btn_unlock = QPushButton("Unlock")
-        self.btn_unlock.setObjectName("accent")
-        self.btn_unlock.clicked.connect(self._unlock)
-        row.addWidget(self.btn_unlock)
+        self.lbl_access = QLabel()
+        self.lbl_access.setWordWrap(True)
+        row.addWidget(self.lbl_access, 1)
         return box
 
     def _proc_group(self) -> QWidget:
@@ -174,25 +170,20 @@ class RootPanel(QDialog):
         st = check()
         ready = st.ready
         if not ready:
-            self.lbl_lock.setText(
+            self.lbl_access.setText(
                 f"<b style='color:{theme.CRIT}'>Not available</b><br>"
                 f"<span style='color:{theme.MUTED}'>{st.problem}<br>"
                 f"Run <code>./install.sh --root</code>.</span>"
             )
-        elif self.client.authenticated:
-            self.lbl_lock.setText(
-                f"<b style='color:{theme.OK}'>Unlocked</b><br>"
-                f"<span style='color:{theme.MUTED}'>Polkit remembers your password "
-                f"for about five minutes.</span>"
-            )
         else:
-            self.lbl_lock.setText(
-                f"<b style='color:{theme.ACCENT}'>Locked</b><br>"
-                f"<span style='color:{theme.MUTED}'>Every root action runs through "
+            # No lock to open: polkit keeps a password only for the two reads
+            # (snapshots, firewall), and every change asks for it again.
+            self.lbl_access.setText(
+                f"<b style='color:{theme.OK}'>Available</b><br>"
+                f"<span style='color:{theme.MUTED}'>Each change here, and each root action "
+                f"in the process list, asks for your password; it runs through "
                 f"<code>pkexec {HELPER.name}</code>.</span>"
             )
-        self.btn_unlock.setEnabled(ready and not self.client.authenticated)
-        self.btn_unlock.setText("Unlocked" if self.client.authenticated else "Unlock")
         self.cb_elevated.setEnabled(ready)
         for w in (self.btn_swap, self.btn_caches):
             w.setEnabled(ready)
@@ -262,9 +253,6 @@ class RootPanel(QDialog):
         else:
             self._say(f"  ✓ {unit}: {action} done")
         self._load_services()
-
-    def _unlock(self) -> None:
-        self._run("status", then=lambda: (self._refresh_state(), self._load_status()))
 
     def _run(self, *args: str, then=None) -> None:
         """Asynchronous via QProcess: the polkit dialog must not block the UI."""

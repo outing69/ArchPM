@@ -40,14 +40,26 @@ from .worker import SampleWorker, run_in_thread, wait_for_threads
 INTERVALS = [("0.5 s", 0.5), ("1 s", 1.0), ("2 s", 2.0), ("5 s", 5.0)]
 
 # One instance per user. A second launch connects to this socket, sends one
-# request line, and exits. The socket is only reachable by the same user.
+# request line, and exits. The socket file is created for this user only,
+# and it lives in the session's runtime directory ($XDG_RUNTIME_DIR, which
+# only this user can enter), so no other user can take the name first: a
+# squatted name would make every launch believe an ArchPM is running and
+# exit. Without a runtime directory it falls back to a bare name, which Qt
+# puts in the shared temporary directory.
 #
 # The widgets use the same route: "Open ArchPM" is a plain launch, "End game"
 # is a launch with --end-game. The widget itself signals nothing; the window
 # asks, runs the signal guard and sends, exactly as from its own button.
-INSTANCE_SOCKET = f"archpm-{os.getuid()}"
 SHOW, END_GAME = "show", "end-game"
 REQUESTS = (SHOW, END_GAME)
+
+
+def instance_socket(env: dict[str, str] | None = None) -> str:
+    """The socket's path in the runtime directory, or its bare name without one."""
+    env = os.environ if env is None else env
+    name = f"archpm-{os.getuid()}"
+    runtime = env.get("XDG_RUNTIME_DIR", "")
+    return os.path.join(runtime, name) if runtime else name
 
 
 def parse_request(data: bytes) -> str | None:
@@ -58,10 +70,10 @@ def parse_request(data: bytes) -> str | None:
     return line if line in REQUESTS else None
 
 
-def raise_running_instance(request: str = SHOW, name: str = INSTANCE_SOCKET) -> bool:
+def raise_running_instance(request: str = SHOW, name: str | None = None) -> bool:
     """True if another ArchPM is running for this user (and has been handed the request)."""
     sock = QLocalSocket()
-    sock.connectToServer(name)
+    sock.connectToServer(instance_socket() if name is None else name)
     if not sock.waitForConnected(300):
         return False
     sock.write(request.encode() + b"\n")
@@ -70,13 +82,18 @@ def raise_running_instance(request: str = SHOW, name: str = INSTANCE_SOCKET) -> 
     return True
 
 
-def listen_for_launches(on_request, name: str = INSTANCE_SOCKET) -> QLocalServer:
-    """Own the instance socket; call `on_request(word)` for every request that comes in."""
+def listen_for_launches(on_request, name: str | None = None) -> QLocalServer:
+    """Own the instance socket; call `on_request(word)` for every request that
+    comes in. When the socket cannot be taken the window still opens, as a
+    second instance if need be, and says so on stderr: `isListening()` tells."""
+    name = instance_socket() if name is None else name
     QLocalServer.removeServer(name)  # stale file from a crash
     server = QLocalServer()
     server.setSocketOptions(QLocalServer.SocketOption.UserAccessOption)
     server.newConnection.connect(lambda: _drain(server, on_request))
-    server.listen(name)
+    if not server.listen(name):
+        print(f"archpm: not listening for launches on {name}: {server.errorString()}",
+              file=sys.stderr)
     return server
 
 
