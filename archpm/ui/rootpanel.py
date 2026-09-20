@@ -11,7 +11,9 @@ each button states which command runs, and what its effect is.
 """
 from __future__ import annotations
 
-from PySide6.QtCore import QProcess, Qt, Signal
+import subprocess
+
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -27,11 +29,20 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ..actions import ActionError, Cancelled, UserBackend
+from ..actions import ActionError, UserBackend
 from ..root.client import HELPER, RootClient, check
+from ..toolenv import english
 from . import theme
 from .widgets import mono
-from .worker import fault, start_task
+from .worker import active, call_helper, fault, start_task
+
+
+def _service(argv: list[str]) -> tuple[int, str]:
+    """`systemctl --user …` on a task's thread: the exit code and stderr,
+    in the C locale as every tool ArchPM runs. A systemctl that cannot be
+    started is the task's failure."""
+    proc = subprocess.run(argv, capture_output=True, text=True, check=False, env=english())
+    return proc.returncode, proc.stderr or ""
 
 
 class RootPanel(QDialog):
@@ -44,8 +55,6 @@ class RootPanel(QDialog):
         self.setWindowTitle("Root tasks")
         self.setMinimumWidth(560)
         self.resize(600, 540)
-        self._proc: QProcess | None = None
-        self._pending: tuple[str, ...] = ()
         self._on_done = None
 
         lay = QVBoxLayout(self)
@@ -228,8 +237,9 @@ class RootPanel(QDialog):
 
     # -- execution ---------------------------------------------------------
     def _run_service(self, action: str) -> None:
-        """Your own session's services: systemctl --user as you, asynchronous, never pkexec."""
-        if self._proc is not None:
+        """Your own session's services: systemctl --user as you, on a task,
+        never pkexec. No timeout: systemctl waits for the unit's job."""
+        if active(self, "action"):
             self._say("An action is already running.")
             return
         try:
@@ -239,79 +249,56 @@ class RootPanel(QDialog):
             return
         unit = argv[-1]
         self._say(f"$ {' '.join(argv)}")
-        self._proc = QProcess(self)
-        self._proc.finished.connect(lambda *_: self._service_finished(unit, action))
-        self._proc.errorOccurred.connect(
-            lambda _: self._service_finished(unit, action, failed=True))
         self.setEnabled(False)
-        self._proc.start(argv[0], argv[1:])
+        start_task(lambda _task: _service(argv), self, "action",
+                   done=lambda reply: self._service_finished(unit, action, *reply),
+                   failed=lambda _exc: self._service_finished(unit, action, 1, ""))
 
-    def _service_finished(self, unit: str, action: str, failed: bool = False) -> None:
-        proc, self._proc = self._proc, None
+    def _service_finished(self, unit: str, action: str, code: int, stderr: str) -> None:
         self.setEnabled(True)
-        if proc is None:
-            return
-        err = bytes(proc.readAllStandardError()).decode(errors="replace").strip().splitlines()
-        if failed or proc.exitCode() != 0:
+        err = stderr.strip().splitlines()
+        if code != 0:
             self._say(f"  ✗ {err[-1] if err else f'systemctl {action} {unit} failed'}")
         else:
             self._say(f"  ✓ {unit}: {action} done")
         self._load_services()
 
     def _run(self, *args: str, then=None) -> None:
-        """Asynchronous via QProcess: the polkit dialog must not block the UI."""
-        if self._proc is not None:
+        """The helper on a task: the polkit dialog must not block the UI."""
+        if active(self, "action"):
             self._say("An action is already running.")
             return
         st = check()
         if not st.ready:
             self._say(st.problem)
             return
-        argv = self.client.argv(*args)
-        self._say(f"$ {' '.join(argv)}")
-        self._pending = args
+        self._say(f"$ {' '.join(self.client.argv(*args))}")
         self._on_done = then
-        self._proc = QProcess(self)
-        self._proc.finished.connect(self._finished)
-        self._proc.errorOccurred.connect(self._start_failed)
         self.setEnabled(False)
-        self._proc.start(argv[0], argv[1:])
+        call_helper(self, self.client, *args, name="action", done=self._done,
+                    failed=self._failed, cancelled=self._cancelled)
 
-    def _start_failed(self, error) -> None:
-        """pkexec could not be started at all: finished never comes. Any
-        other error (a crash) is followed by finished and is read there;
-        through 0.2.55 every error was reported as "exit code -1"."""
-        if error != QProcess.ProcessError.FailedToStart or self._proc is None:
-            return
-        proc, self._proc = self._proc, None
-        self._on_done = None
+    def _done(self, result: dict, _elapsed: float) -> None:
         self.setEnabled(True)
-        self._say(f"  ✗ the root helper could not be started ({proc.errorString()})")
-        self._refresh_state()
-
-    def _finished(self, code: int, *_) -> None:
-        proc, self._proc = self._proc, None
-        self.setEnabled(True)
-        if proc is None:
-            return
-        out = bytes(proc.readAllStandardOutput()).decode(errors="replace")
-        err = bytes(proc.readAllStandardError()).decode(errors="replace")
-        command = self._pending[0] if self._pending else ""
-        try:
-            result = self.client.parse(code, out, err, command)
-        except Cancelled:
-            self._say("  – cancelled, nothing was changed")
-            self._refresh_state()
-            return
-        except ActionError as exc:
-            self._say(f"  ✗ {exc}")
-            self._refresh_state()
-            return
         self._say(f"  ✓ {result if result else 'ok'}")
         self._refresh_state()
         if self._on_done:
             fn, self._on_done = self._on_done, None
             fn()
+
+    def _failed(self, why: str) -> None:
+        """The helper's refusal, or a pkexec that could not be started. What
+        was to follow a success does not follow this."""
+        self.setEnabled(True)
+        self._on_done = None
+        self._say(f"  ✗ {why}")
+        self._refresh_state()
+
+    def _cancelled(self, _why: str) -> None:
+        self.setEnabled(True)
+        self._on_done = None
+        self._say("  – cancelled, nothing was changed")
+        self._refresh_state()
 
     def _say(self, text: str) -> None:
         self.log.appendPlainText(text)

@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import time
 
-from PySide6.QtCore import QProcess, QRegularExpression, Qt, Signal
+from PySide6.QtCore import QRegularExpression, Qt, Signal
 from PySide6.QtGui import QFontMetrics, QRegularExpressionValidator
 from PySide6.QtWidgets import (
     QHBoxLayout,
@@ -29,7 +29,6 @@ from PySide6.QtWidgets import (
 )
 
 from .. import snapshots
-from ..actions import ActionError, Cancelled
 from ..helptext import CANNOT_UNDO, plural
 from ..root.client import HELPER, RootClient, check
 from ..snapshots import (
@@ -48,7 +47,7 @@ from ..snapshots import (
 from . import theme
 from .navrail import kind_icon
 from .widgets import BoxedList, FlowLayout, ListRow, human_bytes, mono, scrolling
-from .worker import active, fault, start_task
+from .worker import active, call_helper, fault, start_task
 
 ORIGIN_ICON = {PACMAN: "pacman", TIMELINE: "timer", SCHEDULED: "timer",
                ARCHPM: "person", BY_HAND: "person"}
@@ -91,9 +90,7 @@ class SnapshotsView(QWidget):
         self.client = client
         self.setup: snapshots.Setup | None = None
         self.listing: snapshots.Listing | None = None
-        self._proc: QProcess | None = None
         self._pending: tuple = ()      # ("list",) | ("create",) | ("delete", snapshot)
-        self._t0 = 0.0
         self._open: set[tuple[str, str]] = set()   # (config, before's id) of open pairs
         self._pairs: dict[tuple[str, str], tuple[ListRow, QLabel, list[ListRow]]] = {}
 
@@ -144,7 +141,7 @@ class SnapshotsView(QWidget):
         authentication for a few minutes, so a second root read is silent.
         (Until 0.2.41 only the second case went to the helper, so Read
         snapshots repeated the refused plain read and showed nothing.)"""
-        if self._proc is not None or active(self, "read"):
+        if active(self):
             return
         if (self.listing is not None and (self.listing.as_root or self.listing.needs_root)
                 and check().ready):
@@ -446,46 +443,42 @@ class SnapshotsView(QWidget):
 
     # -- the helper ------------------------------------------------------------------------
     def _run_helper(self, pending: tuple, *args: str) -> None:
-        if self._proc is not None:
+        if active(self, "helper"):
             return
         self._pending = pending
-        self._t0 = time.perf_counter()
         self.btn_read.setEnabled(False)
         self.btn_create.setEnabled(False)
-        self._proc = QProcess(self)
-        self._proc.finished.connect(self._helper_done)
-        self._proc.errorOccurred.connect(self._helper_failed)
-        argv = self.client.argv(*args)
-        self._proc.start(argv[0], argv[1:])
+        call_helper(self, self.client, *args, done=self._helper_done,
+                    failed=self._helper_failed, cancelled=self._helper_cancelled)
 
-    def _helper_failed(self, error) -> None:
-        """pkexec could not be started at all: finished never comes, so the
-        page would ignore Refresh, Take and Delete for good."""
-        if error != QProcess.ProcessError.FailedToStart or self._proc is None:
-            return
-        proc, self._proc = self._proc, None
+    def _helper_over(self) -> tuple:
+        """The call ended, one way or another: the buttons come back, and
+        what was pending is handed on."""
         pending, self._pending = self._pending, ()
         self.btn_read.setEnabled(True)
         self.btn_create.setEnabled(True)
+        return pending
+
+    def _helper_failed(self, why: str) -> None:
+        """The helper's refusal, or a pkexec that could not be started."""
+        pending = self._helper_over()
         if pending:
-            self._failed(pending, f"the root helper could not be started ({proc.errorString()})")
+            self._failed(pending, why)
 
-    def _helper_done(self, code: int, *_) -> None:
-        proc, self._proc = self._proc, None
-        pending, self._pending = self._pending, ()
-        self.btn_read.setEnabled(True)
-        self.btn_create.setEnabled(True)
-        if proc is None or not pending:
+    def _helper_cancelled(self, _why: str) -> None:
+        pending = self._helper_over()
+        if pending:
+            self._cancelled(pending)
+
+    def _helper_done(self, result: dict, elapsed: float) -> None:
+        pending = self._helper_over()
+        if not pending:
             return
-        out = bytes(proc.readAllStandardOutput()).decode(errors="replace")
-        err = bytes(proc.readAllStandardError()).decode(errors="replace")
-        elapsed = (time.perf_counter() - self._t0) * 1000
-        # Every outcome is shown. The helper's refusal is an ActionError;
-        # anything else that goes wrong between its reply and the list (a
-        # reply in a shape the parser does not expect, a fault of our own)
-        # is shown the same way, never left to Qt to drop on stderr.
+        # Every outcome is shown. Anything that goes wrong between the
+        # helper's reply and the list (a reply in a shape the parser does
+        # not expect, a fault of our own) is shown the way a refusal is,
+        # never left to Qt to drop on stderr.
         try:
-            result = self.client.parse(code, out, err, f"snapshots-{pending[0]}")
             if pending[0] == "list":
                 listing = snapshots.from_helper(result)
                 listing.call_ms = elapsed
@@ -502,10 +495,6 @@ class SnapshotsView(QWidget):
                                  + (f", {plural(int(left), 'snapshot')} left" if left is not None
                                     else ""))
             self._after_change()
-        except Cancelled:
-            self._cancelled(pending)
-        except ActionError as exc:
-            self._failed(pending, str(exc))
         except Exception as exc:  # noqa: BLE001 - reported, never swallowed
             self._failed(pending, fault(exc))
 
@@ -551,7 +540,7 @@ class SnapshotsView(QWidget):
         return TIMESHIFT
 
     def _create(self) -> None:
-        if self.setup is None or not self.setup.tool or self._proc is not None:
+        if self.setup is None or not self.setup.tool or active(self, "helper"):
             return
         dlg = QInputDialog(self)
         dlg.setWindowTitle("Take a snapshot")
@@ -600,7 +589,7 @@ class SnapshotsView(QWidget):
         return text + f"<br><br>{CANNOT_UNDO}"
 
     def _delete(self, snap: snapshots.Snapshot) -> None:
-        if self._proc is not None or self.listing is None:
+        if active(self, "helper") or self.listing is None:
             return
         if len(self.listing.snapshots) <= 1:
             self.status.emit(LAST_ONE)

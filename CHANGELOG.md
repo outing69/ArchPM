@@ -3,6 +3,42 @@
 All notable changes, newest first. Versions are git tags on
 [github.com/outing69/ArchPM](https://github.com/outing69/ArchPM).
 
+## 0.2.59 (2026-09-20)
+
+The consolidation phase, step two of four: one helper-call wrapper. QProcess
+is gone; the four pages that call the root helper go through one path, so
+a page cannot forget the start failure or either reply shape the helper can
+produce. No behaviour change on screen, with three small exceptions named
+below.
+
+- `RootClient.invoke` is the one place that starts pkexec and reads what
+  comes back: a pkexec that cannot be started, a helper that hangs, the
+  JSON refusal with exit 1 and argparse's usage with exit 2. `call` is the
+  readiness check and then `invoke`; the process list's elevated backend
+  keeps that route and its 180 second cap.
+- `call_helper` in ui/worker.py runs `invoke` on a Task under the page,
+  with no timeout (a prompt left open is not a hung helper) and the C
+  locale the client always had. The reply and the call's time go to
+  `done`, a cancelled prompt to `cancelled`, the helper's refusal, a pkexec
+  that could not be started and any other fault to `failed`, as text.
+  The five copies of the decode-stdout, parse, catch-ActionError block are
+  gone, with the four start-failure handlers of 0.2.56.
+- The root panel's service actions (`systemctl --user`) run on a Task as
+  well, with no timeout, so QProcess has no site left.
+- The exceptions: the synchronous route's start failure now reads "the
+  root helper could not be started (No such file or directory)" instead
+  of the raw OSError; the root panel no longer keeps a follow-up action
+  from a failed call for the next successful one (through 0.2.58 a failed
+  swappiness set left its follow-up to run after a later drop-caches); a
+  service action's error line is in English, as every other tool's output.
+- tests/test_root_client.py covers `invoke` (pkexec, the helper's path,
+  the C locale, no cap on the pages' route, the start failure with its
+  reason, the hang, both reply shapes) and `call` (the readiness check
+  runs nothing when not ready; the cap on the synchronous route).
+  tests/test_worker.py covers the wrapper's four outcomes off the GUI
+  thread. The four start-failure page tests run through the real client
+  with a pkexec that does not exist.
+
 ## 0.2.58 (2026-09-20)
 
 The consolidation phase, step one of four: one way to do background work.

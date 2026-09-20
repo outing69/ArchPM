@@ -16,6 +16,7 @@ from collections.abc import Callable
 
 from PySide6.QtCore import QObject, QThread, Signal, Slot
 
+from ..actions import ActionError, Cancelled
 from ..gpu import GpuMonitor
 from ..model import Snapshot
 from ..publisher import PublishError, agent_service_active, publish
@@ -108,6 +109,31 @@ def start_task(fn: Callable[[Task], object], parent: QObject, name: str, *,
     task = Task(fn, parent, name, failed=failed, done=done, progress=progress)
     task.start()
     return task
+
+
+def call_helper(owner: QObject, client, *args: str, done: Callable, failed: Callable[[str], None],
+                cancelled: Callable[[str], None] | None = None, name: str = "helper") -> Task:
+    """One root helper call on a task under `owner`: the polkit prompt must
+    not block the UI, and a call that cannot start must not leave a page
+    busy. `done(result, elapsed_ms)` gets the helper's reply and the call's
+    time; `cancelled(text)` a cancelled prompt, or `failed` when there is no
+    `cancelled`; `failed(text)` the helper's refusal, a pkexec that could not
+    be started, and any other fault as its type and message. Nothing is
+    swallowed. No timeout: a prompt left open is not a hung helper."""
+    def run(_task: Task):
+        t0 = time.perf_counter()
+        result = client.invoke(*args, timeout=None)
+        return result, (time.perf_counter() - t0) * 1000
+
+    def on_error(exc: BaseException) -> None:
+        if isinstance(exc, Cancelled):
+            (cancelled or failed)(str(exc))
+        elif isinstance(exc, ActionError):
+            failed(str(exc))
+        else:
+            failed(fault(exc))
+
+    return start_task(run, owner, name, done=lambda reply: done(*reply), failed=on_error)
 
 
 def active(owner: QObject, name: str | None = None) -> Task | None:

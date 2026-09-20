@@ -41,6 +41,8 @@ CANCELLED_OR_REFUSED = ("The password prompt was cancelled, or the password was 
                         "nothing was done.")
 NOT_ALLOWED = ("Not authorised: polkit does not ask this account for a password. Is it in the "
                "wheel group, and is the polkit policy installed?")
+NOT_STARTED = "the root helper could not be started"
+TIMED_OUT = "The helper did not respond in time."
 
 
 def challenge_possible(command: str, run=subprocess.run) -> bool:
@@ -100,29 +102,44 @@ class RootClient:
         return ["pkexec", *cmd] if elevated else cmd
 
     # ------------------------------------------------------------------
-    def call(self, *args: str, elevated: bool = True, timeout: int = 180) -> dict:
+    def call(self, *args: str, elevated: bool = True, timeout: int | None = 180,
+             run=subprocess.run) -> dict:
+        """The readiness check, then the call. The synchronous route: the
+        process list's elevated backend, on the GUI thread."""
         status = check()
         if elevated and not status.ready:
             raise ActionError(status.problem)
         if not elevated and not status.helper:
             raise ActionError(status.problem)
+        return self.invoke(*args, elevated=elevated, timeout=timeout, run=run)
+
+    def invoke(self, *args: str, elevated: bool = True, timeout: int | None = 180,
+               run=subprocess.run) -> dict:
+        """The process and its reply, without the readiness check: the pages
+        check before they ask, and the helper's absence is a note on the
+        page, not an error line. This is the one place that starts pkexec
+        and reads what comes back, for the synchronous route and for the
+        pages' tasks (ui.worker.call_helper), so a pkexec that cannot start
+        and the two reply shapes the helper can produce (JSON with exit 1,
+        argparse's usage with exit 2) are handled once. The messages locale
+        is C, for pkexec's own words as for the tools the helper parses."""
         try:
-            proc = subprocess.run(
+            proc = run(
                 self.argv(*args, elevated=elevated),
                 capture_output=True, text=True, timeout=timeout, check=False, env=english(),
             )
         except subprocess.TimeoutExpired:
-            raise ActionError("The helper did not respond in time.") from None
+            raise ActionError(TIMED_OUT) from None
         except OSError as exc:
-            raise ActionError(str(exc)) from None
+            raise ActionError(f"{NOT_STARTED} ({exc.strerror or exc})") from None
         return self.parse(proc.returncode, proc.stdout, proc.stderr, args[0] if args else "")
 
     @staticmethod
     def parse(code: int, stdout: str, stderr: str, command: str = "") -> dict:
-        """The helper's reply, or pkexec's exit code when there is none. Also
-        used by the asynchronous QProcess variant in the UI. `command` is the
-        helper subcommand that was run; with it a 127 is told apart: a
-        cancelled or failed prompt (Cancelled) from a refusal (ActionError)."""
+        """The helper's reply, or pkexec's exit code when there is none.
+        `command` is the helper subcommand that was run; with it a 127 is
+        told apart: a cancelled or failed prompt (Cancelled) from a refusal
+        (ActionError)."""
         text = (stdout or "").strip()
         if text:
             try:

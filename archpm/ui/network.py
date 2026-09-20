@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import time
 
-from PySide6.QtCore import QProcess, Qt, Signal
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -34,14 +34,13 @@ from PySide6.QtWidgets import (
 )
 
 from .. import firewall
-from ..actions import ActionError, Cancelled
 from ..helptext import plural
 from ..model import ProcSample, Snapshot
 from ..net import Conn, NetSnapshot, ProcNet
 from ..root.client import HELPER, RootClient, check
 from . import hints, theme
 from .widgets import Card, ElidedLabel, FlowLayout, TextLink, app_icon, human_bytes, mono
-from .worker import active, fault, start_task
+from .worker import active, call_helper, fault, start_task
 
 COL_NAME, COL_CONNS, COL_RX, COL_TX, COL_LISTEN, COL_INFO = range(6)
 HEADERS = ["Program", "Connections", "Download", "Upload", "Listening", "Details"]
@@ -84,8 +83,6 @@ class NetworkView(QWidget):
         self._expanded: set[str] = set()
         self.fw_setup: firewall.Setup | None = None
         self.fw_state: firewall.State | None = None
-        self._fw_proc: QProcess | None = None
-        self._fw_t0 = 0.0
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(*theme.page_margins())
@@ -227,7 +224,7 @@ class NetworkView(QWidget):
         """The plain read: detection, and the tool's own status where it
         answers a plain user. Never the helper by itself: that can ask for
         a password, and a page that opens must not."""
-        if active(self, "firewall") or self._fw_proc is not None:
+        if active(self):
             return
         start_task(lambda _task: _read_firewall(), self, "firewall",
                    done=self._fw_plain_done, failed=self._fw_plain_failed)
@@ -247,44 +244,29 @@ class NetworkView(QWidget):
         """Through the helper: pkexec asks for the password the first time,
         and polkit keeps it for a few minutes, so a Refresh soon after is
         silent."""
-        if self.client is None or self._fw_proc is not None or not check().ready:
+        if self.client is None or active(self, "helper") or not check().ready:
             return
-        self._fw_t0 = time.perf_counter()
         self.link_fw.set_plain("reading as root…", "MUTED")
-        self._fw_proc = QProcess(self)
-        self._fw_proc.finished.connect(self._fw_helper_done)
-        self._fw_proc.errorOccurred.connect(self._fw_helper_failed)
-        argv = self.client.argv("firewall-status")
-        self._fw_proc.start(argv[0], argv[1:])
+        call_helper(self, self.client, "firewall-status", done=self._fw_helper_done,
+                    failed=self._fw_helper_failed, cancelled=self._fw_helper_cancelled)
 
-    def _fw_helper_failed(self, error) -> None:
-        """pkexec could not be started at all: finished never comes, so the
-        block would stay on "reading as root…" for good."""
-        if error != QProcess.ProcessError.FailedToStart or self._fw_proc is None:
-            return
-        proc, self._fw_proc = self._fw_proc, None
+    def _fw_not_read(self, why: str) -> None:
+        """The block as it was, with the error under it."""
         state = self.fw_state or firewall.State(tool=self.fw_setup.tool if self.fw_setup else "")
-        state.error = f"the root helper could not be started ({proc.errorString()})"
+        state.error = why
         self.set_firewall(self.fw_setup or firewall.Setup(), state)
 
-    def _fw_helper_done(self, code: int, *_) -> None:
-        proc, self._fw_proc = self._fw_proc, None
-        if proc is None or self.client is None:
-            return
-        out = bytes(proc.readAllStandardOutput()).decode(errors="replace")
-        err = bytes(proc.readAllStandardError()).decode(errors="replace")
-        elapsed = (time.perf_counter() - self._fw_t0) * 1000
+    def _fw_helper_failed(self, why: str) -> None:
+        """The helper's refusal, or a pkexec that could not be started."""
+        self._fw_not_read(why)
+
+    def _fw_helper_cancelled(self, _why: str) -> None:
+        self._fw_not_read("cancelled, the firewall was not read")
+
+    def _fw_helper_done(self, result: dict, elapsed: float) -> None:
         try:
-            state = firewall.from_helper(self.client.parse(code, out, err, "firewall-status"))
+            state = firewall.from_helper(result)
             state.call_ms = elapsed
-        except Cancelled:
-            state = self.fw_state or firewall.State(tool=self.fw_setup.tool if self.fw_setup
-                                                    else "")
-            state.error = "cancelled, the firewall was not read"
-        except ActionError as exc:
-            state = self.fw_state or firewall.State(tool=self.fw_setup.tool if self.fw_setup
-                                                    else "")
-            state.error = str(exc)
         except Exception as exc:  # noqa: BLE001 - reported, never swallowed
             state = self.fw_state or firewall.State()
             state.error = fault(exc)

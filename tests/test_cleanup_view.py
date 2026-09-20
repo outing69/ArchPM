@@ -42,7 +42,8 @@ class NoPasswordAtEntry(unittest.TestCase):
         v._first_visit = lambda: True    # the user pressed "I understand"
         v._first_visit_flow()
         self.assertTrue(v._acknowledged)
-        self.assertIsNone(v._proc, "the scan needs no root, so no pkexec at entry")
+        from archpm.ui.worker import active
+        self.assertIsNone(active(v, "helper"), "the scan needs no root, so no pkexec at entry")
         self.assertFalse(hasattr(v, "_authenticate"), "no pre-authentication exists any more")
 
     def test_root_rows_say_when_the_password_comes(self):
@@ -77,40 +78,27 @@ class NoPasswordAtEntry(unittest.TestCase):
         self.assertFalse(hasattr(v.client, "authenticated"), "the client keeps no lock state")
 
     def test_a_cancelled_prompt_says_so_and_does_not_say_done(self):
-        """KDE reports a cancelled pkexec dialog as exit 127; with a prompt
-        possible that is a cancel: the log says cancelled, names what was
-        not touched, and the closing "Done." stays away."""
-        from types import SimpleNamespace
-        from unittest.mock import patch
-
-        from archpm.root import client as client_mod
+        """A cancelled prompt (the client's Cancelled, from pkexec's 126 or
+        KDE's 127 with a prompt possible; that reading is the client's, in
+        test_root_client): the log says cancelled, names what was not
+        touched, and the closing "Done." stays away."""
         v = self.view()
         items = [CleanupItem(id="pacman", name="Package cache", description="", size=1,
                              needs_root=True, helper_item="pacman"),
                  CleanupItem(id="journal", name="System logs", description="", size=1,
                              needs_root=True, helper_item="journal")]
-        v._proc = SimpleNamespace(readAllStandardOutput=lambda: b"",
-                                  readAllStandardError=lambda: b"Not authorized\n")
-        with patch.object(client_mod, "challenge_possible", lambda _cmd: True):
-            v._root_done(items, 127)
+        v._root_cancelled(items)
         log = v.log.toPlainText()
         self.assertIn("cancelled: Package cache and System logs not touched", log)
         self.assertNotIn("Done.", log)
         self.assertNotIn("Not authorised", log)
-        self.assertIsNone(v._proc)
 
     def test_a_refusal_without_a_prompt_is_still_an_error_line(self):
-        from types import SimpleNamespace
-        from unittest.mock import patch
-
-        from archpm.root import client as client_mod
+        from archpm.root.client import NOT_ALLOWED
         v = self.view()
         items = [CleanupItem(id="journal", name="System logs", description="", size=1,
                              needs_root=True, helper_item="journal")]
-        v._proc = SimpleNamespace(readAllStandardOutput=lambda: b"",
-                                  readAllStandardError=lambda: b"")
-        with patch.object(client_mod, "challenge_possible", lambda _cmd: False):
-            v._root_done(items, 127)
+        v._root_failed(items, NOT_ALLOWED)
         log = v.log.toPlainText()
         self.assertIn("✗ System logs: Not authorised", log)
         self.assertIn("Done.", log)

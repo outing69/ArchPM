@@ -1,14 +1,36 @@
-"""RootClient.parse: the helper's JSON reply wins, pkexec's exit codes speak
-when there is none, and the client keeps no lock state of its own."""
+"""RootClient: parse reads the helper's JSON reply, and pkexec's exit codes
+speak when there is none; invoke is the one place that starts pkexec, for
+the synchronous route and the pages' tasks alike, so a pkexec that cannot
+start, a helper that hangs and the two reply shapes are handled once; the
+client keeps no lock state of its own."""
 from __future__ import annotations
 
+import subprocess
 import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
 
 from archpm.actions import ActionError, Cancelled
 from archpm.root import client
-from archpm.root.client import ACTION_PREFIX, RootClient
+from archpm.root.client import ACTION_PREFIX, HELPER, RootClient
+from archpm.toolenv import english
+
+
+def answering(code: int, stdout: str = "", stderr: str = ""):
+    """A `run` that records its call and answers like subprocess.run."""
+    calls = []
+
+    def run(argv, **kwargs):
+        calls.append((argv, kwargs))
+        return SimpleNamespace(returncode=code, stdout=stdout, stderr=stderr)
+    run.calls = calls
+    return run
+
+
+def raising(exc: BaseException):
+    def run(argv, **kwargs):
+        raise exc
+    return run
 
 
 class Parse(unittest.TestCase):
@@ -76,6 +98,61 @@ class Parse(unittest.TestCase):
         client = RootClient()
         self.assertFalse(hasattr(client, "authenticated"))
         self.assertEqual(ACTION_PREFIX, "io.github.outing69.archpm.helper.")
+
+
+class Invoke(unittest.TestCase):
+    def test_the_process_is_pkexec_the_helper_and_the_words_in_a_c_locale(self):
+        run = answering(0, '{"ok": true, "result": {"done": {"journal": "ok"}}}')
+        result = RootClient().invoke("cleanup", "journal", timeout=None, run=run)
+        self.assertEqual(result, {"done": {"journal": "ok"}})
+        (argv, kwargs), = run.calls
+        self.assertEqual(argv, ["pkexec", str(HELPER), "cleanup", "journal"])
+        self.assertEqual(kwargs["env"], english())
+        self.assertEqual(kwargs["env"]["LC_ALL"], "C")
+        self.assertIsNone(kwargs["timeout"], "the pages' route: a prompt left open is no hang")
+        self.assertTrue(kwargs["capture_output"] and kwargs["text"])
+        self.assertFalse(kwargs["check"])
+
+    def test_a_pkexec_that_cannot_be_started_says_so_with_the_reason(self):
+        with self.assertRaises(ActionError) as ctx:
+            RootClient().invoke("status", run=raising(FileNotFoundError(2, "No such file or "
+                                                                        "directory")))
+        self.assertEqual(str(ctx.exception),
+                         "the root helper could not be started (No such file or directory)")
+        self.assertNotIsInstance(ctx.exception, Cancelled)
+
+    def test_a_helper_that_hangs_is_reported_not_waited_for(self):
+        with self.assertRaises(ActionError) as ctx:
+            RootClient().invoke("status", run=raising(subprocess.TimeoutExpired("pkexec", 180)))
+        self.assertEqual(str(ctx.exception), client.TIMED_OUT)
+
+    def test_the_two_reply_shapes_the_helper_can_produce(self):
+        # JSON with exit 1: the helper's own refusal, in its words
+        with self.assertRaises(ActionError) as ctx:
+            RootClient().invoke(
+                "proc-signal", "1", "FOO",
+                run=answering(1, '{"ok": false, "error": "signal FOO not allowed"}'))
+        self.assertEqual(str(ctx.exception), "signal FOO not allowed")
+        # argparse's usage with exit 2: no JSON, the last stderr line
+        usage = ("usage: archpm-helper [-h] {proc-nice,...} ...\n"
+                 "archpm-helper: error: argument cmd: invalid choice: 'bogus'")
+        with self.assertRaises(ActionError) as ctx:
+            RootClient().invoke("bogus", run=answering(2, "", usage))
+        self.assertEqual(str(ctx.exception),
+                         "archpm-helper: error: argument cmd: invalid choice: 'bogus'")
+
+    def test_call_checks_readiness_first_and_runs_nothing_when_not_ready(self):
+        run = answering(0, '{"ok": true, "result": {}}')
+        missing = client.RootStatus(helper=False, policy=True, pkexec=True)
+        with patch.object(client, "check", lambda: missing), \
+                self.assertRaises(ActionError) as ctx:
+            RootClient().call("status", run=run)
+        self.assertEqual(str(ctx.exception), missing.problem)
+        self.assertEqual(run.calls, [])
+        ready = client.RootStatus(helper=True, policy=True, pkexec=True)
+        with patch.object(client, "check", lambda: ready):
+            self.assertEqual(RootClient().call("status", run=run), {})
+        self.assertEqual(run.calls[0][1]["timeout"], 180, "the synchronous route keeps its cap")
 
 
 if __name__ == "__main__":

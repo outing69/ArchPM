@@ -17,6 +17,7 @@ try:
     from PySide6.QtWidgets import QApplication, QWidget
 
     from archpm import firewall, snapshots
+    from archpm.actions import ActionError, Cancelled
     from archpm.model import Snapshot, SystemSample
     from archpm.root.client import RootClient
     from archpm.ui import worker as worker_mod
@@ -26,6 +27,7 @@ try:
         SampleWorker,
         Task,
         active,
+        call_helper,
         fault,
         run_in_thread,
         start_task,
@@ -176,6 +178,73 @@ class Tasks(unittest.TestCase):
         t0 = time.monotonic()
         self.assertEqual(wait_for_threads(self.owner, 5000), [])
         self.assertLess(time.monotonic() - t0, 2.0)
+
+
+class FakeClient:
+    """Answers invoke() with a result or raises what it is given, and
+    records how it was asked."""
+
+    def __init__(self, outcome) -> None:
+        self.outcome = outcome
+        self.calls: list[tuple] = []
+
+    def invoke(self, *args, **kwargs):
+        self.calls.append((args, kwargs, threading.current_thread().name))
+        if isinstance(self.outcome, BaseException):
+            raise self.outcome
+        return self.outcome
+
+
+@unittest.skipUnless(QApplication, "PySide6 not installed")
+class HelperCalls(unittest.TestCase):
+    """call_helper: one helper call on a task, every outcome to the page."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.app = QApplication.instance() or QApplication(sys.argv[:1])
+
+    def setUp(self):
+        self.owner = QObject()
+        self.addCleanup(wait_for_threads, self.owner, 5000)
+        self.got: list = []
+
+    def run_call(self, client, cancelled=True):
+        kwargs = {"cancelled": lambda t: self.got.append(("cancelled", t))} if cancelled else {}
+        task = call_helper(self.owner, client, "cleanup", "journal",
+                           done=lambda r, ms: self.got.append(("done", r, ms)),
+                           failed=lambda t: self.got.append(("failed", t)), **kwargs)
+        pump_until(lambda: self.got)
+        return task
+
+    def test_the_reply_and_the_calls_time_reach_done_off_the_gui_thread(self):
+        client = FakeClient({"done": {"journal": "ok"}})
+        task = self.run_call(client)
+        self.assertEqual(task.name, "helper")
+        (args, kwargs, thread), = client.calls
+        self.assertEqual(args, ("cleanup", "journal"))
+        self.assertEqual(kwargs, {"timeout": None}, "no cap: a prompt left open is no hang")
+        self.assertNotEqual(thread, threading.current_thread().name)
+        kind, result, ms = self.got[0]
+        self.assertEqual((kind, result), ("done", {"done": {"journal": "ok"}}))
+        self.assertGreaterEqual(ms, 0.0)
+
+    def test_a_cancelled_prompt_goes_to_cancelled_or_to_failed_without_one(self):
+        self.run_call(FakeClient(Cancelled("The password prompt was cancelled; nothing was done.")))
+        self.assertEqual(self.got, [("cancelled", "The password prompt was cancelled; nothing "
+                                                  "was done.")])
+        self.got.clear()
+        self.run_call(FakeClient(Cancelled("cancelled")), cancelled=False)
+        self.assertEqual(self.got, [("failed", "cancelled")])
+
+    def test_a_refusal_and_a_start_failure_are_the_clients_words(self):
+        self.run_call(FakeClient(ActionError("the root helper could not be started (No such "
+                                             "file or directory)")))
+        self.assertEqual(self.got, [("failed", "the root helper could not be started (No such "
+                                               "file or directory)")])
+
+    def test_any_other_fault_is_its_type_and_message(self):
+        self.run_call(FakeClient(ValueError("a shape the parser did not expect")))
+        self.assertEqual(self.got, [("failed", "ValueError: a shape the parser did not expect")])
 
 
 @unittest.skipUnless(QApplication, "PySide6 not installed")

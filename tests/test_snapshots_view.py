@@ -191,23 +191,12 @@ class Page(unittest.TestCase):
         self.assertIn("last snapshot stays", deletes[0].toolTip())
 
     # -- the helper route and what a fault does --------------------------------
-    class FakeProc:
-        """What _helper_done reads from a finished QProcess."""
-        def __init__(self, out: str, err: str = ""):
-            self.out, self.err = out.encode(), err.encode()
-
-        def readAllStandardOutput(self):
-            return self.out
-
-        def readAllStandardError(self):
-            return self.err
-
-    def helper_reply(self, v, result, pending=("list",), code=0):
-        """The helper answered: its one JSON line, as pkexec hands it over."""
-        import json
-        v._proc = self.FakeProc(json.dumps({"ok": True, "result": result}))
+    def helper_reply(self, v, result, pending=("list",)):
+        """The helper answered: its result as the wrapper hands it over
+        (the JSON line and pkexec's exit codes are the client's, in
+        test_root_client), with the call's time."""
         v._pending = pending
-        v._helper_done(code)
+        v._helper_done(result, 13.0)
 
     def test_read_snapshots_goes_through_the_helper_not_the_plain_read_again(self):
         """Until 0.2.41 the button repeated the refused plain read: no
@@ -268,9 +257,8 @@ class Page(unittest.TestCase):
                       S.Listing(tool="snapper", needs_root=True), ready=True)
         said = []
         v.status.connect(said.append)
-        v._proc = self.FakeProc("not json at all")
         v._pending = ("create",)
-        v._helper_done(0)
+        v._helper_failed("helper returned exit code 0")
         self.assertEqual(said, ["Not done: helper returned exit code 0"])
         v._after_change = lambda: (_ for _ in ()).throw(RuntimeError("boom"))
         self.helper_reply(v, {"id": "270"}, pending=("create",))

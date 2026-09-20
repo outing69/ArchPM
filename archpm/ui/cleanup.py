@@ -8,7 +8,7 @@ call so one prompt covers both; no password is asked at page entry.
 """
 from __future__ import annotations
 
-from PySide6.QtCore import QProcess, Qt, QTimer, Signal, Slot
+from PySide6.QtCore import Qt, QTimer, Signal, Slot
 from PySide6.QtGui import QFontMetrics
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -20,13 +20,12 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ..actions import ActionError, Cancelled
 from ..cleanup import Cleaner, CleanupItem, human, running_owner
 from ..helptext import CANNOT_UNDO, plural
 from ..root.client import RootClient, check
 from . import theme
 from .widgets import BoxedList, ElidedLabel, FlowLayout, ListRow, mono, scrolling
-from .worker import active, fault, start_task
+from .worker import active, call_helper, fault, start_task
 
 
 class CleanupView(QWidget):
@@ -40,7 +39,6 @@ class CleanupView(QWidget):
         self.cleaner = Cleaner()
         self.items: list[CleanupItem] = []
         self._acknowledged = False
-        self._proc: QProcess | None = None
         self._queue: list[CleanupItem] = []
         self._procs: list = []          # latest process samples, for "running now"
 
@@ -246,7 +244,7 @@ class CleanupView(QWidget):
         sel = self._selected()
         total = sum(i.size for i in sel)
         self.lbl_total.setText(f"{len(sel)} selected · {human(total)}" if sel else "")
-        self.btn_clean.setEnabled(bool(sel) and not active(self) and self._proc is None)
+        self.btn_clean.setEnabled(bool(sel) and not active(self))
 
     # -- removing ------------------------------------------------------------------
     def _clean(self) -> None:
@@ -335,46 +333,30 @@ class CleanupView(QWidget):
         items, self._queue = self._queue, []
         for item in items:
             self._say(f"  → {item.name} (root)")
-        self._proc = QProcess(self)
-        self._proc.finished.connect(lambda code, *_: self._root_done(items, code))
-        self._proc.errorOccurred.connect(lambda error: self._root_failed(items, error))
-        argv = self.client.argv("cleanup", *(i.helper_item for i in items))
-        self._proc.start(argv[0], argv[1:])
+        call_helper(self, self.client, "cleanup", *(i.helper_item for i in items),
+                    done=lambda result, _ms: self._root_done(items, result),
+                    failed=lambda why: self._root_failed(items, why),
+                    cancelled=lambda _why: self._root_cancelled(items))
 
-    def _root_failed(self, items: list[CleanupItem], error) -> None:
-        """pkexec could not be started at all: finished never comes, so the
-        Remove button would stay disabled for good."""
-        if error != QProcess.ProcessError.FailedToStart or self._proc is None:
-            return
-        proc, self._proc = self._proc, None
+    def _root_cancelled(self, items: list[CleanupItem]) -> None:
+        names = " and ".join(i.name for i in items)
+        self._say(f"  – cancelled: {names} not touched")
+        self._finish(done=False)
+
+    def _root_failed(self, items: list[CleanupItem], why: str) -> None:
+        """The helper's refusal, or a pkexec that could not be started: one
+        line per item, and the page carries on."""
         for item in items:
-            self._say(f"  ✗ {item.name}: the root helper could not be started "
-                      f"({proc.errorString()})")
+            self._say(f"  ✗ {item.name}: {why}")
         self._finish()
 
-    def _root_done(self, items: list[CleanupItem], code: int) -> None:
-        proc, self._proc = self._proc, None
-        if proc is None:
-            return
-        out = bytes(proc.readAllStandardOutput()).decode(errors="replace")
-        err = bytes(proc.readAllStandardError()).decode(errors="replace")
-        try:
-            result = self.client.parse(code, out, err, "cleanup")
-        except Cancelled:
-            names = " and ".join(i.name for i in items)
-            self._say(f"  – cancelled: {names} not touched")
-            self._finish(done=False)
-            return
-        except ActionError as exc:
-            for item in items:
-                self._say(f"  ✗ {item.name}: {exc}")
-        else:
-            done, failed = result.get("done") or {}, result.get("failed") or {}
-            for item in items:
-                if item.helper_item in failed:
-                    self._say(f"  ✗ {item.name}: {failed[item.helper_item]}")
-                else:
-                    self._say(f"  ✓ {item.name}: {done.get(item.helper_item, 'ok')}")
+    def _root_done(self, items: list[CleanupItem], result: dict) -> None:
+        done, failed = result.get("done") or {}, result.get("failed") or {}
+        for item in items:
+            if item.helper_item in failed:
+                self._say(f"  ✗ {item.name}: {failed[item.helper_item]}")
+            else:
+                self._say(f"  ✓ {item.name}: {done.get(item.helper_item, 'ok')}")
         self._finish()
 
     def _finish(self, done: bool = True) -> None:
