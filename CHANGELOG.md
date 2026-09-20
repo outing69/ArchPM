@@ -3,6 +3,29 @@
 All notable changes, newest first. Versions are git tags on
 [github.com/outing69/ArchPM](https://github.com/outing69/ArchPM).
 
+## 0.2.61 (2026-09-20)
+
+The consolidation phase, step four of four: the parsing that exists twice
+is pinned. No code changes; tests only.
+
+- The helper may import nothing from the package, so helper.py carries its
+  own copies of what snapshots.py has: the config, description and
+  timeshift-name regexes, the row regex for timeshift's listing, and a
+  second reading of snapper's JSON (`snapper_numbers`) and of timeshift's
+  list (`timeshift_names`), which is what a delete checks an id against.
+  tests/test_helper_pins.py holds each copy to its original: the three
+  patterns as text, the description rule against `sanitise`, and the two
+  readers against the page's parsers on the fixtures plus a listing with
+  the shapes they must agree on (the live row, a negative and a text
+  number, a row that is not a row, a listing keyed by another name, the
+  header's digits, a row without its marker).
+- A real helper reply goes straight into `from_helper`: `snapshots-list`
+  and `firewall-status` run through the helper's `main` with the tools
+  faked, the JSON line is read by the client as pkexec hands it over, and
+  the listing or state is held equal to the plain read's parse of the
+  same text, for snapper, timeshift, ufw and firewalld. The two routes
+  cannot drift apart unnoticed.
+
 ## 0.2.60 (2026-09-20)
 
 The consolidation phase, step three of four: one byte formatter, one rate
