@@ -22,6 +22,7 @@ from .gpu import sysfs_name
 from .helptext import duration
 from .publisher import status_path
 from .toolenv import english
+from .units import human_bytes
 
 Section = tuple[str, list[tuple[str, str]]]
 
@@ -31,14 +32,6 @@ def _read(path: str) -> str:
         return Path(path).read_text(encoding="utf-8", errors="replace").strip()
     except OSError:
         return ""
-
-
-def _human(n: float) -> str:
-    for unit in ("B", "KB", "MB", "GB", "TB"):
-        if n < 1024:
-            return f"{n:.0f} {unit}" if unit == "B" else f"{n:.1f} {unit}"
-        n /= 1024
-    return f"{n:.1f} PB"
 
 
 def _os_release() -> dict[str, str]:
@@ -136,7 +129,8 @@ def processor_section() -> Section:
 def memory_section() -> Section:
     vm = psutil.virtual_memory()
     sw = psutil.swap_memory()
-    rows = [("RAM", _human(vm.total)), ("Swap", _human(sw.total) if sw.total else "none")]
+    rows = [("RAM", human_bytes(vm.total)),
+            ("Swap", human_bytes(sw.total) if sw.total else "none")]
     zram = [p for p in Path("/sys/block").glob("zram*")]
     if zram:
         rows.append(("zram", ", ".join(z.name for z in zram)))
@@ -181,7 +175,7 @@ def storage_section() -> Section:
             u = psutil.disk_usage(part.mountpoint)
         except OSError:
             continue
-        rows.append((part.mountpoint, f"{_human(u.used)} of {_human(u.total)} used "
+        rows.append((part.mountpoint, f"{human_bytes(u.used)} of {human_bytes(u.total)} used "
                                        f"({u.percent:.0f}%), {part.fstype}, {part.device}"))
     return "Storage", rows
 

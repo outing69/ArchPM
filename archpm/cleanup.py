@@ -23,6 +23,7 @@ from pathlib import Path
 
 from .appinfo import SteamIndex, steam_roots
 from .toolenv import english
+from .units import human_bytes
 
 _PACCACHE_DRY = re.compile(r"(\d+)\s+candidates.*?saved:\s*([\d.,]+)\s*([KMGT]i?B)")
 _JOURNAL_USAGE = re.compile(r"take up\s+([\d.,]+)\s*([KMGT]?)B?\b", re.IGNORECASE)
@@ -140,14 +141,6 @@ def dir_size(path: Path) -> int:
         except OSError:
             continue
     return total
-
-
-def human(n: float) -> str:
-    for unit in ("B", "KB", "MB", "GB", "TB"):
-        if n < 1024:
-            return f"{n:.0f} {unit}" if unit == "B" else f"{n:.1f} {unit}"
-        n /= 1024
-    return f"{n:.1f} PB"
 
 
 def _parse_size(number: str, unit: str) -> int:
@@ -282,7 +275,7 @@ class Cleaner:
             id="journal", name="System logs (journal)",
             description=f"Removes, for good, every log older than the newest 100 MB, "
                         f"including those of an earlier crash you might still want to look "
-                        f"up. The journal takes {human(size)}.",
+                        f"up. The journal takes {human_bytes(size)}.",
             size=max(0, size - keep), needs_root=True, helper_item="journal")]
 
     # -- deleting (user items only) ----------------------------------------------

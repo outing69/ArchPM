@@ -34,6 +34,7 @@ from dataclasses import dataclass
 
 from .game import pick_game
 from .model import ProcSample, SystemSample
+from .units import gigabytes
 
 MEM_FULL_PCT = 85.0
 PROGRAM_SHARE = 25.0
@@ -84,9 +85,9 @@ def candidate(system: SystemSample, procs: list[ProcSample], ncpu: int) -> Verdi
     groups = _by_program(procs)
     if system.mem_pct >= MEM_FULL_PCT and groups:
         name, members = max(groups.items(), key=lambda kv: sum(p.mem_rss for p in kv[1]))
-        held = sum(p.mem_rss for p in members) / 2**30
+        held = sum(p.mem_rss for p in members)
         lead = max(members, key=lambda p: p.mem_rss)
-        return Verdict(f"Memory is nearly full: {name} holds {held:.1f} GB.", "strain",
+        return Verdict(f"Memory is nearly full: {name} holds {gigabytes(held)}.", "strain",
                        lead.pid, name)
 
     if groups:

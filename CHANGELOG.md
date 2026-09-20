@@ -3,6 +3,30 @@
 All notable changes, newest first. Versions are git tags on
 [github.com/outing69/ArchPM](https://github.com/outing69/ArchPM).
 
+## 0.2.60 (2026-09-20)
+
+The consolidation phase, step three of four: one byte formatter, one rate
+formatter, one fixed-gigabyte form, in a new core module `archpm/units.py`.
+One value on screen changes: the process list's Disk column at exactly
+1024 bytes per second shows "1.0 KB/s" where it was blank, because the
+column now uses the same rule as the Network page (at least the floor,
+not above it). Everything else prints the same text, checked against the
+old code on forty thousand values.
+
+- `human_bytes` replaces the three copies with identical output
+  (ui/widgets, cleanup, sysinfo). `gigabytes` and `gb` are the fixed form
+  for the Overview's memory and video-memory pairs, the tray's tooltip and
+  the verdict's "holds 8.0 GB", where a pair must keep one unit on both
+  sides; the hand-rolled divisions are gone.
+- `human_rate` with a floor replaces the three rate formats: the Network
+  page blanks under a byte, the Disk column under a kilobyte
+  (`SHOW_IO_FROM` in proc_model), the Overview's graphs never.
+- The widgets' QML keeps its own byte formatter, since QML cannot import
+  the module; a test holds it to the same steps.
+- tests/test_units.py covers the three functions and pins the package to
+  one of each: no other module carries the unit tuple, a gigabyte
+  division or the per-second suffix.
+
 ## 0.2.59 (2026-09-20)
 
 The consolidation phase, step two of four: one helper-call wrapper. QProcess

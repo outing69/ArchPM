@@ -38,8 +38,9 @@ from ..helptext import plural
 from ..model import ProcSample, Snapshot
 from ..net import Conn, NetSnapshot, ProcNet
 from ..root.client import HELPER, RootClient, check
+from ..units import human_rate
 from . import hints, theme
-from .widgets import Card, ElidedLabel, FlowLayout, TextLink, app_icon, human_bytes, mono
+from .widgets import Card, ElidedLabel, FlowLayout, TextLink, app_icon, mono
 from .worker import active, call_helper, fault, start_task
 
 COL_NAME, COL_CONNS, COL_RX, COL_TX, COL_LISTEN, COL_INFO = range(6)
@@ -47,10 +48,6 @@ HEADERS = ["Program", "Connections", "Download", "Upload", "Listening", "Details
 HINT_KEYS = ["net.program", "net.connections", "net.download", "net.upload", "net.listening",
              "net.details"]
 RIGHT = Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
-
-
-def _rate(v: float) -> str:
-    return f"{human_bytes(v)}/s" if v >= 1024 else ("" if v < 1 else f"{v:.0f} B/s")
 
 
 # Below this page width the interfaces and the open doors stand one under
@@ -427,7 +424,8 @@ class NetworkView(QWidget):
             addr = ElidedLabel(i.addr)
             theme.style(addr, "color: {MUTED};")
             addr.setFont(mono("small"))
-            rates = ElidedLabel(f"↓ {_rate(i.rx_bps) or '0 B/s'}   ↑ {_rate(i.tx_bps) or '0 B/s'}"
+            rates = ElidedLabel(f"↓ {human_rate(i.rx_bps) or '0 B/s'}   "
+                                f"↑ {human_rate(i.tx_bps) or '0 B/s'}"
                                 if i.up else "")
             rates.setFont(mono("body"))
             for col, w in enumerate((name, state, addr, rates)):
@@ -522,7 +520,7 @@ class NetworkView(QWidget):
              conns: list[Conn]) -> QTreeWidgetItem:
         """A program or process row: the counts and rates, the details muted,
         the listening count orange when one of the sockets is an open door."""
-        item = QTreeWidgetItem([name, str(estab), _rate(rx), _rate(tx),
+        item = QTreeWidgetItem([name, str(estab), human_rate(rx), human_rate(tx),
                                 str(listen) if listen else "", info])
         for col in (COL_CONNS, COL_RX, COL_TX, COL_LISTEN):
             item.setTextAlignment(col, RIGHT)

@@ -42,6 +42,7 @@ from ..appinfo import CATEGORIES
 from ..helptext import plural
 from ..model import ProcSample
 from ..sections import KEY_OF_PID, SECTION_PID, is_section
+from ..units import human_bytes
 from . import hints, theme
 from .history import ProcHistory
 from .proc_model import (
@@ -66,7 +67,7 @@ from .proc_model import (
     ProcModel,
     age_text,
 )
-from .widgets import FlowLayout, Graph, app_icon, human_bytes, mono
+from .widgets import FlowLayout, Graph, app_icon, mono
 
 WATCH_S = 5.0     # after a Terminate: this long before the toast offers to force it
 # the toast after a signal, in plain words; {n} becomes "3 processes"

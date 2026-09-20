@@ -23,6 +23,7 @@ from ..actions import ActionError, get_backend
 from ..helptext import plural
 from ..model import Snapshot
 from ..root.client import ElevatedBackend, RootClient
+from ..units import MIB, gb, gigabytes
 from . import chrome, theme
 from .chrome import HeaderBar, Toast
 from .cleanup import CleanupView
@@ -439,8 +440,8 @@ class MainWindow(QMainWindow):
             tip = [f"CPU {s.cpu_percent:.0f}%{cpu_temp}"]
             if gpu is not None:
                 tip.append(f"GPU {gpu.util:.0f}% · {gpu.temp_c:.0f}° · video memory "
-                           f"{gpu.mem_used_mb / 1024:.1f} / {gpu.mem_total_mb / 1024:.0f} GB")
-            tip.append(f"RAM {s.mem_used / 2**30:.1f} / {s.mem_total / 2**30:.0f} GB")
+                           f"{gb(gpu.mem_used_mb * MIB)} / {gigabytes(gpu.mem_total_mb * MIB, 0)}")
+            tip.append(f"RAM {gb(s.mem_used)} / {gigabytes(s.mem_total, 0)}")
             if self.dashboard.game_name():
                 tip.append(f"Game: {self.dashboard.game_name()}")
             self.tray.setToolTip("\n".join(t for t in tip if t))

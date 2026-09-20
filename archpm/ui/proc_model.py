@@ -27,10 +27,11 @@ from ..grouping import build_groups, summarize
 from ..helptext import duration
 from ..model import ProcSample
 from ..sections import ABOUT, KEY_OF_PID, LABEL, RANK, SECTION_PID, is_section, section_of, uid_min
+from ..units import human_bytes, human_rate
 from . import theme
 from .hints import tooltip_html
 from .navrail import kind_icon
-from .widgets import app_icon, human_bytes
+from .widgets import app_icon
 
 SORT_ROLE = Qt.ItemDataRole.UserRole + 1
 PID_ROLE = Qt.ItemDataRole.UserRole + 2
@@ -108,6 +109,7 @@ class Totals:
 # threshold does not make the row blink in and out.
 BUSY_CPU = 5.0          # % of one core
 BUSY_IO = 1024 * 1024   # B/s
+SHOW_IO_FROM = 1024     # B/s: the Disk column is blank under a kilobyte per second
 BUSY_RSS = 1 << 30      # bytes
 BUSY_HOLD_S = 15.0
 
@@ -332,7 +334,7 @@ class ProcModel(QAbstractItemModel):
         if col == COL_NICE:
             return str(p.nice)
         if col == COL_IO:
-            return f"{human_bytes(io)}/s" if io > 1024 else ""
+            return human_rate(io, blank_below=SHOW_IO_FROM)
         if col == COL_USER:
             return p.username
         if col == COL_STATUS:

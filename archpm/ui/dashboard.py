@@ -22,6 +22,7 @@ from ..game import game_tree, pick_game
 from ..helptext import CANNOT_UNDO, duration, plural
 from ..model import ProcSample, Snapshot, SystemSample
 from ..sysinfo import cpu_model, short_cpu_name
+from ..units import MIB, gb, gigabytes, human_bytes, human_rate
 from ..verdict import (
     GAME_GPU_FULL,
     StrainWatch,
@@ -42,7 +43,6 @@ from .widgets import (
     TextLink,
     TileRow,
     app_icon,
-    human_bytes,
     mono,
 )
 
@@ -206,7 +206,7 @@ class GameCard(Card):
         self.t_gpu.set(f"{gpu:.0f}%", gpu_caption(gpu),
                        "OK" if gpu >= GAME_GPU_FULL else "TEXT")
         total = system.gpu.mem_total_mb if system and system.gpu else 0.0
-        self.t_vram.set(f"{vram / 1024:.1f} GB", f"of the card's {total / 1024:.0f} GB"
+        self.t_vram.set(gigabytes(vram * MIB), f"of the card's {gigabytes(total * MIB, 0)}"
                         if total else "")
         self.t_mem.set(human_bytes(rss), "with everything it started")
         self.t_thr.set(str(threads), f"across {plural(len(tree), 'process')}")
@@ -399,12 +399,12 @@ class Dashboard(QWidget):
         io_card = Card("network & disk", color="NET")
         self.g_net = Graph([("Download", "NET"), ("Upload", "CPU")],
                            maximum=None, fill=False)
-        self.g_net.set_formatter(lambda v: f"{human_bytes(v)}/s")
+        self.g_net.set_formatter(lambda v: human_rate(v, blank_below=0))
         io_card.body.addWidget(self.g_net, 1)
         hints.attach(self.g_net, "graph.net", self.help_requested.emit)
         self.g_disk = Graph([("Disk read", "DISK"), ("Disk write", "SWAP")],
                             maximum=None, fill=False)
-        self.g_disk.set_formatter(lambda v: f"{human_bytes(v)}/s")
+        self.g_disk.set_formatter(lambda v: human_rate(v, blank_below=0))
         io_card.body.addWidget(self.g_disk, 1)
         hints.attach(self.g_disk, "graph.disk", self.help_requested.emit)
         grid.addWidget(io_card, 1, 1)
@@ -563,8 +563,8 @@ class Dashboard(QWidget):
                            theme.heat(g.util).name())
             word, token = temp_level(g.temp_c)
             self.t_gputemp.set(f"{g.temp_c:.0f}°", f"{word}  ·  fan {g.fan_pct:.0f}%", token)
-            self.t_vram.set(f"{g.mem_used_mb / 1024:.1f} GB",
-                            f"{g.mem_pct:.0f}% of {g.mem_total_mb / 1024:.0f} GB")
+            self.t_vram.set(gigabytes(g.mem_used_mb * MIB),
+                            f"{g.mem_pct:.0f}% of {gigabytes(g.mem_total_mb * MIB, 0)}")
             self.gpu_sub.setText(
                 f"{g.power_w:.0f} W  ·  {g.clock_mhz:.0f} MHz  ·  "
                 f"{g.mem_used_mb:.0f}/{g.mem_total_mb:.0f} MB"
@@ -574,12 +574,12 @@ class Dashboard(QWidget):
 
         swap_pct = 100.0 * s.swap_used / s.swap_total if s.swap_total else 0.0
         self.g_mem.push(s.mem_pct, swap_pct)
-        self.t_mem.set(f"{s.mem_used / 2**30:.1f} GB",
-                       f"{s.mem_pct:.0f}% of {s.mem_total / 2**30:.0f} GB",
+        self.t_mem.set(gigabytes(s.mem_used),
+                       f"{s.mem_pct:.0f}% of {gigabytes(s.mem_total, 0)}",
                        theme.heat(s.mem_pct).name())
         self.mem_sub.setText(
-            f"Free {s.mem_available / 2**30:.1f} GB  ·  On disk (swap) "
-            f"{s.swap_used / 2**30:.1f}/{s.swap_total / 2**30:.0f} GB  ·  "
+            f"Free {gigabytes(s.mem_available)}  ·  On disk (swap) "
+            f"{gb(s.swap_used)}/{gigabytes(s.swap_total, 0)}  ·  "
             f"{s.proc_count} processes, {s.thread_count} threads"
         )
 

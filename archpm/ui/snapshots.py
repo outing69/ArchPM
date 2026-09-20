@@ -44,9 +44,10 @@ from ..snapshots import (
     YOURS,
     Pair,
 )
+from ..units import human_bytes
 from . import theme
 from .navrail import kind_icon
-from .widgets import BoxedList, FlowLayout, ListRow, human_bytes, mono, scrolling
+from .widgets import BoxedList, FlowLayout, ListRow, mono, scrolling
 from .worker import active, call_helper, fault, start_task
 
 ORIGIN_ICON = {PACMAN: "pacman", TIMELINE: "timer", SCHEDULED: "timer",

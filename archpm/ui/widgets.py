@@ -63,14 +63,6 @@ def app_icon(key: str) -> QIcon:
     return icon
 
 
-def human_bytes(n: float, suffix: str = "B") -> str:
-    for unit in ("", "K", "M", "G", "T"):
-        if abs(n) < 1024.0:
-            return f"{n:.0f} {unit}{suffix}" if unit == "" else f"{n:.1f} {unit}{suffix}"
-        n /= 1024.0
-    return f"{n:.1f} P{suffix}"
-
-
 class Card(QFrame):
     """Panel with a title; the standard container on the dashboard."""
 

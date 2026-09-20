@@ -20,9 +20,10 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ..cleanup import Cleaner, CleanupItem, human, running_owner
+from ..cleanup import Cleaner, CleanupItem, running_owner
 from ..helptext import CANNOT_UNDO, plural
 from ..root.client import RootClient, check
+from ..units import human_bytes
 from . import theme
 from .widgets import BoxedList, ElidedLabel, FlowLayout, ListRow, mono, scrolling
 from .worker import active, call_helper, fault, start_task
@@ -218,7 +219,7 @@ class CleanupView(QWidget):
             box.toggled.connect(self._recount)
             note = ElidedLabel()
             self._set_note(note, *self._note_for(it))
-            size = QLabel(human(it.size) if it.size else "-")
+            size = QLabel(human_bytes(it.size) if it.size else "-")
             theme.style(size, "font-family: monospace;")
             size.setMinimumWidth(size_w)     # the sizes line up down the list
             size.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
@@ -243,7 +244,7 @@ class CleanupView(QWidget):
     def _recount(self, *_) -> None:
         sel = self._selected()
         total = sum(i.size for i in sel)
-        self.lbl_total.setText(f"{len(sel)} selected · {human(total)}" if sel else "")
+        self.lbl_total.setText(f"{len(sel)} selected · {human_bytes(total)}" if sel else "")
         self.btn_clean.setEnabled(bool(sel) and not active(self))
 
     # -- removing ------------------------------------------------------------------
@@ -258,7 +259,7 @@ class CleanupView(QWidget):
             owner = running_owner(i, self._procs)
             mark = (f" <span style='color:{theme.WARN}'>· running now: {owner}</span>"
                     if owner else "")
-            lines.append(f"• {i.name} ({human(i.size)}){mark}")
+            lines.append(f"• {i.name} ({human_bytes(i.size)}){mark}")
             if owner:
                 running.append(i.name)
         names = "<br>".join(lines)
@@ -284,7 +285,7 @@ class CleanupView(QWidget):
             caution += f"<br><br>{root_items[0].name} needs root: it asks for your password."
         answer = QMessageBox.question(
             self, "Remove these?",
-            f"This frees about <b>{human(total)}</b> by emptying:<br><br>{names}{caution}"
+            f"This frees about <b>{human_bytes(total)}</b> by emptying:<br><br>{names}{caution}"
             "<br><br>Programs rebuild these when needed. Continue?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
@@ -310,13 +311,13 @@ class CleanupView(QWidget):
         for item in items:
             freed, errors = self.cleaner.empty(item)
             total += freed
-            task.progress.emit(f"  ✓ {item.name}: freed {human(freed)}")
+            task.progress.emit(f"  ✓ {item.name}: freed {human_bytes(freed)}")
             for e in errors:
                 task.progress.emit(f"    ! {e}")
         return total
 
     def _user_done(self, freed: int) -> None:
-        self.status.emit(f"Freed {human(freed)}")
+        self.status.emit(f"Freed {human_bytes(freed)}")
         self._next_root()
 
     def _empty_failed(self, exc: BaseException) -> None:
