@@ -218,9 +218,9 @@ class Page(unittest.TestCase):
         del v.read                                 # the real one, not the test stub
         calls, threads = [], []
         v._run_helper = lambda pending, *args: calls.append((pending, args))
-        real_read = view._Read
-        view._Read = lambda parent: threads.append("plain read") or real_read(parent)
-        self.addCleanup(setattr, view, "_Read", real_read)
+        real_read = view._read_plain
+        view._read_plain = lambda: threads.append("plain read") or real_read()
+        self.addCleanup(setattr, view, "_read_plain", real_read)
         v.btn_read.click()
         self.assertEqual(calls, [(("list",), ("snapshots-list",))])
         self.assertEqual(threads, [])
@@ -284,12 +284,8 @@ class Page(unittest.TestCase):
             raise OSError("snapper exploded")
         view.snapshots.detect = broken
         self.addCleanup(setattr, view.snapshots, "detect", real)
-        got = []
-        thread = view._Read()
-        thread.done.connect(lambda setup, listing: got.append((setup, listing)))
-        thread.run()
-        self.assertEqual(len(got), 1)
-        self.assertEqual(got[0][1].error, "Not read: OSError: snapper exploded")
+        _setup, listing = view._read_plain()
+        self.assertEqual(listing.error, "Not read: OSError: snapper exploded")
 
     def test_confirmation_says_what_is_lost_and_what_remains(self):
         rows = S.parse("snapper", [("root", SNAPPER_JSON)])

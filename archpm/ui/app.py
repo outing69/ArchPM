@@ -4,6 +4,7 @@ from __future__ import annotations
 import os
 import signal
 import sys
+import time
 
 from PySide6.QtCore import QSettings, Qt, QTimer
 from PySide6.QtGui import QAction, QColor, QIcon, QPainter, QPixmap
@@ -35,7 +36,7 @@ from .snapshots import SnapshotsView
 from .startup import StartupView
 from .sysinfo import SystemView
 from .widgets import scrolling
-from .worker import SampleWorker, run_in_thread, wait_for_threads
+from .worker import SampleWorker, active, fault, run_in_thread, start_task, wait_for_threads
 
 INTERVALS = [("0.5 s", 0.5), ("1 s", 1.0), ("2 s", 2.0), ("5 s", 5.0)]
 
@@ -200,7 +201,7 @@ class MainWindow(QMainWindow):
         self.worker.sampled.connect(self._on_sample)
         self.worker.failed.connect(lambda m: self._flash(f"Sampling error: {m}"))
         self.worker.notice.connect(lambda m: self._flash(m, 10000))
-        self.thread = run_in_thread(self.worker)
+        self.sampling = run_in_thread(self.worker, self)
         self._last_ts = 0.0
 
     # -- chrome -----------------------------------------------------------
@@ -341,10 +342,21 @@ class MainWindow(QMainWindow):
 
     def check_failed_services(self) -> None:
         """Once at start and on the System page's Refresh; read-only, nothing
-        is started or stopped, and it is not on the sampling cycle."""
-        report = failed.check()
+        is started or stopped, and it is not on the sampling cycle. Off the
+        UI thread: systemctl and the journal take a moment on a slow disk."""
+        if active(self, "failed-services"):
+            return
+        start_task(lambda _task: failed.check(), self, "failed-services",
+                   done=self._failed_checked, failed=self._failed_check_failed)
+
+    def _failed_checked(self, report: failed.FailedReport) -> None:
         self.dashboard.set_failed(len(report.units))
         self.system.set_failed(report)
+
+    def _failed_check_failed(self, exc: BaseException) -> None:
+        """The check catches its own tool errors; what escapes it is shown
+        where the report would be, in the report's error line."""
+        self._failed_checked(failed.FailedReport(taken_at=time.time(), error=fault(exc)))
 
     def request(self, name: str) -> None:
         """A request from a second launch or from a widget; see REQUESTS."""
@@ -467,13 +479,10 @@ class MainWindow(QMainWindow):
             return
         self._stopped = True
         self.settings.setValue("geometry", self.saveGeometry())
-        self.worker.request_stop()     # on the worker's thread, like the timer
-        self.thread.quit()
-        self.thread.wait(3000)
-        # A page's read may still run (a scan, a spec gather, a snapshot or
-        # firewall read); a QThread destroyed while running takes the process
-        # down with it. Every page thread is a child of its page, so the
-        # object tree names them all, without a list here to keep up to date.
+        # The sampler's loop and any page's read (a scan, a spec gather, a
+        # snapshot or firewall read, the failed-services check) are tasks
+        # under this window: one call cancels and joins them all. A QThread
+        # destroyed while running takes the process down with it.
         wait_for_threads(self, 5000)
 
     def closeEvent(self, event) -> None:

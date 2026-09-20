@@ -8,7 +8,7 @@ call so one prompt covers both; no password is asked at page entry.
 """
 from __future__ import annotations
 
-from PySide6.QtCore import QProcess, Qt, QThread, QTimer, Signal, Slot
+from PySide6.QtCore import QProcess, Qt, QTimer, Signal, Slot
 from PySide6.QtGui import QFontMetrics
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -26,38 +26,7 @@ from ..helptext import CANNOT_UNDO, plural
 from ..root.client import RootClient, check
 from . import theme
 from .widgets import BoxedList, ElidedLabel, FlowLayout, ListRow, mono, scrolling
-
-
-class _Scan(QThread):
-    done = Signal(object)
-
-    def __init__(self, cleaner: Cleaner, parent=None) -> None:
-        super().__init__(parent)
-        self.cleaner = cleaner
-
-    def run(self) -> None:
-        self.done.emit(self.cleaner.scan())
-
-
-class _Empty(QThread):
-    """Deleting gigabytes of small files takes seconds; keep the window alive."""
-    progress = Signal(str)
-    done = Signal(int)
-
-    def __init__(self, cleaner: Cleaner, items: list[CleanupItem], parent=None) -> None:
-        super().__init__(parent)
-        self.cleaner = cleaner
-        self.items = items
-
-    def run(self) -> None:
-        total = 0
-        for item in self.items:
-            freed, errors = self.cleaner.empty(item)
-            total += freed
-            self.progress.emit(f"  ✓ {item.name}: freed {human(freed)}")
-            for e in errors:
-                self.progress.emit(f"    ! {e}")
-        self.done.emit(total)
+from .worker import active, fault, start_task
 
 
 class CleanupView(QWidget):
@@ -71,11 +40,9 @@ class CleanupView(QWidget):
         self.cleaner = Cleaner()
         self.items: list[CleanupItem] = []
         self._acknowledged = False
-        self._thread: QThread | None = None
         self._proc: QProcess | None = None
         self._queue: list[CleanupItem] = []
         self._procs: list = []          # latest process samples, for "running now"
-        self._rescan_pending = False
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(*theme.page_margins())
@@ -139,7 +106,7 @@ class CleanupView(QWidget):
         if not self._acknowledged:
             QTimer.singleShot(0, self._first_visit_flow)   # a modal inside showEvent is fragile
             return
-        if not self.items and self._thread is None:
+        if not self.items and not active(self):
             self.scan()
 
     def _first_visit_flow(self) -> None:
@@ -152,7 +119,7 @@ class CleanupView(QWidget):
         # No password here: the scan needs none, and a prompt that arrives
         # with the sizes already on screen reads as if asked for nothing. It
         # comes when a root item is actually removed.
-        if not self.items and self._thread is None:
+        if not self.items and not active(self):
             self.scan()
 
     def _first_visit(self) -> bool:
@@ -177,26 +144,24 @@ class CleanupView(QWidget):
 
     # -- scanning ------------------------------------------------------------------
     def scan(self) -> None:
-        if self._thread is not None:
+        if active(self):
             return
         self.lbl_state.setText("scanning…")
+        theme.style(self.lbl_state, "color: {MUTED};")
         self.btn_scan.setEnabled(False)
-        self._thread = _Scan(self.cleaner, self)
-        self._thread.done.connect(self._scanned)
-        self._thread.finished.connect(self._thread_done)
-        self._thread.start()
+        start_task(lambda _task: self.cleaner.scan(), self, "scan",
+                   done=self._scan_done, failed=self._scan_failed)
 
-    @Slot()
-    def _thread_done(self) -> None:
-        if self._thread is not None:
-            self._thread.deleteLater()
-            self._thread = None
+    def _scan_done(self, items) -> None:
+        self._scanned(items)
         self.btn_scan.setEnabled(True)
-        if self._rescan_pending:
-            # After removing: fresh sizes and cleared ticks, so the same cache
-            # cannot be "removed" twice by accident.
-            self._rescan_pending = False
-            self.scan()
+
+    def _scan_failed(self, exc: BaseException) -> None:
+        """A fault in the scan lands on the state line; through 0.2.57 the
+        page stayed on "scanning…" for good."""
+        self.lbl_state.setText(f"Not scanned: {fault(exc)}")
+        theme.style(self.lbl_state, "color: {WARN};")
+        self.btn_scan.setEnabled(True)
 
     def update_view(self, snap) -> None:
         """Every sample: remember what runs, refresh the 'running now' notes."""
@@ -281,7 +246,7 @@ class CleanupView(QWidget):
         sel = self._selected()
         total = sum(i.size for i in sel)
         self.lbl_total.setText(f"{len(sel)} selected · {human(total)}" if sel else "")
-        self.btn_clean.setEnabled(bool(sel) and self._thread is None and self._proc is None)
+        self.btn_clean.setEnabled(bool(sel) and not active(self) and self._proc is None)
 
     # -- removing ------------------------------------------------------------------
     def _clean(self) -> None:
@@ -334,17 +299,32 @@ class CleanupView(QWidget):
         self.btn_scan.setEnabled(False)
         self._say(f"Removing {plural(len(sel), 'item')}…")
         if user:
-            self._thread = _Empty(self.cleaner, user, self)
-            self._thread.progress.connect(self._say)
-            self._thread.done.connect(self._user_done)
-            self._thread.finished.connect(self._thread_done)
-            self._thread.start()
+            start_task(lambda task: self._empty(task, user), self, "empty",
+                       done=self._user_done, failed=self._empty_failed, progress=self._say)
         else:
             self._next_root()
 
-    @Slot(int)
+    def _empty(self, task, items: list[CleanupItem]) -> int:
+        """On the task's thread: deleting gigabytes of small files takes
+        seconds, and the window stays alive. Each item's line goes to the
+        log as it is done."""
+        total = 0
+        for item in items:
+            freed, errors = self.cleaner.empty(item)
+            total += freed
+            task.progress.emit(f"  ✓ {item.name}: freed {human(freed)}")
+            for e in errors:
+                task.progress.emit(f"    ! {e}")
+        return total
+
     def _user_done(self, freed: int) -> None:
         self.status.emit(f"Freed {human(freed)}")
+        self._next_root()
+
+    def _empty_failed(self, exc: BaseException) -> None:
+        """A fault while emptying is a line in the log, and the root items
+        still go; through 0.2.57 it left the page with nothing said."""
+        self._say(f"  ✗ {fault(exc)}")
         self._next_root()
 
     def _next_root(self) -> None:
@@ -402,10 +382,9 @@ class CleanupView(QWidget):
         says nothing, since the items that needed root were not touched."""
         if done:
             self._say("Done.")
-        if self._thread is not None:
-            self._rescan_pending = True   # the worker is still winding down
-        else:
-            self.scan()
+        # Fresh sizes and cleared ticks, so the same cache cannot be
+        # "removed" twice by accident.
+        self.scan()
 
     def _say(self, text: str) -> None:
         self.log.appendPlainText(text)

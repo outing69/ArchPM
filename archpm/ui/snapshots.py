@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import time
 
-from PySide6.QtCore import QProcess, QRegularExpression, Qt, QThread, Signal, Slot
+from PySide6.QtCore import QProcess, QRegularExpression, Qt, Signal
 from PySide6.QtGui import QFontMetrics, QRegularExpressionValidator
 from PySide6.QtWidgets import (
     QHBoxLayout,
@@ -48,6 +48,7 @@ from ..snapshots import (
 from . import theme
 from .navrail import kind_icon
 from .widgets import BoxedList, FlowLayout, ListRow, human_bytes, mono, scrolling
+from .worker import active, fault, start_task
 
 ORIGIN_ICON = {PACMAN: "pacman", TIMELINE: "timer", SCHEDULED: "timer",
                ARCHPM: "person", BY_HAND: "person"}
@@ -67,27 +68,18 @@ LAST_ONE = ("The last snapshot stays: ArchPM does not delete the only way back. 
             "Take another one first.")
 
 
-class _Read(QThread):
-    """Detection and the plain read: two or three short commands, off the UI
-    thread. A fault in either is handed to the page as the listing's error,
-    since an exception in a thread's run() goes nowhere."""
-    done = Signal(object, object)
-
-    def run(self) -> None:
-        setup = snapshots.Setup()
-        try:
-            setup = snapshots.detect()
-            listing = snapshots.read_as_user(setup)
-        except Exception as exc:  # noqa: BLE001 - reported, never swallowed
-            listing = snapshots.Listing(tool=setup.tool, taken_at=time.time(),
-                                        error=f"Not read: {fault(exc)}")
-        self.done.emit(setup, listing)
-
-
-def fault(exc: BaseException) -> str:
-    """An unexpected exception as one line for the page: the type and the
-    message, the process list's failure box's shape."""
-    return f"{type(exc).__name__}: {exc}" if str(exc) else type(exc).__name__
+def _read_plain() -> tuple[snapshots.Setup, snapshots.Listing]:
+    """Detection and the plain read: two or three short commands, on a
+    task's thread. A fault in either is handed to the page as the listing's
+    error, with the tool as far as detection got."""
+    setup = snapshots.Setup()
+    try:
+        setup = snapshots.detect()
+        listing = snapshots.read_as_user(setup)
+    except Exception as exc:  # noqa: BLE001 - reported, never swallowed
+        listing = snapshots.Listing(tool=setup.tool, taken_at=time.time(),
+                                    error=f"Not read: {fault(exc)}")
+    return setup, listing
 
 
 class SnapshotsView(QWidget):
@@ -99,7 +91,6 @@ class SnapshotsView(QWidget):
         self.client = client
         self.setup: snapshots.Setup | None = None
         self.listing: snapshots.Listing | None = None
-        self._thread: _Read | None = None
         self._proc: QProcess | None = None
         self._pending: tuple = ()      # ("list",) | ("create",) | ("delete", snapshot)
         self._t0 = 0.0
@@ -143,7 +134,7 @@ class SnapshotsView(QWidget):
     # -- reading -------------------------------------------------------------------
     def showEvent(self, event) -> None:
         super().showEvent(event)
-        if self.listing is None and self._thread is None:
+        if self.listing is None and not active(self, "read"):
             self.read()
 
     def read(self) -> None:
@@ -153,28 +144,26 @@ class SnapshotsView(QWidget):
         authentication for a few minutes, so a second root read is silent.
         (Until 0.2.41 only the second case went to the helper, so Read
         snapshots repeated the refused plain read and showed nothing.)"""
-        if self._proc is not None or self._thread is not None:
+        if self._proc is not None or active(self, "read"):
             return
         if (self.listing is not None and (self.listing.as_root or self.listing.needs_root)
                 and check().ready):
             self.read_root()
             return
         self.lbl_state.setText("reading…")
-        self._thread = _Read(self)
-        self._thread.done.connect(self._plain_done)
-        self._thread.finished.connect(self._thread_done)
-        self._thread.start()
+        start_task(lambda _task: _read_plain(), self, "read",
+                   done=self._plain_done, failed=self._plain_failed)
 
-    @Slot()
-    def _thread_done(self) -> None:
-        if self._thread is not None:
-            self._thread.deleteLater()
-            self._thread = None
-
-    @Slot(object, object)
-    def _plain_done(self, setup, listing) -> None:
-        self.setup = setup
+    def _plain_done(self, result) -> None:
+        self.setup, listing = result
         self._show_or_report(listing)
+
+    def _plain_failed(self, exc: BaseException) -> None:
+        """The read's own guard catches everything; this is the task's, for
+        what escapes it."""
+        tool = self.setup.tool if self.setup else ""
+        self._show_or_report(snapshots.Listing(tool=tool, taken_at=time.time(),
+                                               error=f"Not read: {fault(exc)}"))
 
     def _show_or_report(self, listing: snapshots.Listing) -> None:
         """The list on the page; a fault in building it lands on the state

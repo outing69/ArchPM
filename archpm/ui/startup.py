@@ -20,6 +20,7 @@ from ..session import autostart_loss
 from . import theme
 from .navrail import kind_icon
 from .widgets import BoxedList, ElidedLabel, FlowLayout, ListRow, Switch, app_icon, scrolling
+from .worker import active, fault, start_task
 
 KIND_ORDER = {"App": 0, "System": 1, "Desktop": 2}
 KIND_LABEL = {"App": "App", "System": "System", "Desktop": "Desktop · keep on"}
@@ -41,6 +42,7 @@ class StartupView(QWidget):
         self.entries: list[StartupEntry] = []
         self._argvs: dict[int, list[str]] = {}
         self._loading = False
+        self._reload_pending = False          # asked for while a read was running
         self._records: dict[str, tuple] = {}  # entry id -> (entry, row, status label)
         self._headers: dict[bool, ListRow] = {}   # enabled? -> the group's header row
 
@@ -99,11 +101,33 @@ class StartupView(QWidget):
         self.reload()
 
     def reload(self) -> None:
-        try:
-            entries = self.auto.entries()
-        except OSError as exc:
-            self.status.emit(f"Startup: {exc}")
+        """Both reads off the UI thread: the autostart folders, and systemctl
+        for the session's services. A reload asked for while one runs (a
+        toggle during the read) is done again when that one lands, so no
+        change is missed."""
+        if active(self, "reload"):
+            self._reload_pending = True
             return
+        start_task(lambda _task: self._read(), self, "reload",
+                   done=self._loaded, failed=self._read_failed)
+
+    def _read(self) -> tuple[list[StartupEntry], list, str]:
+        """On the task's thread. A folder that cannot be read is the task's
+        failure; services that cannot be read are the group's note, and the
+        entries are shown."""
+        entries = self.auto.entries()
+        try:
+            services, note = self._read_services(), ""
+        except ActionError as exc:
+            services, note = [], f"Could not read your session's services: {exc}"
+        return entries, services, note
+
+    @staticmethod
+    def _read_services() -> list:
+        return UserBackend().enabled_services()
+
+    def _loaded(self, result: tuple) -> None:
+        entries, services, note = result
         if not self.cb_others.isChecked():
             entries = [e for e in entries if e.for_this_desktop]
         # Enabled first, then disabled; within a group your own apps first
@@ -112,14 +136,22 @@ class StartupView(QWidget):
         entries.sort(key=self._key)
         self.entries = entries
         self._fill()
-        self._fill_services()
+        self._fill_services(services, note)
+        self._reload_again()
 
-    def _fill_services(self) -> None:
+    def _read_failed(self, exc: BaseException) -> None:
+        self.status.emit(f"Startup: {exc if isinstance(exc, OSError) else fault(exc)}")
+        self._reload_again()
+
+    def _reload_again(self) -> None:
+        if self._reload_pending:
+            self._reload_pending = False
+            self.reload()
+
+    def _fill_services(self, services: list, note: str) -> None:
         self.svc_list.clear()
-        try:
-            services = UserBackend().enabled_services()
-        except ActionError as exc:
-            self.svc_hint.setText(f"Could not read your session's services: {exc}")
+        if note:
+            self.svc_hint.setText(note)
             return
         for svc in services:
             state = QLabel("Running" if svc.active else "Not running")

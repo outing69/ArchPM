@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import time
 
-from PySide6.QtCore import QProcess, Qt, QThread, Signal, Slot
+from PySide6.QtCore import QProcess, Qt, Signal
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -41,6 +41,7 @@ from ..net import Conn, NetSnapshot, ProcNet
 from ..root.client import HELPER, RootClient, check
 from . import hints, theme
 from .widgets import Card, ElidedLabel, FlowLayout, TextLink, app_icon, human_bytes, mono
+from .worker import active, fault, start_task
 
 COL_NAME, COL_CONNS, COL_RX, COL_TX, COL_LISTEN, COL_INFO = range(6)
 HEADERS = ["Program", "Connections", "Download", "Upload", "Listening", "Details"]
@@ -58,21 +59,17 @@ def _rate(v: float) -> str:
 ONE_COLUMN_BELOW = 640
 
 
-class _ReadFirewall(QThread):
-    """Detection and the plain read, off the UI thread: a handful of short
+def _read_firewall() -> tuple[firewall.Setup, firewall.State]:
+    """Detection and the plain read, on a task's thread: a handful of short
     commands and one file. A fault in either is handed to the page as the
-    state's error, since an exception in a thread's run() goes nowhere."""
-    done = Signal(object, object)
-
-    def run(self) -> None:
-        setup = firewall.Setup()
-        try:
-            setup = firewall.detect()
-            state = firewall.read_as_user(setup)
-        except Exception as exc:  # noqa: BLE001 - reported, never swallowed
-            state = firewall.State(tool=setup.tool, taken_at=time.time(),
-                                   error=f"{type(exc).__name__}: {exc}")
-        self.done.emit(setup, state)
+    state's error, with the tool as far as detection got."""
+    setup = firewall.Setup()
+    try:
+        setup = firewall.detect()
+        state = firewall.read_as_user(setup)
+    except Exception as exc:  # noqa: BLE001 - reported, never swallowed
+        state = firewall.State(tool=setup.tool, taken_at=time.time(), error=fault(exc))
+    return setup, state
 
 
 class NetworkView(QWidget):
@@ -87,7 +84,6 @@ class NetworkView(QWidget):
         self._expanded: set[str] = set()
         self.fw_setup: firewall.Setup | None = None
         self.fw_state: firewall.State | None = None
-        self._fw_thread: _ReadFirewall | None = None
         self._fw_proc: QProcess | None = None
         self._fw_t0 = 0.0
 
@@ -223,7 +219,7 @@ class NetworkView(QWidget):
         super().showEvent(event)
         if self._last is not None:
             self._rebuild()
-        if self.client is not None and self.fw_state is None and self._fw_thread is None:
+        if self.client is not None and self.fw_state is None and not active(self, "firewall"):
             self.read_firewall()
 
     # -- the firewall ------------------------------------------------------------
@@ -231,22 +227,21 @@ class NetworkView(QWidget):
         """The plain read: detection, and the tool's own status where it
         answers a plain user. Never the helper by itself: that can ask for
         a password, and a page that opens must not."""
-        if self._fw_thread is not None or self._fw_proc is not None:
+        if active(self, "firewall") or self._fw_proc is not None:
             return
-        self._fw_thread = _ReadFirewall(self)
-        self._fw_thread.done.connect(self._fw_plain_done)
-        self._fw_thread.finished.connect(self._fw_thread_done)
-        self._fw_thread.start()
+        start_task(lambda _task: _read_firewall(), self, "firewall",
+                   done=self._fw_plain_done, failed=self._fw_plain_failed)
 
-    @Slot()
-    def _fw_thread_done(self) -> None:
-        if self._fw_thread is not None:
-            self._fw_thread.deleteLater()
-            self._fw_thread = None
-
-    @Slot(object, object)
-    def _fw_plain_done(self, setup, state) -> None:
+    def _fw_plain_done(self, result) -> None:
+        setup, state = result
         self.set_firewall(setup, state)
+
+    def _fw_plain_failed(self, exc: BaseException) -> None:
+        """The read's own guard catches everything; this is the task's, for
+        what escapes it."""
+        state = firewall.State(tool=self.fw_setup.tool if self.fw_setup else "",
+                               taken_at=time.time(), error=fault(exc))
+        self.set_firewall(self.fw_setup or firewall.Setup(), state)
 
     def read_firewall_root(self) -> None:
         """Through the helper: pkexec asks for the password the first time,
@@ -292,7 +287,7 @@ class NetworkView(QWidget):
             state.error = str(exc)
         except Exception as exc:  # noqa: BLE001 - reported, never swallowed
             state = self.fw_state or firewall.State()
-            state.error = f"{type(exc).__name__}: {exc}"
+            state.error = fault(exc)
         self.set_firewall(self.fw_setup or firewall.Setup(), state)
 
     def _fw_link(self) -> None:

@@ -104,7 +104,9 @@ class StartFailure(unittest.TestCase):
     def test_root_panel_recovers_and_names_the_failure(self):
         from archpm.actions import UserBackend
         from archpm.ui import rootpanel as page
+        from tests.support import settle
         v = page.RootPanel(Broken(), UserBackend())
+        self.addCleanup(settle, v)       # the service list's read lands before v goes
         with patch.object(page, "check", lambda: READY):
             v._run("swappiness", "60")
             self.assertIsNotNone(v._proc)

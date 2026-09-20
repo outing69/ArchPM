@@ -31,6 +31,7 @@ from ..actions import ActionError, Cancelled, UserBackend
 from ..root.client import HELPER, RootClient, check
 from . import theme
 from .widgets import mono
+from .worker import fault, start_task
 
 
 class RootPanel(QDialog):
@@ -198,11 +199,14 @@ class RootPanel(QDialog):
             self.spin_swap.setValue(int(st["swappiness"]))
 
     def _load_services(self) -> None:
-        try:
-            units = self.backend.list_services()
-        except ActionError as exc:
-            self._say(f"services: {exc}")
-            return
+        """systemctl --user, off the UI thread; the box fills when it answers."""
+        start_task(lambda _task: self.backend.list_services(), self, "services",
+                   done=self._services_loaded, failed=self._services_failed)
+
+    def _services_failed(self, exc: BaseException) -> None:
+        self._say(f"services: {exc if isinstance(exc, ActionError) else fault(exc)}")
+
+    def _services_loaded(self, units) -> None:
         current = self.chosen_unit()
         self.combo_service.clear()
         for svc in sorted(units, key=lambda s: s.label.lower()):

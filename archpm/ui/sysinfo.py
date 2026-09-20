@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import time
 
-from PySide6.QtCore import Qt, QThread, Signal, Slot
+from PySide6.QtCore import Qt, Signal, Slot
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import (
     QLabel,
@@ -16,14 +16,7 @@ from .. import sysinfo
 from ..failed import SESSION, FailedReport
 from . import theme
 from .widgets import BoxedList, Columns, FlowLayout, ListRow, scrolling
-
-
-class _Gather(QThread):
-    """nvidia-smi and disk stats can take a moment; keep the UI thread free."""
-    done = Signal(object)
-
-    def run(self) -> None:
-        self.done.emit(sysinfo.gather())
+from .worker import active, fault, start_task
 
 
 class SystemView(QWidget):
@@ -33,7 +26,6 @@ class SystemView(QWidget):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self.sections: list[sysinfo.Section] = []
-        self._thread: _Gather | None = None
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(*theme.page_margins())
@@ -106,23 +98,23 @@ class SystemView(QWidget):
 
     def showEvent(self, event) -> None:
         super().showEvent(event)
-        if not self.sections and self._thread is None:
+        if not self.sections and not active(self):
             self.reload()
 
     def reload(self) -> None:
-        if self._thread is not None:
+        """nvidia-smi and disk stats can take a moment; off the UI thread."""
+        if active(self):
             return
         self.lbl_state.setText("reading…")
-        self._thread = _Gather(self)
-        self._thread.done.connect(self._loaded)
-        self._thread.finished.connect(self._thread_finished)
-        self._thread.start()
+        theme.style(self.lbl_state, "color: {MUTED};")
+        start_task(lambda _task: sysinfo.gather(), self, "gather",
+                   done=self._loaded, failed=self._failed)
 
-    @Slot()
-    def _thread_finished(self) -> None:
-        if self._thread is not None:
-            self._thread.deleteLater()
-            self._thread = None
+    def _failed(self, exc: BaseException) -> None:
+        """A fault in the gather lands on the state line; through 0.2.57
+        the page stayed on "reading…" for good."""
+        self.lbl_state.setText(f"Not read: {fault(exc)}")
+        theme.style(self.lbl_state, "color: {WARN};")
 
     @Slot(object)
     def _loaded(self, sections) -> None:

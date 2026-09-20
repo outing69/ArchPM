@@ -17,6 +17,7 @@ try:
     from PySide6.QtWidgets import QApplication, QCheckBox
 
     from archpm.ui import theme
+    from tests.support import settle
 except ImportError:                       # pragma: no cover
     QApplication = theme = None
 
@@ -32,6 +33,12 @@ def app_and_settings():
     app = QApplication.instance() or QApplication([])
     theme.apply(app, "dark")
     return app, tmp
+
+
+def reloaded(v):
+    """The Startup page's reload runs on a task: join it and let the result land."""
+    v.reload()
+    settle(v)
 
 
 def entry(name, kind="App", enabled=True, this_desktop=True):
@@ -170,8 +177,8 @@ class Pages(unittest.TestCase):
         v.auto.entries.return_value = [entry("Zed"), entry("Alpha", enabled=False),
                                        entry("Plasma", kind="Desktop"),
                                        entry("Gnomish", this_desktop=False)]
-        v._fill_services = lambda: None
-        v.reload()
+        v._read_services = lambda: []
+        reloaded(v)
         rows = v.list.rows()
         self.assertEqual([r.title.text() for r in rows],
                          ["Enabled (2)", "Zed", "Plasma", "Disabled (1)", "Alpha"],
@@ -210,8 +217,8 @@ class Pages(unittest.TestCase):
         stranger.id, stranger.exec = "stranger.desktop", "/opt/stranger/bin/stranger"
         app = entry("Zed")
         v.auto.entries.return_value = [app, stranger, plasma, access]
-        v._fill_services = lambda: None
-        v.reload()
+        v._read_services = lambda: []
+        reloaded(v)
         # the shared wording, the entry's own line, and what is known of a stranger
         self.assertEqual(v.loss_of(plasma), "the panel, the desktop and its widgets")
         self.assertEqual(v.loss_of(access),
@@ -232,7 +239,7 @@ class Pages(unittest.TestCase):
         off = entry("Plasma", kind="Desktop", enabled=False)
         off.id, off.exec = plasma.id, plasma.exec
         v.auto.entries.return_value = [off]
-        v.reload()
+        reloaded(v)
         {r.title.text(): r for r in v.list.rows()}["Plasma"].suffix[-1].toggle()
         self.assertEqual(asked, ["Stranger", "Plasma", "Accessibility"])
         self.assertEqual(v.auto.set_enabled.call_args[0][1], True)
@@ -246,8 +253,8 @@ class Pages(unittest.TestCase):
         over = entry("Over", kind="System")
         over.system_path = Path("/etc/xdg/autostart/over.desktop")
         v.auto.entries.return_value = [plain, over, entry("Desk", kind="Desktop")]
-        v._fill_services = lambda: None
-        v.reload()
+        v._read_services = lambda: []
+        reloaded(v)
         rows = v.list.rows()
         self.assertEqual([v._kind_key(e) for e in v.entries], ["App", "System", "Desktop"]
                          if not over.is_override else ["App", "override", "Desktop"])
@@ -292,9 +299,10 @@ class Pages(unittest.TestCase):
         v = StartupView()
         v.auto = mock.Mock()
         v.auto.entries.return_value = [entry(n, enabled=on) for n, on in names_enabled]
-        v._fill_services = lambda: None
+        v._read_services = lambda: []
         v.resize(900, 700)
         v.show()
+        settle(v)
         QTest.qWait(20)
         return v
 
@@ -338,7 +346,7 @@ class Pages(unittest.TestCase):
                          ["Enabled (0)", "Disabled (3)", "Alpha", "Beta", "Gamma"])
         # a desktop row the user does not confirm does not move
         v.auto.entries.return_value = [entry("Zed", kind="Desktop"), entry("Off", enabled=False)]
-        v.reload()
+        reloaded(v)
         v._confirm_off = lambda e: False
         v.list.rows()[1].suffix[-1].toggle()
         self.assertFalse(v.list.sliding())
@@ -373,8 +381,9 @@ class Pages(unittest.TestCase):
         v = StartupView()
         v.auto = mock.Mock()
         v.auto.entries.return_value = [entry("Zed"), entry("Gnomish", this_desktop=False)]
-        v._fill_services = lambda: None
+        v._read_services = lambda: []
         v.cb_others.setChecked(True)
+        settle(v)
         rows = [r for r in v.list.rows() if r.suffix]
         self.assertEqual(rows[-1].title.text(), "Gnomish")
         self.assertEqual(rows[-1].suffix[0].text(), "Other desktop")

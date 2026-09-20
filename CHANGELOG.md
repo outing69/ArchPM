@@ -3,6 +3,40 @@
 All notable changes, newest first. Versions are git tags on
 [github.com/outing69/ArchPM](https://github.com/outing69/ArchPM).
 
+## 0.2.58 (2026-09-20)
+
+The consolidation phase, step one of four: one way to do background work.
+No behaviour change on screen except two that are meant: a fault in the
+Cleanup scan or the System page's gather is now a line on the state line,
+where the page used to stay on "scanning…" or "reading…" for good, and a
+fault before the sampler's first sample is a sampling error in a toast
+instead of a thread that silently never samples.
+
+- `Task` in ui/worker.py replaces the five QThread subclasses (the Cleanup
+  scan and empty, the spec gather, the snapshot read, the firewall read),
+  the sampler's object-in-a-thread with its queued-signal and blocking-call
+  machinery, and three synchronous calls on the GUI thread: the
+  failed-services check at start and on Refresh, the root panel's service
+  list, and the Startup page's reload (its two reads together, a reload
+  asked for during one is done again when it lands). QProcess stays for
+  the helper calls until step two, which is the helper-call wrapper.
+- A task is a child of its page or of the window, so the shutdown join
+  finds every one through the object tree, cancels the ones that loop and
+  waits; a page cannot forget to be joined. Whether a page is busy is asked
+  of the tree (`active`), not of an attribute the page clears in a copied
+  done-slot; the five copies of that slot are gone.
+- A task's result or exception lands on the GUI thread after the thread
+  has finished, so a page starts its next read from the done slot; the
+  Cleanup page's rescan flag is gone.
+- The sampler's loop counts each sample from the previous one's due time,
+  so a slow sample does not push the cadence; an interval change takes
+  effect at once, as restarting the timer did.
+- tests/test_worker.py covers the task: delivery on the GUI thread after
+  the finish, the fault, progress order, `active`, cancel and poke, the
+  shutdown join cancelling a loop, the sampler as a task, the interval
+  change taking effect at once, a fault before the first sample.
+  tests/support.py holds the settle helper the page tests share.
+
 ## 0.2.57 (2026-09-19)
 
 The wording and documentation drift from the review, in one sweep, no

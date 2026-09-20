@@ -122,8 +122,10 @@ class OnScreen(unittest.TestCase):
                          user_path=Path("/u/x.desktop"), enabled=True, for_this_desktop=True,
                          kind="System")
         v.auto.entries.return_value = [e]
-        v._fill_services = lambda: None
-        v.reload()
+        from tests.support import settle
+        v._read_services = lambda: []
+        v.reload()                       # on a task: join it and let the result land
+        settle(v)
         row = {r.title.text(): r for r in v.list.rows()}["X"]
         self.assertEqual(row.suffix[1].text(), "System · your own copy")
         running = {"x.desktop": 4242}
